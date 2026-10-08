@@ -1121,10 +1121,10 @@ export class Robot {
     // ---- the staged rise, layered on top of the lie ----
     // `side` peaks about a third of the way in: he rolls off his back onto one shoulder, the hips slide across over
     // the planted hand, the body drifts forward over the knees, and the last beat dips so the rise LANDS.
-    const riseX = riseDir * 0.32 * rs.side;
+    const riseX = riseDir * 0.34 * rs.side;
     // every staged term below is scaled to vanish at BOTH ends of the rise (a term that survived to rise = 1 would
     // pop out of the pose the instant the game hands the body back to the ordinary rig)
-    const riseZ = rs.tuck * 0.1 + (rs.fold + rs.kneel) * 0.09 - rs.tall * 0.05 * (1 - riseU);
+    const riseZ = rs.tuck * 0.12 + (rs.fold + rs.kneel) * 0.11 - rs.tall * 0.05 * (1 - riseU);
     const riseY = -rs.bounce * 0.18 - riseOut * 0.05;
     // turning a lying body about its own spine reads exactly as the log-roll onto the side; as the pitch unwinds
     // the very same channel becomes the twist that squares him back up to the enemy
@@ -1162,16 +1162,18 @@ export class Robot {
       (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0),
     );
     const breathe = Math.sin(t * 2.4) * 0.015;
-    // chest/waist cancel the hip turn so the upper body keeps facing the opponent
-    // pelvis and chest counter-rotate (net chest yaw = -0.5 × pelvis yaw) and the chest stays level over the pelvis dip
-    this.pelvis.rotation.set(a.lean * 0.06, pelvisYaw, gr - slipRoll * 0.14);
+    // Core spinal dynamics: kurvatura tulang belakang saat jatuh (buckle & shock absorption) dan melengkung ke depan saat bangkit (eFold)
+    const spineFallCurl = fs.buckle * 0.16;
+    const spineImpactDecompress = fs.lay * 0.06;
+    const spineFold = eFold * 0.28;
+    this.pelvis.rotation.set(a.lean * 0.06 - spineFallCurl * 0.12 + spineFold * 0.1, pelvisYaw, gr - slipRoll * 0.14);
     this.waist.rotation.set(
-      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28,
+      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28 + spineFallCurl - spineImpactDecompress + spineFold,
       wY - psi * 0.5 - gy * 0.7 + hYaw * 0.3,
       -gr * 0.6 + hRoll * 0.3 + slipRoll * 0.36,
     );
     this.chest.rotation.set(
-      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3),
+      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3) + spineFallCurl * 1.1 - spineImpactDecompress * 1.0 + spineFold * 1.2,
       cY - psi * 0.4 - gy * 0.8 + hYaw * 0.55,
       -rollA * 0.3 - gr * 0.4 + hRoll * 0.3 + slipRoll * 0.52,
     );
@@ -1445,8 +1447,10 @@ export class Robot {
       // left choosing between a boot through the mat and a body floating a metre above it.
       const lieLead = (riseDir > 0 ? 0 : 1) === i ? 1 : 0; // the leg on the side he lies towards
       const lieW = fs.side * (1 - rs.tuck) * (1 - rs.legs);
-      const fallHx = 0.02 * s - (0.7 * lieLead + 0.14 * (1 - lieLead)) * lieW;
-      const fallKx = 0.1 + (0.95 * lieLead + 0.22 * (1 - lieLead)) * lieW;
+      const buckleK = fs.buckle * 0.62; // knees buckle dynamically under weight during the collapse
+      const buckleH = -fs.buckle * 0.35; // hips sink as knees give way
+      const fallHx = 0.02 * s + buckleH - (0.72 * lieLead + 0.16 * (1 - lieLead)) * lieW;
+      const fallKx = 0.14 + buckleK + (0.95 * lieLead + 0.24 * (1 - lieLead)) * lieW;
       // GET-UP: the legs are the load-bearing part of the whole move, and they are posed here by hand (the IK
       // does not get them back until he drives up out of the crouch). The LEAD leg — the one on the side he rolls
       // towards — folds hard, knee up over the boot, and stays under him; the TRAIL leg draws in behind it, its

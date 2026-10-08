@@ -16,7 +16,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
  * Everything stays in LINEAR HDR — the ACES/Neutral tone map in the OutputPass does the rest.
  */
 export const SAT_STEPS = [0.95, 1.15, 1.45, 1.70] as const;
-export const DEFAULT_SAT = 1.45; // Vivid & Hidup by default
+export const DEFAULT_SAT = 1.15; // 1.0x Normal / Standar
 
 export const GradeShader = {
   name: 'GradeShader',
@@ -25,7 +25,7 @@ export const GradeShader = {
     time: { value: 0 },
     res: { value: new THREE.Vector2(1920, 1080) },
     vignette: { value: 0.0 }, // no black vignette — the frame keeps its colour corner to corner (design request)
-    sat: { value: 1.45 }, // Rich vibrant default (user requested higher lively saturation)
+    sat: { value: 1.15 }, // 1.0x Standar Normal default
     grain: { value: 0.006 },
     contrast: { value: 0.22 }, // Crisp broadcast contrast
     exposure: { value: 1.0 }, // written every frame by the game's auto-exposure (base exposure × the iris gain)

@@ -107,6 +107,58 @@ export function DirectionalHeadSnapPicker({ value, onPick }: { value: boolean; o
   );
 }
 
+export function SlowMoModePicker({ noSlowMoNormal, onPick }: { noSlowMoNormal: boolean; onPick: (noSlowMo: boolean) => void }) {
+  return (
+    <div>
+      <SectionTitle
+        right={
+          <span className={`font-tech text-[8px] font-bold tracking-[0.2em] ${noSlowMoNormal ? 'text-amber-300' : 'text-sky-300'}`}>
+            {noSlowMoNormal ? 'HANYA OVERDRIVE' : 'SEMUA SERANGAN'}
+          </span>
+        }
+      >
+        MODE SLOW MOTION (TEMPO PERTARUNGAN)
+      </SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => onPick(true)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${noSlowMoNormal ? 'tile-on' : ''}`}
+          style={cssVar('--c', '#fbbf24')}
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-display text-[18px] leading-none tracking-wider" style={{ color: noSlowMoNormal ? '#fde047' : '#ffffff' }}>
+              HANYA OVERDRIVE
+            </span>
+            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-tech text-[8px] font-bold text-amber-300">
+              FAST FLOW
+            </span>
+          </div>
+          <div className="mt-1 font-tech text-[8.5px] leading-tight tracking-wider text-amber-200/80">
+            Serangan biasa &amp; counter jalan tanpa slow-mo (FPS kencang). Slow-mo hanya aktif saat OVERDRIVE [R] &amp; K.O.!
+          </div>
+        </button>
+        <button
+          onClick={() => onPick(false)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${!noSlowMoNormal ? 'tile-on' : ''}`}
+          style={cssVar('--c', '#38bdf8')}
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-display text-[18px] leading-none tracking-wider" style={{ color: !noSlowMoNormal ? '#7dd3fc' : '#ffffff' }}>
+              SLOW-MO NORMAL
+            </span>
+            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 font-tech text-[8px] font-bold text-sky-300">
+              STANDAR
+            </span>
+          </div>
+          <div className="mt-1 font-tech text-[8.5px] leading-tight tracking-wider text-white/50">
+            Semua pukulan berat, counter, &amp; guard break memperlambat waktu secara dramatis.
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function DifficultyPicker({ ultra, onPick }: { ultra: boolean; onPick: (ultra: boolean) => void }) {
   return (
     <div>

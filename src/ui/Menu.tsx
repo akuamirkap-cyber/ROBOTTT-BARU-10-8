@@ -21,7 +21,7 @@ import {
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from '../game/build';
 import type { SfxProfile } from '../game/audio';
 import { Key, cssVar } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, SlowMoModePicker, TransitionPicker } from './Pickers';
 import { ACCOUNT_NAME, MODES, levelOf, tierOf, weekResetIn, wrcPoints, type ModeId, type Profile } from '../game/progress';
 import { Avatar, ProfileCard, ProfileSheet } from './Profile';
 import { Leaderboard, ModeDossier, ModeHub, type LobbyView } from './Modes';
@@ -71,6 +71,8 @@ export interface MenuProps {
   onPyro: (p: PyroPlacement) => void;
   directionalHeadSnap?: boolean;
   onDirectionalHeadSnap?: (on: boolean) => void;
+  noSlowMoNormal?: boolean;
+  onNoSlowMoNormal?: (on: boolean) => void;
 }
 
 const act = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => {
@@ -363,6 +365,8 @@ export function Menu({
   onPyro,
   directionalHeadSnap = true,
   onDirectionalHeadSnap,
+  noSlowMoNormal = false,
+  onNoSlowMoNormal,
 }: MenuProps) {
   const [tab, setTab] = useState<MenuTab>('lobby');
   const [showProfile, setShowProfile] = useState(false);
@@ -1395,6 +1399,11 @@ export function Menu({
                 <BloomPicker value={bloom} onPick={onBloom} />
                 <ResetVisualsButton onReset={onResetVisuals} />
               </div>
+              {onNoSlowMoNormal && (
+                <div className="lobby-subcard rounded-lg p-3.5">
+                  <SlowMoModePicker noSlowMoNormal={noSlowMoNormal} onPick={onNoSlowMoNormal} />
+                </div>
+              )}
               {onDirectionalHeadSnap && (
                 <div className="lobby-subcard rounded-lg p-3.5">
                   <DirectionalHeadSnapPicker value={directionalHeadSnap} onPick={onDirectionalHeadSnap} />

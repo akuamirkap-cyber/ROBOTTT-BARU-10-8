@@ -302,6 +302,7 @@ export class SparkStreaks {
       i++;
     }
 
+    this.geo.setDrawRange(0, this.aliveCount * 6);
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.color.needsUpdate = true;
     this.wasActive = true;

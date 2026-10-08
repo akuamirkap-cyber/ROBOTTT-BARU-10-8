@@ -110,6 +110,24 @@ export const saveDirectionalHeadSnap = (on: boolean) => {
   }
 };
 
+// ------------------------------------------------------------------ no slow-mo on normal strikes (except Overdrive)
+export const LS_NO_SLOWMO_NORMAL = 'steel-titans-no-slowmo-normal-v1';
+export const loadNoSlowMoNormal = (): boolean => {
+  try {
+    const v = localStorage.getItem(LS_NO_SLOWMO_NORMAL);
+    return v === null ? true : v === 'true';
+  } catch {
+    return true;
+  }
+};
+export const saveNoSlowMoNormal = (on: boolean) => {
+  try {
+    localStorage.setItem(LS_NO_SLOWMO_NORMAL, String(on));
+  } catch {
+    /* ignore */
+  }
+};
+
 /**
  * ULTRA HARD: the same four champions, but upgraded across the board — tougher chassis, harder hits, faster
  * attacks, near-instant reads, relentless counters, and every one of them carries Overdrive.
@@ -364,6 +382,8 @@ export interface HudState {
   pyroPlacement?: PyroPlacement;
   /** directional head snap toggle */
   directionalHeadSnap?: boolean;
+  /** no slow-mo on normal attacks toggle (slow-mo exclusively reserved for Overdrive & KO) */
+  noSlowMoNormal?: boolean;
   stats?: MatchStats; // the fight sheet shown on the result screen
   /** TEAM MATCH (2v2): the second robot on each side */
   team?: {
@@ -1068,6 +1088,7 @@ class Fighter {
   riseDir = 1; // the shoulder he rolls onto and pushes off
   riseOut = 0; // 1 → 0 over the beat after he stands (the loose settle)
   riseSteps = 0; // how many of the two re-plants have fired
+  riseServoPlayed = false;
   downDur = 2.0; // total time on the floor, get-up included
   poise = POISE_MAX; // stability: how much punishment is left before a normal punch can knock you down
   poiseT = 0; // delay before the poise starts refilling
@@ -1182,6 +1203,7 @@ class Fighter {
     this.riseDir = 1;
     this.riseOut = 0;
     this.riseSteps = 0;
+    this.riseServoPlayed = false;
     this.downDur = 1.8;
     this.poiseMax = POISE_MAX * (this.isPlayer ? 1.25 : 1); // you are a little sturdier than the opponents
     this.poise = this.poiseMax;
@@ -1628,6 +1650,7 @@ export class Game {
   private heroMouseY = 0;
   private menuCamMode: 'hero' | 'arena' | 'full' = 'hero';
   directionalHeadSnap = loadDirectionalHeadSnap();
+  noSlowMoNormal = loadNoSlowMoNormal();
 
   constructor(container: HTMLElement, onHud: (h: HudState) => void) {
     this.container = container;
@@ -2028,6 +2051,34 @@ export class Game {
 
   toggleDirectionalHeadSnap() {
     this.setDirectionalHeadSnap(!this.directionalHeadSnap);
+  }
+
+  setNoSlowMoNormal(on: boolean) {
+    if (this.noSlowMoNormal === on) return;
+    this.noSlowMoNormal = on;
+    saveNoSlowMoNormal(on);
+    this.sfx.init();
+    this.sfx.click();
+    if (on) {
+      const curMove = this.player?.move || this.enemy?.move;
+      const isODMove = curMove && isOD(curMove.id);
+      if (!isODMove && this.phase !== 'ko') {
+        this.slowT = 0;
+        this.timeScale = 1;
+      }
+    }
+    if (this.player) {
+      this.popup(
+        new THREE.Vector3(this.player.pos.x, 6.2 * this.player.scale, this.player.pos.y),
+        on ? 'SLOW-MO: HANYA OVERDRIVE' : 'SLOW-MO: SEMUA SERANGAN',
+        on ? 'pop-crit' : 'pop-block'
+      );
+    }
+    this.emitHud(true);
+  }
+
+  toggleNoSlowMoNormal() {
+    this.setNoSlowMoNormal(!this.noSlowMoNormal);
   }
 
   /** / and . change the camera preset in the middle of a fight */
@@ -2901,6 +2952,10 @@ export class Game {
       case 'Digit0':
       case 'Backquote':
         this.toggleDirectionalHeadSnap();
+        break;
+      case 'Digit9':
+      case 'KeyO':
+        this.toggleNoSlowMoNormal();
         break;
     }
   }
@@ -4338,8 +4393,12 @@ export class Game {
       this.sfx.ready();
       this.popup(new THREE.Vector3(d.pos.x, 6.9, d.pos.y), '🔥 OVERDRIVE COMEBACK SIAP! [R]', 'pop-crit');
     }
-    this.slowT = deadly ? 0.28 : 0.22; // crisp reflex window to press R (Overdrive) or L (Counter)
-    this.slowScale = deadly ? 0.45 : 0.52;
+    if (this.noSlowMoNormal) {
+      this.slowT = 0;
+    } else {
+      this.slowT = deadly ? 0.28 : 0.22; // crisp reflex window to press R (Overdrive) or L (Counter)
+      this.slowScale = deadly ? 0.45 : 0.52;
+    }
     this.flashAmt = Math.max(this.flashAmt, 0.22);
     this.fovKick = 3.0;
     this.fx.ring(d.pos.x, d.pos.y, 0x5affc8, deadly ? 7.5 : 6, 0.5, 0.1);
@@ -4583,8 +4642,12 @@ export class Game {
       this.sfx.ready();
       this.popup(new THREE.Vector3(d.pos.x, 6.95, d.pos.y), '🔥 OVERDRIVE COMEBACK SIAP! [R]', 'pop-crit');
     }
-    this.slowT = 0.24; // crisp, satisfying parry slow-mo
-    this.slowScale = 0.48;
+    if (this.noSlowMoNormal) {
+      this.slowT = 0;
+    } else {
+      this.slowT = 0.24; // crisp, satisfying parry slow-mo
+      this.slowScale = 0.48;
+    }
     this.flashAmt = Math.max(this.flashAmt, 0.26);
     this.freeze = 0.06;
     this.frozenFighter = a;
@@ -5722,9 +5785,13 @@ export class Game {
       // to come up. `riseStages` (poses.ts) owns the shape of it; robot receives `riseU` and does the rest, so the
       // whole move is one continuous curve instead of a body rotating stiffly up off the floor.
       const du = 1 - THREE.MathUtils.clamp(f.downT / Math.max(0.001, f.downDur), 0, 1); // 0 on landing
-      const RISE_AT = 0.3; // how much of the time on the floor is spent flat out
+      const RISE_AT = 0.28; // how much of the time on the floor is spent flat out
       f.riseU = THREE.MathUtils.clamp((du - RISE_AT) / (1 - RISE_AT), 0, 1);
       f.fallT = 1; // the plain fall spring stays down: the rise is the staged animation, not a spring release
+      if (f.riseU > 0.18 && !f.riseServoPlayed) {
+        f.riseServoPlayed = true;
+        this.sfx.servo();
+      }
       if (f.downT <= 0) {
         f.state = 'idle';
         f.fallT = 0;
@@ -5734,6 +5801,7 @@ export class Game {
         f.riseOut = 1; // the settle: the shoulders shake out and the stance settles over the next half second
         f.wakeT = 0.3;
         f.softT = 1.0;
+        f.riseServoPlayed = false;
       }
     }
     f.riseOut = Math.max(0, f.riseOut - dt / 0.55);
@@ -6023,6 +6091,7 @@ export class Game {
         f.riseU = 0;
         f.riseOut = 0;
         f.riseSteps = 0;
+        f.riseServoPlayed = false;
         // which shoulder he rolls onto: the side the fight is on, so the roll brings him up facing his man
         const to = this.toward(f, this.foeOf(f));
         f.riseDir = to.x * Math.cos(f.yaw) - to.y * Math.sin(f.yaw) >= 0 ? 1 : -1;
@@ -6442,8 +6511,12 @@ export class Game {
         this.sfx.guardBreak();
         this.popup(new THREE.Vector3(d.pos.x, 6.4 * d.scale, d.pos.y), 'GUARD BREAK!', 'pop-crit');
         this.freeze = 0.08;
-        this.slowT = 0.2;
-        this.slowScale = 0.46;
+        if (this.noSlowMoNormal) {
+          this.slowT = 0;
+        } else {
+          this.slowT = 0.2;
+          this.slowScale = 0.46;
+        }
         this.trauma = Math.min(0.7, this.trauma + 0.32);
         this.camImpVel.y -= 2.4;
         d.stam = 25;
@@ -6596,6 +6669,13 @@ export class Game {
       // a knock-down is NOT slowed: the body leaves the feet and the whole fall plays in real time (a short
       // hit-stop on the contact is all the punctuation it gets — the simulation does the rest)
       this.slowT = 0;
+    } else if (isOD(m.id)) {
+      // OVERDRIVE ALWAYS GETS CINEMATIC SLOW MOTION! (Crisp & snappy pacing, avoids sluggish freeze)
+      this.slowT = 0.28;
+      this.slowScale = 0.52;
+    } else if (this.noSlowMoNormal) {
+      // FAST COMBAT: ordinary hits, crits, and counters do not slow time! Full FPS and relentless pace!
+      this.slowT = 0;
     } else if (big >= 0.6 || crit || a.runStrike || a.winStrike || a.rage) {
       this.slowT = Math.max(this.slowT, 0.14 + big * 0.11);
       this.slowScale = 0.46;
@@ -6687,8 +6767,8 @@ export class Game {
         this.stats.time = ROUND_TIME - this.roundTime;
       }
       if (isOD(m.id) && !launched) {
-        this.slowT = 0.42;
-        this.slowScale = 0.38;
+        this.slowT = 0.28;
+        this.slowScale = 0.52;
       }
       if (isOD(m.id)) {
         this.flashEl.style.background = 'radial-gradient(ellipse at center, rgba(255,230,180,0.25) 0%, rgba(255,200,120,0.55) 100%)';
@@ -6714,11 +6794,11 @@ export class Game {
       this.fx.spark(hitPos, 28, 15, 0x9fe6ff, dirAD, 1.3, 0.9, 10);
       this.popup(new THREE.Vector3(d.pos.x, 7.4 * d.scale, d.pos.y), 'HEAD RIP!', 'pop-crit');
       this.popup(hitPos, 'KEPALA TERPENTAL!', 'pop-big');
-      this.slowT = 0.85;
-      this.slowScale = 0.32;
+      this.slowT = 0.52;
+      this.slowScale = 0.46;
       this.flashAmt = 0.9;
       this.flashEl.style.background = 'radial-gradient(ellipse at center, rgba(255,255,255,0.1) 20%, rgba(150,230,255,0.75) 100%)';
-      this.freeze = 0.14;
+      this.freeze = 0.07;
       this.trauma = 0.85;
       this.camPush += 0.55;
       this.camBump = 0.45;
@@ -7549,12 +7629,12 @@ export class Game {
         m!.power > 0.45 &&
         !f.whooshed &&
         (f.moveT >= m!.strikeAt - 0.1 || isWindmill) &&
-        Math.random() < (isWindmill ? 0.8 : 0.55)
+        Math.random() < (isWindmill ? 0.35 : 0.45)
       ) {
         this.fx.spark(
           tmp,
-          isWindmill ? 4 : 2,
-          3 + m!.power * 5,
+          isWindmill ? 2 : 2,
+          2.5 + m!.power * 4,
           isWindmill ? 0xffb830 : f.isPlayer ? 0x8fd0ff : 0xffb040,
           new THREE.Vector3(0, 0.25, 0),
           0.7,
@@ -8226,6 +8306,7 @@ export class Game {
       bloomPercent: this.bloomPercent,
       pyroPlacement: this.arena.getPyroPlacement(),
       directionalHeadSnap: this.directionalHeadSnap,
+      noSlowMoNormal: this.noSlowMoNormal,
       team:
         this.teamMode && this.ally && this.enemy2 && this.def2
           ? {

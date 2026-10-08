@@ -241,14 +241,8 @@ export class Decap {
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + Math.random() * 0.7;
       const len = minLen + Math.random() * (maxLen - minLen);
-      const bend = new THREE.Vector3((Math.random() - 0.5) * 0.3, -len * 0.55, (Math.random() - 0.5) * 0.3);
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(bend.x * 0.6, -len * 0.3, bend.z * 0.6),
-        bend,
-        new THREE.Vector3(bend.x * 1.5 + (Math.random() - 0.5) * 0.2, -len, bend.z * 1.5 + (Math.random() - 0.5) * 0.2),
-      ]);
-      const geo = new THREE.TubeGeometry(curve, 8, 0.028 + Math.random() * 0.022, 5, false);
+      const geo = new THREE.CylinderGeometry(0.025, 0.018, len, 5, 1);
+      geo.translate(0, -len * 0.5, 0);
       const mat = mats[2 + ((Math.random() * 3) | 0)];
       const mesh = new THREE.Mesh(geo, mat);
       const pivot = new THREE.Object3D();
@@ -256,7 +250,7 @@ export class Decap {
       pivot.add(mesh);
       parent.add(pivot);
       const tip = new THREE.Object3D();
-      tip.position.set(bend.x * 1.5, -len, bend.z * 1.5);
+      tip.position.set(0, -len, 0);
       mesh.add(tip);
       wires.push({
         o: pivot,

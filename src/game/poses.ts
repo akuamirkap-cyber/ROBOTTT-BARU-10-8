@@ -560,8 +560,8 @@ export function riseArms(u: number, dir: number): Beat {
   const drive = st.reach; // then it drives back off the lead knee
   const ribs = S(uc, 0.62, 0.88); // ...and comes back to the ribs
   const back = S(uc, 0.88, 1); // the guard closes over the last beat
-  // limp on the canvas — this is the exact pose the knock-down leaves him in, so the arms never pop at the start
-  const U = P(0.1, 0, 0.35, -0.3);
+  // limp on the canvas — natural relaxed elbow flex resting beside the torso instead of rigid locked arms
+  const U = P(0.12, 0.02, 0.38, -0.48);
   const REACH = P(0.2, -0.05, 0.7, -1.05); // hand out beside the hip, elbow folded
   const PRESS = P(0.34, 0.05, 1.0, -0.18); // pushed straight: the arm is a post
   const OFF = P(0.06, -0.12, 0.42, -1.4); // off the canvas, elbow soft again
