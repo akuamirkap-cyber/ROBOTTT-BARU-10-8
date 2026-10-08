@@ -1,0 +1,38 @@
+{
+  "name": "steel-titans-wrc",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test:feet": "esbuild src/game/robot.ts --bundle --format=esm --platform=node --outfile=.__robot.mjs --external:three && node feettest.mjs",
+    "test:cam": "esbuild src/game/cammath.ts --bundle --format=esm --platform=node --outfile=.__cam.mjs --external:three && node camtest.mjs",
+    "test:crowd": "esbuild crowdscene.ts --bundle --format=esm --platform=node --outfile=.__crowdscene.mjs --external:three && node crowdtest.mjs",
+    "test": "npm run test:feet && npm run test:pose && npm run test:strike && npm run test:clash && npm run test:cam && npm run test:crowd",
+    "test:pose": "esbuild src/game/robot.ts --bundle --format=esm --platform=node --outfile=.__robot.mjs --external:three && esbuild src/game/poses.ts --bundle --format=esm --platform=node --outfile=.__poses.mjs --external:three && node posetest.mjs",
+    "test:strike": "esbuild src/game/Game.ts --bundle --format=esm --platform=node --outfile=.__game.mjs --external:three && node striketest.mjs",
+    "test:clash": "esbuild src/game/robot.ts --bundle --format=esm --platform=node --outfile=.__robot.mjs --external:three && esbuild src/game/Game.ts --bundle --format=esm --platform=node --outfile=.__game.mjs --external:three && node clashtest.mjs"
+  },
+  "dependencies": {
+    "@types/three": "^0.186.0",
+    "clsx": "2.1.1",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "tailwind-merge": "3.4.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.17",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "tailwindcss": "4.1.17",
+    "typescript": "5.9.3",
+    "vite": "7.3.2",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}
