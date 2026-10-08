@@ -61,8 +61,8 @@ export interface MenuProps {
   onSat: (s: number) => void;
   tex: boolean;
   onTex: (t: boolean) => void;
-  bloom: BloomMode;
-  onBloom: (b: BloomMode) => void;
+  bloom: BloomMode | number;
+  onBloom: (b: BloomMode | number) => void;
   onResetVisuals: () => void;
   gfx: GfxMode;
   onGfx: (g: GfxMode) => void;

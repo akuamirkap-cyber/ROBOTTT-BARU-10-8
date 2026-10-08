@@ -295,8 +295,12 @@ export function buildCrowd(scene: THREE.Scene, spots: Spot[], phoneCount: number
     te[o + 14] = bz - s * lx + c * lz;
     te[o + 15] = 1;
   };
-  /** the exact same transform applied to a point — used to hang the forearm off the elbow */
-  const at = (bx: number, by: number, bz: number, c: number, s: number, lx: number, ly: number, lz: number, ax: number, az: number, sc: number) => {
+  const scratchElL = { x: 0, y: 0, z: 0 };
+  const scratchElR = { x: 0, y: 0, z: 0 };
+  const scratchHL = { x: 0, y: 0, z: 0 };
+  const scratchHR = { x: 0, y: 0, z: 0 };
+  /** the exact same transform applied to a point without allocating garbage heap objects */
+  const atInto = (out: { x: number; y: number; z: number }, bx: number, by: number, bz: number, c: number, s: number, lx: number, ly: number, lz: number, ax: number, az: number, sc: number) => {
     const ca = Math.cos(ax);
     const sa = Math.sin(ax);
     const cb = Math.cos(az);
@@ -309,11 +313,10 @@ export function buildCrowd(scene: THREE.Scene, spots: Spot[], phoneCount: number
     const a20 = sa * sb;
     const a21 = sa * cb;
     const a22 = ca;
-    return {
-      x: bx + ((c * a00 + s * a20) * lx + (c * a01 + s * a21) * ly + s * a22 * lz) * sc,
-      y: by + (a10 * lx + a11 * ly + a12 * lz) * sc,
-      z: bz + ((-s * a00 + c * a20) * lx + (-s * a01 + c * a21) * ly + c * a22 * lz) * sc,
-    };
+    out.x = bx + ((c * a00 + s * a20) * lx + (c * a01 + s * a21) * ly + s * a22 * lz) * sc;
+    out.y = by + (a10 * lx + a11 * ly + a12 * lz) * sc;
+    out.z = bz + ((-s * a00 + c * a20) * lx + (-s * a01 + c * a21) * ly + c * a22 * lz) * sc;
+    return out;
   };
   const sstep = (a: number, b: number, x: number) => {
     const u = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1);
@@ -448,14 +451,14 @@ export function buildCrowd(scene: THREE.Scene, spots: Spot[], phoneCount: number
       const sRz = bz - s * shX;
       const UPPER = 0.36; // shoulder → elbow
       const FORE = 0.4; // elbow → hand
-      const elL = at(sLx, by + shYk, sLz, c, s, 0, -UPPER, 0, axL, azL, k);
-      const elR = at(sRx, by + shYk, sRz, c, s, 0, -UPPER, 0, axR, azR, k);
+      const elL = atInto(scratchElL, sLx, by + shYk, sLz, c, s, 0, -UPPER, 0, axL, azL, k);
+      const elR = atInto(scratchElR, sRx, by + shYk, sRz, c, s, 0, -UPPER, 0, axR, azR, k);
       const exL = axL - ebL;
       const exR = axR - ebR;
       put(armLo, i * 2, elL.x, elL.y, elL.z, c, s, 0, 0, 0, exL, azL, k);
       put(armLo, i * 2 + 1, elR.x, elR.y, elR.z, c, s, 0, 0, 0, exR, azR, k);
-      const hL = at(elL.x, elL.y, elL.z, c, s, 0, -FORE, 0, exL, azL, k);
-      const hR = at(elR.x, elR.y, elR.z, c, s, 0, -FORE, 0, exR, azR, k);
+      const hL = atInto(scratchHL, elL.x, elL.y, elL.z, c, s, 0, -FORE, 0, exL, azL, k);
+      const hR = atInto(scratchHR, elR.x, elR.y, elR.z, c, s, 0, -FORE, 0, exR, azR, k);
       put(hands, i * 2, hL.x, hL.y, hL.z, c, s, 0, 0, 0, exL, azL, k);
       put(hands, i * 2 + 1, hR.x, hR.y, hR.z, c, s, 0, 0, 0, exR, azR, k);
 

@@ -451,11 +451,41 @@ export class Sfx {
     }
   }
 
-  /** the pyro fountains on the corner towers: a hiss, a low whump and a shower of crackles */
+  /** the pyro fountains on the corner towers: stadium launch whoosh, deep sub thud and spark crackles */
   pyro(level: number) {
-    this.noise(0.9 + level * 0.5, 'bandpass', 1400, 5200, 0.22 * level, 0, 0.7);
-    this.tone('sine', 110, 46, 0.5, 0.45 * level);
-    this.crackle(level);
+    this.tone('sine', 75, 34, 0.48, 0.45 * level);
+    this.noise(1.4, 'bandpass', 360, 920, 0.42 * level, 0.01, 1.0);
+    this.noise(1.2, 'highpass', 1400, 3200, 0.28 * level, 0, 0.7);
+    this.crackle(level * 1.1);
+  }
+
+  /** a sharp pressurized pilot ignition pop and gas whoosh from the flame nozzles (countdown 1, 2, 3) */
+  pyroPuff(level = 0.5) {
+    this.tone('sine', 92, 40, 0.18, 0.42 * level);
+    this.noise(0.18, 'highpass', 2800, 1100, 0.38 * level, 0, 0.6);
+    this.noise(0.34, 'bandpass', 420, 780, 0.46 * level, 0.01, 1.1);
+    this.crackle(level * 0.75);
+  }
+
+  /** a massive concert stadium flame cannon roar (FIGHT! & KO celebration) — pneumatic burst, deep sub thump, roaring gas turbulence */
+  flameBlast(level = 1.0) {
+    // Deep cinematic sub-bass pressure wave (clean chest-thumping thump, NO buzz/fart tone!)
+    this.tone('sine', 60, 26, 0.85, 0.75 * level);
+    // Instantaneous high-pressure pneumatic solenoid valve burst (sharp "K-TSHH")
+    this.noise(0.22, 'highpass', 2400, 850, 0.46 * level, 0, 0.55);
+    // Powerful roaring expanding combustion body
+    this.noise(1.9, 'bandpass', 280, 560, 0.65 * level, 0.02, 1.3);
+    this.noise(2.1, 'lowpass', 640, 160, 0.58 * level, 0.03, 0.85);
+    this.noise(1.4, 'bandpass', 820, 1600, 0.34 * level, 0.05, 0.75);
+    // Sizzling pyro embers and sparks
+    this.crackle(level * 1.35);
+  }
+
+  /** cushioned impact sound when a fighter collides with the specialized corner turnbuckle protector pad */
+  cornerPadHit(strength = 1.0) {
+    const s = clamp01(strength);
+    this.modal([72, 110, 155], 0.36, 0.48 * s);
+    this.noise(0.24, 'lowpass', 400, 30, 0.42 * s, 0, 0.55);
   }
 
   /** the attack-indicator cue: a short blip for a normal strike, a rising two-tone alarm for an unblockable one */

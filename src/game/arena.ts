@@ -15,10 +15,41 @@ import {
   standTierInnerRadius,
 } from './stadiumLayout';
 
+export type PyroPlacement = 'ring_posts' | 'steel_platform';
+export const LS_PYRO = 'steel-titans-pyro-placement';
+
+export function loadPyroPlacement(): PyroPlacement {
+  try {
+    const p = localStorage.getItem(LS_PYRO);
+    if (p === 'ring_posts' || p === 'steel_platform') return p;
+  } catch {
+    /* ignore */
+  }
+  return 'steel_platform';
+}
+
+export function savePyroPlacement(p: PyroPlacement) {
+  try {
+    localStorage.setItem(LS_PYRO, p);
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface Arena {
   update(t: number, dt: number, hype: number, focus?: THREE.Vector3): void;
   /** the pyro nozzles on top of the four corner towers */
   towers: THREE.Vector3[];
+  /** the 4 active pyrotechnic flame nozzles (either on corner posts or steel platform corners) */
+  cornerNozzles: THREE.Vector3[];
+  /** fires flame jet from the 4 active nozzles ('puff' for 1,2,3 counts, 'blast' for FIGHT! / KO) */
+  fireCornerPyro(level: number, duration?: number, mode?: 'puff' | 'blast'): void;
+  /** sets the placement of the pyro nozzles: 'ring_posts' (tiang ring) or 'steel_platform' (ujung platform baja) */
+  setPyroPlacement(placement: PyroPlacement): void;
+  /** gets the current placement of the pyro nozzles */
+  getPyroPlacement(): PyroPlacement;
+  /** compresses and jolts the specialized corner turnbuckle protector pad when a fighter collides with it */
+  triggerCornerPad(cornerIdx: number, strength: number): void;
   setScreen(left: string, right: string, sub: string, lc: string, rc: string): void;
   /** the giant face boards: live portraits of both fighters */
   setFaces: Show['setFaces'];
@@ -117,18 +148,18 @@ function ringTexture() {
   const S = 1024;
   const { c, g } = canvas(S, S);
   const grad = g.createLinearGradient(0, 0, 0, S);
-  grad.addColorStop(0, '#1a1d24');
-  grad.addColorStop(1, '#12151b');
+  grad.addColorStop(0, '#0a0d14');
+  grad.addColorStop(1, '#05070d');
   g.fillStyle = grad;
   g.fillRect(0, 0, S, S);
   // the weave of the canvas
-  g.fillStyle = 'rgba(255,255,255,0.028)';
+  g.fillStyle = 'rgba(255,255,255,0.024)';
   for (let y = 0; y < S; y += 3) g.fillRect(0, y, S, 1);
-  g.fillStyle = 'rgba(0,0,0,0.12)';
+  g.fillStyle = 'rgba(0,0,0,0.18)';
   for (let x = 0; x < S; x += 3) g.fillRect(x, 0, 1, S);
   // scuffs and sweat
   for (let i = 0; i < 1400; i++) {
-    g.strokeStyle = `rgba(255,255,255,${Math.random() * 0.035})`;
+    g.strokeStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
     g.lineWidth = Math.random() * 1.4;
     const x = Math.random() * S;
     const y = Math.random() * S;
@@ -142,18 +173,18 @@ function ringTexture() {
     const y = Math.random() * S;
     const r = 30 + Math.random() * 90;
     const rg = g.createRadialGradient(x, y, 0, x, y, r);
-    rg.addColorStop(0, 'rgba(0,0,0,0.12)');
+    rg.addColorStop(0, 'rgba(0,0,0,0.18)');
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = rg;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  // the boundary line and the centre mark
-  g.strokeStyle = 'rgba(230,234,240,0.5)';
-  g.lineWidth = 5;
+  // the boundary line and the centre mark - high contrast
+  g.strokeStyle = 'rgba(240,245,255,0.85)';
+  g.lineWidth = 6;
   g.strokeRect(64, 64, S - 128, S - 128);
   g.beginPath();
   g.arc(S / 2, S / 2, 332, 0, Math.PI * 2);
-  g.strokeStyle = 'rgba(230,234,240,0.22)';
+  g.strokeStyle = 'rgba(216,180,88,0.55)';
   g.lineWidth = 4;
   g.stroke();
   // centre: the emblem, printed into the fabric
@@ -201,6 +232,403 @@ function stripTexture(dark: boolean) {
   const t = toTex(c, 4);
   t.wrapS = THREE.RepeatWrapping;
   return t;
+}
+
+/**
+ * PELAT DIAMOND PLATE ANTI-SLIP (Platform Dek Baja 13.5m)
+ * Raised 3D embossed diamond lugs with brushed industrial metallic steel sheen.
+ */
+function diamondPlateTexture() {
+  const S = 512;
+  const { c, g } = canvas(S, S);
+  // Brushed steel background
+  const grad = g.createLinearGradient(0, 0, S, S);
+  grad.addColorStop(0, '#121620');
+  grad.addColorStop(0.5, '#1a1f2c');
+  grad.addColorStop(1, '#11141d');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+
+  // Micro-grit brushed metal lines
+  g.fillStyle = 'rgba(255,255,255,0.03)';
+  for (let y = 0; y < S; y += 2) g.fillRect(0, y, S, 1);
+  g.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let x = 0; x < S; x += 3) g.fillRect(x, 0, 1, S);
+
+  // Draw 3D embossed diamond lugs (classic 5-bar / cross-hatch pattern)
+  const drawLug = (cx: number, cy: number, angle: number) => {
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(angle);
+    const rw = 20;
+    const rh = 6.5;
+
+    // Ambient drop shadow
+    g.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    g.beginPath();
+    g.ellipse(1.5, 1.8, rw / 2 + 1, rh / 2 + 1, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // Dark bottom-right shadow bevel
+    g.fillStyle = '#0a0d13';
+    g.beginPath();
+    g.ellipse(0.6, 0.8, rw / 2, rh / 2, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // Main steel lug body
+    const lugGrad = g.createLinearGradient(-rw / 2, -rh / 2, rw / 2, rh / 2);
+    lugGrad.addColorStop(0, '#505a6e');
+    lugGrad.addColorStop(0.5, '#353e4f');
+    lugGrad.addColorStop(1, '#222834');
+    g.fillStyle = lugGrad;
+    g.beginPath();
+    g.ellipse(0, 0, rw / 2 - 0.5, rh / 2 - 0.5, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // Top-left crisp specular highlight
+    g.strokeStyle = 'rgba(230, 242, 255, 0.7)';
+    g.lineWidth = 1.3;
+    g.beginPath();
+    g.arc(0, -0.6, rw / 2 - 1.5, Math.PI * 0.9, Math.PI * 1.9);
+    g.stroke();
+
+    g.restore();
+  };
+
+  const step = 64;
+  for (let y = 0; y < S; y += step) {
+    for (let x = 0; x < S; x += step) {
+      drawLug(x + 16, y + 16, Math.PI / 4);
+      drawLug(x + 28, y + 28, Math.PI / 4);
+      drawLug(x + 48, y + 48, -Math.PI / 4);
+      drawLug(x + 60, y + 60, -Math.PI / 4);
+    }
+  }
+
+  const tex = toTex(c, 8);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/**
+ * HAZARD RIM TEXTURE (Platform Dek Baja 13.5m)
+ * Industrial safety hazard chevrons (diagonal black & yellow stripes) with metal rivets and WRC branding.
+ */
+function hazardRimTexture() {
+  const W = 1024;
+  const H = 128;
+  const { c, g } = canvas(W, H);
+
+  // Base background
+  g.fillStyle = '#0f1218';
+  g.fillRect(0, 0, W, H);
+
+  // 45-degree diagonal hazard caution stripes (Safety Yellow & Matte Black)
+  const stripeW = 36;
+  g.save();
+  for (let x = -H; x < W + H; x += stripeW * 2) {
+    g.fillStyle = '#ffbe00';
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x + stripeW, 0);
+    g.lineTo(x + stripeW - H, H);
+    g.lineTo(x - H, H);
+    g.closePath();
+    g.fill();
+  }
+  g.restore();
+
+  // Top and bottom heavy steel flange borders
+  const flangeH = 14;
+  g.fillStyle = '#161922';
+  g.fillRect(0, 0, W, flangeH);
+  g.fillRect(0, H - flangeH, W, flangeH);
+
+  // Edge bevel highlights & shadow lines
+  g.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  g.fillRect(0, 0, W, 2);
+  g.fillRect(0, H - flangeH, W, 1.5);
+  g.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  g.fillRect(0, flangeH - 1.5, W, 2);
+  g.fillRect(0, H - 2, W, 2);
+
+  // Steel bolt studs along the flange
+  for (let x = 20; x < W; x += 44) {
+    for (const by of [flangeH / 2, H - flangeH / 2]) {
+      g.fillStyle = '#0a0d13';
+      g.beginPath();
+      g.arc(x + 1, by + 1, 3.2, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#6b7991';
+      g.beginPath();
+      g.arc(x, by, 3, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#d5e2f5';
+      g.beginPath();
+      g.arc(x - 0.7, by - 0.7, 1.2, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
+  // Stenciled industrial labels in the middle
+  for (let s = 0; s < 2; s++) {
+    const x0 = s * (W / 2) + 40;
+    g.fillStyle = 'rgba(10, 12, 16, 0.9)';
+    g.fillRect(x0 + 60, H / 2 - 18, 380, 36);
+    g.strokeStyle = '#ffbe00';
+    g.lineWidth = 1.5;
+    g.strokeRect(x0 + 60, H / 2 - 18, 380, 36);
+
+    g.fillStyle = '#ffffff';
+    g.font = font(22);
+    g.textBaseline = 'middle';
+    g.textAlign = 'center';
+    g.fillText('DEK BAJA 13.5M  ·  HAZARD RIM', x0 + 250, H / 2 + 1);
+  }
+
+  const tex = toTex(c, 8);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/**
+ * UNDERGLOW CYAN TEXTURE
+ * Smooth neon cyan light pool with linear falloff on the arena floor.
+ */
+function cyanUnderglowTexture() {
+  const S = 256;
+  const { c, g } = canvas(S, S);
+  const grad = g.createLinearGradient(0, 0, 0, S);
+  grad.addColorStop(0, 'rgba(0, 245, 255, 0.95)');
+  grad.addColorStop(0.2, 'rgba(0, 220, 255, 0.65)');
+  grad.addColorStop(0.55, 'rgba(0, 165, 255, 0.22)');
+  grad.addColorStop(1, 'rgba(0, 120, 255, 0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+  const tex = toTex(c, 8);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/**
+ * BANTALAN KHUSUS SUDUT TIANG ARENA (Corner Turnbuckle Protector Pad)
+ * High-density foam boxing cushion with stitched vinyl seams, WRC branding, and hazard warning chevrons.
+ */
+function cornerPadTexture(type: 'blue' | 'red' | 'neutral', title: string) {
+  const W = 512;
+  const H = 1024;
+  const { c, g } = canvas(W, H);
+
+  // Rich textured vinyl background
+  const bg = g.createLinearGradient(0, 0, W, 0);
+  if (type === 'blue') {
+    bg.addColorStop(0, '#0a1d48');
+    bg.addColorStop(0.5, '#173f8a');
+    bg.addColorStop(1, '#0a1d48');
+  } else if (type === 'red') {
+    bg.addColorStop(0, '#540d14');
+    bg.addColorStop(0.5, '#991822');
+    bg.addColorStop(1, '#540d14');
+  } else {
+    bg.addColorStop(0, '#12151c');
+    bg.addColorStop(0.5, '#222834');
+    bg.addColorStop(1, '#12151c');
+  }
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+
+  // Micro-leather / heavy vinyl grain
+  g.fillStyle = 'rgba(255,255,255,0.035)';
+  for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
+  g.fillStyle = 'rgba(0,0,0,0.2)';
+  for (let x = 0; x < W; x += 4) g.fillRect(x, 0, 2, H);
+
+  // Vertical foam bevel shading (3D cylindrical cushion appearance)
+  const cylGrad = g.createLinearGradient(0, 0, W, 0);
+  cylGrad.addColorStop(0, 'rgba(0,0,0,0.65)');
+  cylGrad.addColorStop(0.12, 'rgba(0,0,0,0.15)');
+  cylGrad.addColorStop(0.5, 'rgba(255,255,255,0.18)');
+  cylGrad.addColorStop(0.88, 'rgba(0,0,0,0.15)');
+  cylGrad.addColorStop(1, 'rgba(0,0,0,0.65)');
+  g.fillStyle = cylGrad;
+  g.fillRect(0, 0, W, H);
+
+  // Reinforced double stitched seam edges (Yellow/Gold or White stitch)
+  const stitchColor = type === 'neutral' ? '#ffbe00' : '#f0e4b8';
+  g.strokeStyle = stitchColor;
+  g.lineWidth = 2.5;
+  g.setLineDash([8, 6]);
+  g.strokeRect(18, 18, W - 36, H - 36);
+  g.strokeRect(32, 32, W - 64, H - 64);
+  g.setLineDash([]);
+
+  // Top & bottom hazard caution stripes
+  const drawHazardStrip = (y0: number, h: number) => {
+    g.fillStyle = '#10141d';
+    g.fillRect(18, y0, W - 36, h);
+    g.save();
+    g.beginPath();
+    g.rect(18, y0, W - 36, h);
+    g.clip();
+    const stripeW = 24;
+    for (let x = -h; x < W + h; x += stripeW * 2) {
+      g.fillStyle = type === 'neutral' ? '#ffbe00' : '#ffffff';
+      g.beginPath();
+      g.moveTo(x, y0);
+      g.lineTo(x + stripeW, y0);
+      g.lineTo(x + stripeW - h, y0 + h);
+      g.lineTo(x - h, y0 + h);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
+  };
+  drawHazardStrip(36, 48);
+  drawHazardStrip(H - 84, 48);
+
+  // WRC Emblem in upper section
+  wrcEmblem(g, W / 2, 220, 110);
+
+  // Big bold championship designation
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ffffff';
+  g.font = font(58);
+  g.fillText(title, W / 2, 420);
+
+  g.fillStyle = type === 'blue' ? '#8bc5ff' : type === 'red' ? '#ff9e9e' : '#ffd060';
+  g.font = font(42);
+  g.fillText(type === 'blue' ? 'BLUE CORNER' : type === 'red' ? 'RED CORNER' : 'NEUTRAL', W / 2, 480);
+
+  // Center protective rating badge
+  g.fillStyle = 'rgba(0,0,0,0.55)';
+  g.fillRect(W / 2 - 180, 560, 360, 60);
+  g.strokeStyle = stitchColor;
+  g.lineWidth = 2;
+  g.strokeRect(W / 2 - 180, 560, 360, 60);
+  g.fillStyle = '#ffffff';
+  g.font = '700 24px Arial, sans-serif';
+  g.fillText('TITAN IMPACT ABSORBER', W / 2, 590);
+
+  // Lower subtitle
+  g.fillStyle = 'rgba(255,255,255,0.7)';
+  g.font = '700 22px Arial, sans-serif';
+  g.fillText('STEEL TITANS · WORLD FINALS', W / 2, 700);
+  g.fillText('HEAVYWEIGHT DIVISION', W / 2, 735);
+
+  const tex = toTex(c, 8);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/**
+ * NOZEL API PYRO (Concert Flame Plume Texture)
+ * Procedural stadium-concert flame texture with organic licking flame tongues,
+ * incandescent white plasma core, and radiant vermilion flame crests.
+ */
+function concertFlameTexture() {
+  const W = 256;
+  const H = 512;
+  const { c, g } = canvas(W, H);
+  g.clearRect(0, 0, W, H);
+
+  // Outer glowing radiant flame envelope
+  const bgGrad = g.createLinearGradient(0, H, 0, 0);
+  bgGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+  bgGrad.addColorStop(0.12, 'rgba(255, 210, 60, 0.9)');
+  bgGrad.addColorStop(0.35, 'rgba(255, 120, 16, 0.8)');
+  bgGrad.addColorStop(0.68, 'rgba(235, 45, 8, 0.55)');
+  bgGrad.addColorStop(0.9, 'rgba(180, 20, 0, 0.25)');
+  bgGrad.addColorStop(1, 'rgba(100, 10, 0, 0)');
+  g.fillStyle = bgGrad;
+  g.beginPath();
+  g.ellipse(W / 2, H * 0.5, W * 0.42, H * 0.48, 0, 0, Math.PI * 2);
+  g.fill();
+
+  // Organic licking tongues of fire with cubic bezier curves
+  const drawFlameTongue = (cx: number, cy: number, w: number, h: number, col: string) => {
+    g.save();
+    g.fillStyle = col;
+    g.beginPath();
+    g.moveTo(cx - w, cy);
+    g.bezierCurveTo(cx - w * 1.1, cy - h * 0.35, cx - w * 0.4, cy - h * 0.75, cx, cy - h);
+    g.bezierCurveTo(cx + w * 0.4, cy - h * 0.75, cx + w * 1.1, cy - h * 0.35, cx + w, cy);
+    g.bezierCurveTo(cx + w * 0.5, cy + h * 0.15, cx - w * 0.5, cy + h * 0.15, cx - w, cy);
+    g.fill();
+    g.restore();
+  };
+
+  // Stacked layered flame tongues (outer orange to inner white-hot)
+  drawFlameTongue(W * 0.34, H * 0.88, W * 0.22, H * 0.65, 'rgba(255, 90, 10, 0.65)');
+  drawFlameTongue(W * 0.66, H * 0.86, W * 0.24, H * 0.7, 'rgba(255, 85, 10, 0.65)');
+  drawFlameTongue(W * 0.5, H * 0.92, W * 0.32, H * 0.82, 'rgba(255, 140, 20, 0.75)');
+  drawFlameTongue(W * 0.42, H * 0.94, W * 0.18, H * 0.72, 'rgba(255, 195, 40, 0.85)');
+  drawFlameTongue(W * 0.58, H * 0.94, W * 0.18, H * 0.75, 'rgba(255, 200, 45, 0.85)');
+  // Blinding incandescent plasma core at base
+  drawFlameTongue(W * 0.5, H * 0.96, W * 0.16, H * 0.48, 'rgba(255, 255, 220, 0.98)');
+  drawFlameTongue(W * 0.5, H * 0.98, W * 0.1, H * 0.3, 'rgba(255, 255, 255, 1)');
+
+  // Golden flying sparks embedded in flame column
+  g.fillStyle = 'rgba(255, 245, 180, 0.95)';
+  for (let s = 0; s < 36; s++) {
+    const sx = W * 0.2 + Math.random() * W * 0.6;
+    const sy = H * 0.05 + Math.random() * H * 0.85;
+    const sr = 1 + Math.random() * 2.8;
+    g.beginPath();
+    g.arc(sx, sy, sr, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  const tex = toTex(c, 4);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping; // enable vertical looping for live flame scroll
+  return tex;
+}
+
+/**
+ * Procedural billowing fireball puff texture for rolling mushroom flame crests
+ */
+function billowFireballTexture() {
+  const S = 256;
+  const { c, g } = canvas(S, S);
+  g.clearRect(0, 0, S, S);
+
+  const cx = S / 2;
+  const cy = S / 2;
+  const R = S * 0.46;
+
+  // Radial undulating fireball puff
+  const radGrad = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+  radGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+  radGrad.addColorStop(0.18, 'rgba(255, 220, 80, 0.92)');
+  radGrad.addColorStop(0.42, 'rgba(255, 130, 20, 0.8)');
+  radGrad.addColorStop(0.72, 'rgba(220, 45, 6, 0.5)');
+  radGrad.addColorStop(0.92, 'rgba(160, 15, 0, 0.18)');
+  radGrad.addColorStop(1, 'rgba(80, 5, 0, 0)');
+
+  g.fillStyle = radGrad;
+  g.beginPath();
+  // Draw organic multi-lobed puff boundary
+  const steps = 32;
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const rVar = R * (0.86 + Math.sin(a * 5) * 0.08 + Math.cos(a * 7) * 0.06);
+    const px = cx + Math.cos(a) * rVar;
+    const py = cy + Math.sin(a) * rVar;
+    if (i === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.closePath();
+  g.fill();
+
+  const tex = toTex(c, 4);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
 }
 
 function bannerTexture() {
@@ -335,43 +763,43 @@ function wallTexture() {
 function floorDecalTexture() {
   const S = 1024;
   const { c, g } = canvas(S, S);
-  g.fillStyle = '#0a0c14';
+  g.fillStyle = '#020408';
   g.fillRect(0, 0, S, S);
   for (let r = 60; r < S / 2; r += 34) {
     g.beginPath();
     g.arc(S / 2, S / 2, r, 0, Math.PI * 2);
-    g.strokeStyle = `rgba(150,170,210,${0.03 + (r % 68 === 26 ? 0.03 : 0)})`;
+    g.strokeStyle = `rgba(160,195,255,${0.04 + (r % 68 === 26 ? 0.05 : 0)})`;
     g.lineWidth = 2;
     g.stroke();
   }
-  // bold ring with lettering
+  // bold ring with lettering - high contrast
   g.beginPath();
   g.arc(S / 2, S / 2, 460, 0, Math.PI * 2);
-  g.strokeStyle = 'rgba(200,210,230,0.16)';
+  g.strokeStyle = 'rgba(215,230,255,0.28)';
   g.lineWidth = 10;
   g.stroke();
   g.beginPath();
   g.arc(S / 2, S / 2, 432, 0, Math.PI * 2);
-  g.strokeStyle = 'rgba(201,162,74,0.22)';
+  g.strokeStyle = 'rgba(220,180,88,0.42)';
   g.lineWidth = 3;
   g.stroke();
   g.font = font(34);
   g.textBaseline = 'middle';
-  g.fillStyle = 'rgba(255,255,255,0.3)';
+  g.fillStyle = 'rgba(255,255,255,0.52)';
   arcText(g, 'WORLD ROBOT CHAMPIONSHIP  ·  WRC  ·  STEEL TITANS  ·  ', S / 2, S / 2, 392, -Math.PI * 0.5);
   arcText(g, 'WORLD ROBOT CHAMPIONSHIP  ·  WRC  ·  STEEL TITANS  ·  ', S / 2, S / 2, 392, Math.PI * 0.5 + 0.06);
   return toTex(c, 4);
 }
 
 export function buildArena(scene: THREE.Scene): Arena {
-  scene.background = new THREE.Color(0x020409);
-  // Crisp atmospheric depth without milky fog bleaching: deep midnight indigo haze
-  scene.fog = new THREE.FogExp2(0x03050c, 0.0014);
+  scene.background = new THREE.Color(0x010206);
+  // Deep dark stadium contrast: crisp midnight shadows without milky fog bleaching
+  scene.fog = new THREE.FogExp2(0x020308, 0.0016);
 
   // ---------- BROADCAST RING LIGHTING: rich saturated colours, crisp highlights, deep shadows ----------
-  scene.add(new THREE.AmbientLight(0x7890cc, 0.06));
-  scene.add(new THREE.HemisphereLight(0x8faeee, 0x181224, 0.20));
-  const key = new THREE.DirectionalLight(0xfff3e2, 1.9);
+  scene.add(new THREE.AmbientLight(0x5a70a8, 0.05));
+  scene.add(new THREE.HemisphereLight(0x7da4f0, 0x0c0d18, 0.18));
+  const key = new THREE.DirectionalLight(0xfff3e2, 2.2);
   key.position.set(12, 40, 18);
   key.castShadow = true;
   key.shadow.mapSize.set(1536, 1536);
@@ -396,27 +824,27 @@ export function buildArena(scene: THREE.Scene): Arena {
     return s;
   };
   // THE RING KEY: tuned so canvas and robots retain rich saturated colors without being bleached to white
-  const ringKey = new THREE.SpotLight(0xfff4e6, 21, 92, 0.68, 0.5, 0.94);
+  const ringKey = new THREE.SpotLight(0xfff4e6, 24, 96, 0.65, 0.48, 0.94);
   ringKey.position.set(5, 33, 7);
   ringKey.target.position.set(0, 0, 0);
   scene.add(ringKey, ringKey.target);
   // A softer cool fill from the opposite corner separates far-side armour with clear definition
-  const ringFill = new THREE.SpotLight(0x9fc4ff, 8, 86, 0.86, 0.62, 1.0);
+  const ringFill = new THREE.SpotLight(0x9fc4ff, 9.5, 88, 0.84, 0.60, 1.0);
   ringFill.position.set(-11, 30, -13);
   ringFill.target.position.set(0, 0, 0);
   scene.add(ringFill, ringFill.target);
   // Subtle crimson/blue rims add shape around the armour; a soft white side kicker keeps silhouettes clear.
-  const rimRed = mkRim(0xff4a3c, -22, -28, 3.2);
-  const rimBlue = mkRim(0x4a92ff, 22, 28, 3.2);
-  const rimSide = mkRim(0xd8e4ff, 30, -12, 1.7);
+  const rimRed = mkRim(0xff4a3c, -22, -28, 3.4);
+  const rimBlue = mkRim(0x4a92ff, 22, 28, 3.4);
+  const rimSide = mkRim(0xd8e4ff, 30, -12, 1.8);
 
-  // ---------- floor ----------
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(150, 48), new THREE.MeshStandardMaterial({ color: 0x0b0e18, roughness: 0.28, metalness: 0.58 }));
+  // ---------- floor: deep dark metallic contrast ----------
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(150, 48), new THREE.MeshStandardMaterial({ color: 0x030509, roughness: 0.36, metalness: 0.78 }));
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -1.4;
   floor.receiveShadow = true;
   scene.add(floor);
-  const decal = new THREE.Mesh(new THREE.CircleGeometry(31, 64), new THREE.MeshStandardMaterial({ map: floorDecalTexture(), roughness: 0.34, metalness: 0.45 }));
+  const decal = new THREE.Mesh(new THREE.CircleGeometry(31, 64), new THREE.MeshStandardMaterial({ map: floorDecalTexture(), roughness: 0.38, metalness: 0.65 }));
   decal.rotation.x = -Math.PI / 2;
   decal.position.y = -1.39;
   decal.receiveShadow = true;
@@ -428,22 +856,102 @@ export function buildArena(scene: THREE.Scene): Arena {
   const apronTex = stripTexture(true);
   apronTex.repeat.set(1, 1);
   const apronMat = new THREE.MeshStandardMaterial({ map: apronTex, emissiveMap: apronTex, emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.3, roughness: 0.66, metalness: 0.22 });
-  const baseMat = new THREE.MeshStandardMaterial({ color: 0x14161d, roughness: 0.6, metalness: 0.6 });
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x06070c, roughness: 0.52, metalness: 0.75 });
   const ring = new THREE.Group(); // everything that must grow with the ring in TEAM MATCH (2v2)
   scene.add(ring);
   let ringScale = 1;
-  const platform = new THREE.Mesh(new THREE.BoxGeometry(31, 1.4, 31), [apronMat, apronMat, topMat, baseMat, apronMat, apronMat]);
-  platform.position.y = -0.7;
+  // LAYER 1 (TOP): Matras / Ring Canvas platform (y = 0 down to y = -0.7)
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(31, 0.7, 31), [apronMat, apronMat, topMat, baseMat, apronMat, apronMat]);
+  platform.position.y = -0.35;
   platform.receiveShadow = true;
   platform.castShadow = true;
   ring.add(platform);
+
+  // LAYER 2 (BELOW MATRAS): Platform Dek Baja & Hazard Rim
+  // "Dek 13.5m, pelat diamond plate anti-slip & underglow cyan"
+  const diamondTex = diamondPlateTexture();
+  diamondTex.repeat.set(16, 16);
+  const diamondMat = new THREE.MeshStandardMaterial({
+    map: diamondTex,
+    roughness: 0.32,
+    metalness: 0.88,
+  });
+
+  const hazardTex = hazardRimTexture();
+  hazardTex.repeat.set(10, 1);
+  const hazardMat = new THREE.MeshStandardMaterial({
+    map: hazardTex,
+    roughness: 0.42,
+    metalness: 0.65,
+    emissive: new THREE.Color(0xffbe00),
+    emissiveIntensity: 0.08,
+  });
+
+  const DECK_W = 34.2; // 13.5m clearance + perimeter stepped walkway
+  const DECK_H = 0.7; // From y = -0.7 down to y = -1.4 (arena floor)
+  const deckMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(DECK_W, DECK_H, DECK_W),
+    [hazardMat, hazardMat, diamondMat, baseMat, hazardMat, hazardMat]
+  );
+  deckMesh.position.y = -1.05;
+  deckMesh.receiveShadow = true;
+  deckMesh.castShadow = true;
+  ring.add(deckMesh);
+
+  // Heavy steel corner reinforcements
+  const steelTrimMat = new THREE.MeshStandardMaterial({ color: 0x161a24, roughness: 0.38, metalness: 0.88 });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const cornerBracket = new THREE.Mesh(new THREE.BoxGeometry(1.4, DECK_H + 0.02, 1.4), steelTrimMat);
+      cornerBracket.position.set(sx * (DECK_W / 2 - 0.65), -1.05, sz * (DECK_W / 2 - 0.65));
+      ring.add(cornerBracket);
+    }
+  }
+
+  // UNDERGLOW CYAN: Continuous glowing neon strips along the 4 bottom edges of the deck
+  const cyanGlowMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x00f5ff).multiplyScalar(1.2),
+    toneMapped: false,
+  });
+  const mkCyanStrip = (w: number, d: number, x: number, z: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), cyanGlowMat);
+    mesh.position.set(x, -1.35, z);
+    ring.add(mesh);
+  };
+  mkCyanStrip(DECK_W + 0.08, 0.12, 0, DECK_W / 2);
+  mkCyanStrip(DECK_W + 0.08, 0.12, 0, -DECK_W / 2);
+  mkCyanStrip(0.12, DECK_W + 0.08, DECK_W / 2, 0);
+  mkCyanStrip(0.12, DECK_W + 0.08, -DECK_W / 2, 0);
+
+  // UNDERGLOW CYAN HALO: Projected luminous cyan light pool on the floor beneath the deck
+  const cyanPoolTex = cyanUnderglowTexture();
+  const cyanPoolMat = new THREE.MeshBasicMaterial({
+    map: cyanPoolTex,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const haloW = DECK_W + 3.2;
+  const haloD = 4.2;
+  const mkHalo = (x: number, z: number, rotY: number) => {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(haloW, haloD), cyanPoolMat);
+    p.rotation.x = -Math.PI / 2;
+    p.rotation.z = rotY;
+    p.position.set(x, -1.385, z);
+    ring.add(p);
+  };
+  mkHalo(0, DECK_W / 2 + haloD / 2 - 0.4, 0);
+  mkHalo(0, -DECK_W / 2 - haloD / 2 + 0.4, Math.PI);
+  mkHalo(DECK_W / 2 + haloD / 2 - 0.4, 0, -Math.PI / 2);
+  mkHalo(-DECK_W / 2 - haloD / 2 + 0.4, 0, Math.PI / 2);
 
   // ---------- THE GLOSSY FLOORS: real reflections of the Titans and the lights in the canvas and the hall floor
   const canvasSheen = buildSheen(new THREE.PlaneGeometry(30.6, 30.6), { strength: 0.55, res: 384 });
   canvasSheen.mesh.rotation.x = -Math.PI / 2;
   canvasSheen.mesh.position.y = 0.025;
   ring.add(canvasSheen.mesh);
-  const hallSheen = buildSheen(new THREE.RingGeometry(14, 62, 72, 1), { strength: 0.6, res: 256, layer: REFLECT_LIGHTS_LAYER });
+  const hallSheen = buildSheen(new THREE.RingGeometry(18, 62, 72, 1), { strength: 0.6, res: 256, layer: REFLECT_LIGHTS_LAYER });
   hallSheen.mesh.rotation.x = -Math.PI / 2;
   hallSheen.mesh.position.y = -1.375;
   scene.add(hallSheen.mesh);
@@ -467,32 +975,436 @@ export function buildArena(scene: THREE.Scene): Arena {
   mkStrip(0.14, 31.1, 15.5, 0, neonBlue);
   mkStrip(0.14, 31.1, -15.5, 0, neonRed);
 
-  // posts + ropes
-  const post = new THREE.MeshStandardMaterial({ color: 0x20232b, metalness: 0.9, roughness: 0.35 });
+  // ---------- CHAMPIONSHIP CORNER POSTS, SPECIALIZED TURNBUCKLE PADS & PYRO NOZZLES ----------
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x181b22, metalness: 0.92, roughness: 0.28 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0x485264, metalness: 0.96, roughness: 0.18 });
+  const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x15181f, metalness: 0.9, roughness: 0.32 });
+  const concertFlameTex = concertFlameTexture();
+  const billowTex = billowFireballTexture();
+
+  const flameCoreMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xffffff),
+    transparent: true,
+    opacity: 0.96,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const flamePlumeMat = new THREE.MeshBasicMaterial({
+    map: concertFlameTex,
+    color: new THREE.Color(0xffb848),
+    transparent: true,
+    opacity: 0.88,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const flameBillowMat = new THREE.MeshBasicMaterial({
+    map: billowTex,
+    color: new THREE.Color(0xff7414),
+    transparent: true,
+    opacity: 0.82,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const pilotAmberMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xff9820),
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const pilotBlueMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x3388ff),
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+
   const H = 13.6;
   const ropeYs = [2.0, 3.6, 5.2]; // like a real ring: the top rope catches a 7 m robot across the chest / upper back
-  const padMats = [0xb0222c, 0x24479a];
   const corners: [number, number][] = [
-    [H, H],
-    [-H, H],
-    [H, -H],
-    [-H, -H],
+    [H, H],    // 0: Blue Corner
+    [-H, H],   // 1: Neutral Corner NW
+    [H, -H],   // 2: Neutral Corner SE
+    [-H, -H],  // 3: Red Corner
   ];
-  corners.forEach(([x, z], i) => {
-    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 6.8, 12), post);
-    p.position.set(x, 3.4, z);
-    p.castShadow = true;
-    markReflect(p);
-    ring.add(p);
-    const padM = new THREE.MeshStandardMaterial({ color: padMats[i % 2], roughness: 0.55, metalness: 0.05 });
-    for (const y of ropeYs) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.85, 0.95), padM);
-      pad.position.set(x, y, z);
-      pad.castShadow = true;
-      markReflect(pad);
-      ring.add(pad);
+  const cornerTypes: ('blue' | 'neutral' | 'neutral' | 'red')[] = ['blue', 'neutral', 'neutral', 'red'];
+  const cornerTitles = ['BLUE CORNER', 'NEUTRAL', 'NEUTRAL', 'RED CORNER'];
+
+  // Pad springs for physical impact reaction
+  interface PadSpring {
+    group: THREE.Group;
+    jolt: number;
+    joltVel: number;
+  }
+  const padSprings: PadSpring[] = [];
+
+  // Volumetric concert flame emitter interface
+  interface ConcertFlameEmitter {
+    group: THREE.Group;
+    coreSpindle: THREE.Mesh;
+    plumePlanes: THREE.Mesh[];
+    billowLobes: THREE.Mesh[];
+    pilotGroup: THREE.Group;
+    light: THREE.PointLight;
+    ledRing: THREE.MeshBasicMaterial;
+    level: number;
+    targetLevel: number;
+    timer: number;
+    mode: 'idle' | 'puff' | 'blast';
+    placement: PyroPlacement;
+    cornerIdx: number;
+  }
+  const nozzleEmitters: ConcertFlameEmitter[] = [];
+  const postNozzlePositions: THREE.Vector3[] = [];
+  const deckNozzlePositions: THREE.Vector3[] = [];
+  const cornerNozzlePositions: THREE.Vector3[] = [
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+  ];
+
+  let currentPyroPlacement: PyroPlacement = loadPyroPlacement();
+
+  const buildConcertFlameMesh = (parentGroup: THREE.Group, baseY: number, placement: PyroPlacement, cornerIdx: number, cType: string) => {
+    const flameMount = new THREE.Group();
+    flameMount.position.y = baseY;
+    parentGroup.add(flameMount);
+
+    // 1. Incandescent white-hot core plasma spindle
+    const coreSpindle = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.44, 1.0, 16, 2), flameCoreMat);
+    coreSpindle.visible = false;
+    flameMount.add(coreSpindle);
+
+    // 2. 3 crossed billowing flame plume planes with live scrolling flame tongues
+    const plumePlanes: THREE.Mesh[] = [];
+    for (let p = 0; p < 3; p++) {
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0, 4, 8), flamePlumeMat);
+      plane.visible = false;
+      plane.rotation.y = (p / 3) * Math.PI;
+      flameMount.add(plane);
+      plumePlanes.push(plane);
     }
+
+    // 3. 3 rolling volumetric fireball lobes (lower puff, mid body, top mushroom canopy)
+    const billowLobes: THREE.Mesh[] = [];
+    for (let b = 0; b < 3; b++) {
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), flameBillowMat);
+      lobe.visible = false;
+      flameMount.add(lobe);
+      billowLobes.push(lobe);
+    }
+
+    // 4. Dual-color realistic pilot flame (blue base bulb + flickering amber tongue)
+    const pilotGroup = new THREE.Group();
+    const pilotBase = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), pilotBlueMat);
+    pilotBase.position.y = 0.08;
+    pilotGroup.add(pilotBase);
+    const pilotTongue = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 8), pilotAmberMat);
+    pilotTongue.position.y = 0.22;
+    pilotGroup.add(pilotTongue);
+    flameMount.add(pilotGroup);
+
+    // 5. Dynamic point light with zero overhead when idle (visible = false when not firing!)
+    const flameLight = new THREE.PointLight(0xff6810, 0, 24, 1.3);
+    flameLight.position.set(0, 1.2, 0);
+    flameLight.visible = false;
+    flameMount.add(flameLight);
+
+    // 6. Glowing LED status ring
+    const ledMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(cType === 'blue' ? 0x00e1ff : cType === 'red' ? 0xff4d00 : 0xffbe00).multiplyScalar(1.2),
+      toneMapped: false,
+    });
+
+    const emitter: ConcertFlameEmitter = {
+      group: parentGroup,
+      coreSpindle,
+      plumePlanes,
+      billowLobes,
+      pilotGroup,
+      light: flameLight,
+      ledRing: ledMat,
+      level: 0,
+      targetLevel: 0,
+      timer: 0,
+      mode: 'idle',
+      placement,
+      cornerIdx,
+    };
+    nozzleEmitters.push(emitter);
+    return emitter;
+  };
+
+  corners.forEach(([x, z], i) => {
+    const cType = cornerTypes[i];
+    const cTitle = cornerTitles[i];
+    const inwardYaw = Math.atan2(-x, -z); // points towards ring center (0, 0)
+
+    // Main heavy steel corner post
+    const postMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 7.2, 16), postMat);
+    postMesh.position.set(x, 3.6, z);
+    postMesh.castShadow = true;
+    markReflect(postMesh);
+    ring.add(postMesh);
+
+    // Heavy cast iron base flange
+    const baseFlange = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.65, 0.45, 16), chromeMat);
+    baseFlange.position.set(x, 0.22, z);
+    ring.add(baseFlange);
+
+    // Turnbuckle eyelet brackets on the steel post
+    for (const y of ropeYs) {
+      const eyelet = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.22, 12), chromeMat);
+      eyelet.position.set(x, y, z);
+      ring.add(eyelet);
+    }
+
+    // ======================================================================
+    // 1. BANTALAN KHUSUS POJOK TIANG (Turnbuckle Corner Protector Cushion)
+    // Custom contoured high-density foam wedge facing inward to protect fighters!
+    // ======================================================================
+    const padGroup = new THREE.Group();
+    padGroup.position.set(x, 0, z);
+    padGroup.rotation.y = inwardYaw;
+    ring.add(padGroup);
+
+    const padTex = cornerPadTexture(cType, cTitle);
+    const padFrontMat = new THREE.MeshStandardMaterial({
+      map: padTex,
+      roughness: 0.45,
+      metalness: 0.08,
+    });
+    const sideColor = cType === 'blue' ? 0x0c204d : cType === 'red' ? 0x5a0f15 : 0x141822;
+    const padSideMat = new THREE.MeshStandardMaterial({
+      color: sideColor,
+      roughness: 0.58,
+      metalness: 0.06,
+    });
+    const padBackMat = new THREE.MeshStandardMaterial({
+      color: 0x090b10,
+      roughness: 0.75,
+      metalness: 0.1,
+    });
+
+    const padMaterials = [padSideMat, padSideMat, padSideMat, padSideMat, padFrontMat, padBackMat];
+    const PAD_W = 1.48; // width across corner
+    const PAD_H = 4.85; // height spanning from below bottom rope to above top rope
+    const PAD_D = 1.05; // depth protruding toward ring center
+    const padMesh = new THREE.Mesh(new THREE.BoxGeometry(PAD_W, PAD_H, PAD_D), padMaterials);
+    padMesh.position.set(0, 3.6, 0.54);
+    padMesh.castShadow = true;
+    markReflect(padMesh);
+    padGroup.add(padMesh);
+
+    // Beveled top and bottom safety end-caps
+    const endCapMat = new THREE.MeshStandardMaterial({
+      color: cType === 'blue' ? 0x122e6b : cType === 'red' ? 0x75131b : 0x1e2430,
+      roughness: 0.5,
+      metalness: 0.08,
+    });
+    for (const [capY] of [[3.6 + PAD_H / 2 + 0.1], [3.6 - PAD_H / 2 - 0.1]] as const) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(PAD_W / 2, PAD_W / 2, 0.22, 16), endCapMat);
+      cap.position.set(0, capY, 0.54);
+      cap.scale.set(1, 1, PAD_D / PAD_W);
+      padGroup.add(cap);
+    }
+
+    // Heavy protective turnbuckle foam sleeves connecting into the pad
+    const sleeveMat = new THREE.MeshStandardMaterial({
+      color: cType === 'blue' ? 0x1a3d8a : cType === 'red' ? 0x8a1c25 : 0x242a38,
+      roughness: 0.6,
+      metalness: 0.05,
+    });
+    for (const y of ropeYs) {
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.85, 12), sleeveMat);
+      sleeve.rotation.x = Math.PI / 2;
+      sleeve.position.set(0, y, 0.25);
+      padGroup.add(sleeve);
+    }
+
+    // Reinforced nylon tie-down retention straps with chrome ratchet buckles
+    const strapMat = new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.85, metalness: 0.05 });
+    for (const sy of [1.6, 2.8, 4.4, 5.6]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(PAD_W + 0.08, 0.1, PAD_D + 0.45), strapMat);
+      strap.position.set(0, sy, 0.35);
+      padGroup.add(strap);
+
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.1), chromeMat);
+      buckle.position.set(PAD_W / 2 + 0.05, sy, 0.1);
+      padGroup.add(buckle);
+    }
+
+    padSprings.push({ group: padGroup, jolt: 0, joltVel: 0 });
+
+    // ======================================================================
+    // 2. NOZEL API PYRO — OPSI 1: POJOK TIANG RING (Ring Post Top Nozzles)
+    // ======================================================================
+    const postNozzleGroup = new THREE.Group();
+    postNozzleGroup.position.set(x, 7.2, z);
+    ring.add(postNozzleGroup);
+    postNozzlePositions.push(new THREE.Vector3(x, 7.4, z));
+
+    const nozzleCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.54, 0.32, 16), chromeMat);
+    nozzleCollar.position.y = 0.16;
+    postNozzleGroup.add(nozzleCollar);
+
+    for (let b = 0; b < 6; b++) {
+      const ba = (b / 6) * Math.PI * 2;
+      const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 6), chromeMat);
+      bolt.position.set(Math.cos(ba) * 0.44, 0.34, Math.sin(ba) * 0.44);
+      postNozzleGroup.add(bolt);
+    }
+
+    const burnerCone = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.26, 0.7, 16), nozzleMat);
+    burnerCone.position.y = 0.62;
+    postNozzleGroup.add(burnerCone);
+
+    const heatShield = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 8, 24), chromeMat);
+    heatShield.rotation.x = Math.PI / 2;
+    heatShield.position.y = 0.72;
+    postNozzleGroup.add(heatShield);
+
+    // Ceramic igniter spark pins
+    const ceramicMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.2, metalness: 0.1 });
+    const pinMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.1, metalness: 0.9 });
+    for (const sign of [-1, 1]) {
+      const pinBase = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.16, 8), ceramicMat);
+      pinBase.position.set(sign * 0.24, 0.88, 0);
+      postNozzleGroup.add(pinBase);
+      const pinTip = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.18, 6), pinMat);
+      pinTip.rotation.z = sign * -0.4;
+      pinTip.position.set(sign * 0.2, 0.98, 0);
+      postNozzleGroup.add(pinTip);
+    }
+
+    const postEmitter = buildConcertFlameMesh(postNozzleGroup, 0.72, 'ring_posts', i, cType);
+    const postLedRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.03, 6, 24), postEmitter.ledRing);
+    postLedRing.rotation.x = Math.PI / 2;
+    postLedRing.position.y = 0.31;
+    postNozzleGroup.add(postLedRing);
+
+    // ======================================================================
+    // 3. NOZEL API PYRO — OPSI 2: UJUNG SISI PLATFORM BAJA (Steel Deck Corners)
+    // Heavy industrial stadium concert flame cannon units at the outer diamond plate corners!
+    // ======================================================================
+    const sx = Math.sign(x);
+    const sz = Math.sign(z);
+    const deckX = sx * 16.3; // outer corner of 34.2m deck
+    const deckZ = sz * 16.3;
+    deckNozzlePositions.push(new THREE.Vector3(deckX, 0.3, deckZ));
+
+    const stageProjectorGroup = new THREE.Group();
+    stageProjectorGroup.position.set(deckX, -0.7, deckZ); // sits on top of steel platform surface (y = -0.7)
+    stageProjectorGroup.rotation.y = inwardYaw;
+    ring.add(stageProjectorGroup);
+
+    // Heavy reinforced pedestal box with hazard stripes and diamond plate top
+    const projectorBox = new THREE.Mesh(
+      new THREE.BoxGeometry(1.3, 0.44, 1.3),
+      [hazardMat, hazardMat, diamondMat, baseMat, hazardMat, hazardMat]
+    );
+    projectorBox.position.y = 0.22;
+    projectorBox.receiveShadow = true;
+    stageProjectorGroup.add(projectorBox);
+
+    // 4 Corner heavy steel anchor plates with chrome bolts
+    for (const bx of [-0.55, 0.55]) {
+      for (const bz of [-0.55, 0.55]) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.24), chromeMat);
+        plate.position.set(bx, 0.45, bz);
+        stageProjectorGroup.add(plate);
+        const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.1, 6), chromeMat);
+        bolt.position.set(bx, 0.49, bz);
+        stageProjectorGroup.add(bolt);
+      }
+    }
+
+    // High-pressure braided gas feed lines
+    const hoseMat = new THREE.MeshStandardMaterial({ color: 0x1c212d, roughness: 0.6, metalness: 0.8 });
+    for (const hx of [-0.28, 0.28]) {
+      const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.52, 10), hoseMat);
+      hose.position.set(hx, 0.38, -0.42);
+      stageProjectorGroup.add(hose);
+    }
+
+    // Heavy dual flame projector cannon turret
+    const turretCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.58, 0.35, 16), chromeMat);
+    turretCollar.position.y = 0.56;
+    stageProjectorGroup.add(turretCollar);
+
+    const cannonShroud = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.8, 16), nozzleMat);
+    cannonShroud.position.y = 0.98;
+    stageProjectorGroup.add(cannonShroud);
+
+    const cannonShield = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.045, 8, 24), chromeMat);
+    cannonShield.rotation.x = Math.PI / 2;
+    cannonShield.position.y = 1.05;
+    stageProjectorGroup.add(cannonShield);
+
+    // Dual pilot pins on stage projector
+    for (const sign of [-1, 1]) {
+      const pinBase = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.18, 8), ceramicMat);
+      pinBase.position.set(sign * 0.26, 1.25, 0);
+      stageProjectorGroup.add(pinBase);
+      const pinTip = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.2, 6), pinMat);
+      pinTip.rotation.z = sign * -0.4;
+      pinTip.position.set(sign * 0.22, 1.35, 0);
+      stageProjectorGroup.add(pinTip);
+    }
+
+    const deckEmitter = buildConcertFlameMesh(stageProjectorGroup, 1.05, 'steel_platform', i, cType);
+    const deckLedRing = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 6, 24), deckEmitter.ledRing);
+    deckLedRing.rotation.x = Math.PI / 2;
+    deckLedRing.position.y = 0.72;
+    stageProjectorGroup.add(deckLedRing);
   });
+
+  const applyPyroPlacement = (placement: PyroPlacement) => {
+    currentPyroPlacement = placement;
+    savePyroPlacement(placement);
+    for (let i = 0; i < 4; i++) {
+      if (placement === 'ring_posts') {
+        cornerNozzlePositions[i].copy(postNozzlePositions[i]);
+      } else {
+        cornerNozzlePositions[i].copy(deckNozzlePositions[i]);
+      }
+    }
+  };
+
+  applyPyroPlacement(currentPyroPlacement);
+
+  const setPyroPlacement = (placement: PyroPlacement) => {
+    applyPyroPlacement(placement);
+  };
+
+  const getPyroPlacement = (): PyroPlacement => currentPyroPlacement;
+
+  const fireCornerPyro = (level: number, duration = 1.8, mode: 'puff' | 'blast' = 'blast') => {
+    const lvl = Math.max(0, Math.min(1.2, level));
+    for (const nz of nozzleEmitters) {
+      if (nz.placement !== currentPyroPlacement) continue;
+      nz.targetLevel = lvl;
+      nz.level = Math.max(nz.level, lvl * 0.85);
+      nz.timer = duration;
+      nz.mode = mode;
+    }
+  };
+
+  const triggerCornerPad = (cornerIdx: number, strength: number) => {
+    const idx = Math.max(0, Math.min(3, Math.floor(cornerIdx)));
+    if (padSprings[idx]) {
+      padSprings[idx].joltVel += Math.min(4, Math.max(0.4, strength)) * 2.4;
+    }
+  };
   const ropeColors = [0xb8262e, 0xe8e6e0, 0x2a4fb8];
   // sides: 0:+z 1:-z 2:+x 3:-x. Each rope is a finely segmented tube that bends around the contact point.
   const ROPE_SEG = 56;
@@ -752,7 +1664,7 @@ export function buildArena(scene: THREE.Scene): Arena {
   }
   upper.unshift(lower[lower.length - 1].clone());
   upper.push(new THREE.Vector2(rowInner(tiers - 1, rowsPer - 1) + rowW, -1.4));
-  const standsMat = new THREE.MeshStandardMaterial({ color: 0x151822, roughness: 0.9, metalness: 0.2, side: THREE.DoubleSide });
+  const standsMat = new THREE.MeshStandardMaterial({ color: 0x080a12, roughness: 0.9, metalness: 0.25, side: THREE.DoubleSide });
   const STAND_GAP = 0.17; // half-angle leaves a clean ~9.5 m opening for the widened ring-walk portals at r = 28
   for (const [a0, a1] of [
     [ENTRY_A[0] + STAND_GAP, ENTRY_A[1] - STAND_GAP],
@@ -932,7 +1844,7 @@ export function buildArena(scene: THREE.Scene): Arena {
   wallTex.wrapS = THREE.RepeatWrapping;
   wallTex.repeat.set(-1, 1);
   // Dark atmospheric stadium arena wall: avoids washing out background to pale white
-  const wall = new THREE.Mesh(new THREE.CylinderGeometry(64, 64, 44, 96, 1, true), new THREE.MeshBasicMaterial({ map: wallTex, side: THREE.BackSide, color: new THREE.Color(0.28, 0.32, 0.44) }));
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(64, 64, 44, 96, 1, true), new THREE.MeshBasicMaterial({ map: wallTex, side: THREE.BackSide, color: new THREE.Color(0.18, 0.22, 0.32) }));
   wall.position.y = 20.6;
   scene.add(wall);
   const roof = new THREE.Mesh(new THREE.ConeGeometry(64, 14, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0x090b12, side: THREE.BackSide }));
@@ -1095,7 +2007,109 @@ export function buildArena(scene: THREE.Scene): Arena {
     const ap = 0.82 + Math.sin(t * 1.2) * 0.06 + smoothHype * 0.12;
     neonRed.color.setHex(0xff4350).multiplyScalar(ap);
     neonBlue.color.setHex(0x5f9bff).multiplyScalar(ap);
+
+    // Update corner pads elastic spring compression
+    for (let i = 0; i < 4; i++) {
+      const sp = padSprings[i];
+      sp.joltVel += (-sp.jolt * 26 - sp.joltVel * 8) * dt;
+      sp.jolt += sp.joltVel * dt;
+      const comp = THREE.MathUtils.clamp(1 - sp.jolt * 0.16, 0.75, 1.1);
+      sp.group.scale.set(comp, 1, 1 - sp.jolt * 0.1);
+    }
+
+    // Update concert flame nozzles (plume scroll, billowing, mushroom bloom & pilot flicker)
+    concertFlameTex.offset.y = -(t * 3.6) % 1;
+
+    for (let i = 0; i < nozzleEmitters.length; i++) {
+      const nz = nozzleEmitters[i];
+      if (nz.placement !== currentPyroPlacement) {
+        nz.group.visible = false;
+        nz.light.visible = false;
+        nz.level = 0;
+        continue;
+      }
+      nz.group.visible = true;
+
+      if (nz.timer > 0) {
+        nz.timer -= dt;
+        if (nz.timer <= 0) {
+          nz.targetLevel = 0;
+          nz.mode = 'idle';
+        }
+      }
+      nz.level += (nz.targetLevel - nz.level) * (1 - Math.exp(-22 * dt));
+      const flicker = 0.88 + Math.sin(t * 34 + nz.cornerIdx * 2.1) * 0.12 + Math.cos(t * 52 + nz.cornerIdx * 1.5) * 0.08;
+      const isFiring = nz.level > 0.035;
+
+      if (isFiring) {
+        const isPlatform = nz.placement === 'steel_platform';
+        const baseH = nz.mode === 'puff' ? (isPlatform ? 4.2 : 3.0) : (isPlatform ? 9.8 : 6.8);
+        const baseW = nz.mode === 'puff' ? (isPlatform ? 1.6 : 1.3) : (isPlatform ? 3.0 : 2.4);
+        const height = baseH * nz.level * flicker;
+        const width = baseW * (0.8 + nz.level * 0.4) * flicker;
+
+        nz.light.visible = true;
+        nz.pilotGroup.visible = false;
+        nz.coreSpindle.visible = true;
+        nz.coreSpindle.scale.set(width * 0.42, height * 0.85, width * 0.42);
+        nz.coreSpindle.position.y = height * 0.42;
+
+        for (let p = 0; p < nz.plumePlanes.length; p++) {
+          const plane = nz.plumePlanes[p];
+          plane.visible = true;
+          plane.scale.set(width, height, 1);
+          plane.position.y = height * 0.5;
+          plane.rotation.y = (p / 3) * Math.PI + t * 2.2 + nz.cornerIdx * 0.75;
+        }
+
+        // Billow lobes (lower puff, mid body, top mushrooming concert bloom)
+        nz.billowLobes[0].visible = true;
+        nz.billowLobes[0].scale.set(width * 0.75, width * 0.75, width * 0.75);
+        nz.billowLobes[0].position.y = height * 0.28;
+
+        nz.billowLobes[1].visible = true;
+        nz.billowLobes[1].scale.set(width * 1.05, width * 1.05, width * 1.05);
+        nz.billowLobes[1].position.y = height * 0.62;
+
+        nz.billowLobes[2].visible = true;
+        nz.billowLobes[2].scale.set(width * 1.45, width * 1.25, width * 1.45);
+        nz.billowLobes[2].position.y = height * 0.95;
+
+        nz.light.intensity = (nz.mode === 'puff' ? 4.8 : 12.5) * nz.level * flicker;
+      } else {
+        // Zero point-light overhead when idle (essential for 60 FPS in combat!)
+        nz.light.visible = false;
+        nz.coreSpindle.visible = false;
+        for (const p of nz.plumePlanes) p.visible = false;
+        for (const b of nz.billowLobes) b.visible = false;
+
+        nz.pilotGroup.visible = true;
+        const pilotH = 0.22 + Math.sin(t * 16 + nz.cornerIdx) * 0.06;
+        nz.pilotGroup.scale.set(1, pilotH * 4.2, 1);
+      }
+    }
   };
 
-  return { update, setScreen, setFaces: show.setFaces, ropeHit, ropePress, ropeSpread, canvasSlam, setRingScale, setMirrors, keyLight: key, rimRed, rimBlue, towers: props.towers, track: spotRig.track, strobe };
+  return {
+    update,
+    setScreen,
+    setFaces: show.setFaces,
+    ropeHit,
+    ropePress,
+    ropeSpread,
+    canvasSlam,
+    setRingScale,
+    setMirrors,
+    keyLight: key,
+    rimRed,
+    rimBlue,
+    towers: props.towers,
+    cornerNozzles: cornerNozzlePositions,
+    fireCornerPyro,
+    setPyroPlacement,
+    getPyroPlacement,
+    triggerCornerPad,
+    track: spotRig.track,
+    strobe,
+  };
 }

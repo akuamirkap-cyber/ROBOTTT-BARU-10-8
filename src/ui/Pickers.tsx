@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { BLOOM_MODES, BRIGHTNESS_STEPS, CAM_MODES, FOOTWORK_STEPS, GFX_MODES, IQ_STEPS, QUALITY_TIERS, SAT_STEPS, TRANSITIONS, ULTRA_COLOR, type BloomMode, type GfxMode, type TransId } from '../game/Game';
+import { CAM_MODES, FOOTWORK_STEPS, GFX_MODES, IQ_STEPS, QUALITY_TIERS, SAT_STEPS, TRANSITIONS, ULTRA_COLOR, type BloomMode, type GfxMode, type PyroPlacement, type TransId } from '../game/Game';
 import { SFX_PROFILES, type SfxProfile } from '../game/audio';
 import { cssVar } from './Emblem';
 
@@ -239,46 +239,63 @@ export function GfxPicker({ value, onPick, fps, tier }: { value: GfxMode; onPick
   );
 }
 
-const BRIGHT_LABEL: Record<number, string> = { 0.85: 'GELAP', 0.95: 'LEMBUT', 1: 'NORMAL', 1.12: 'TERANG', 1.25: 'SILAU' };
+const BRIGHT_LABEL: Record<number, string> = { 0.7: 'GELAP', 0.85: 'LEMBUT', 1: 'NORMAL', 1.15: 'TERANG', 1.3: 'SILAU', 1.5: 'MAKS' };
 
 /**
- * THE EXPOSURE. Everything else in this file trades detail for speed; this one is taste, so it stays in the
- * player's hands. The game's auto-exposure watches the frame underneath it, so pushing this up cannot blow the
- * picture out — it just moves the whole show up or down the curve.
+ * THE EXPOSURE / LIGHT LEVEL. Adjusts the brightness of the scene and game world.
  */
 export function BrightnessPicker({ value, onPick }: { value: number; onPick: (b: number) => void }) {
+  const pct = Math.round(value * 100);
   return (
     <div className="mt-3">
       <SectionTitle
         right={
           <span className="font-tech text-[9px] tracking-[0.2em]" style={{ color: GFX_COLOR }}>
-            {Math.round(value * 100)}%
+            {pct}% · {pct < 80 ? 'GELAP' : pct < 95 ? 'LEMBUT' : pct <= 105 ? 'NORMAL' : pct < 125 ? 'TERANG' : 'SILAU'}
           </span>
         }
       >
-        KECERAHAN GAMBAR
+        TINGKAT CAHAYA / KECERAHAN
       </SectionTitle>
-      <div className="grid grid-cols-5 gap-1.5">
-        {BRIGHTNESS_STEPS.map((b) => {
-          const on = b === value;
+
+      {/* Interactive Brightness Slider */}
+      <div className="mb-2 flex items-center gap-3 rounded border border-white/10 bg-black/40 px-3 py-2">
+        <span className="font-tech text-[10px] font-bold text-white/50">50%</span>
+        <input
+          type="range"
+          min={50}
+          max={150}
+          step={1}
+          value={pct}
+          onChange={(e) => onPick(Number(e.target.value) / 100)}
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-emerald-400"
+        />
+        <span className="font-tech text-[10px] font-bold text-white/50">150%</span>
+        <span className="min-w-[42px] text-right font-display text-[15px] font-bold text-emerald-300">
+          {pct}%
+        </span>
+      </div>
+
+      <div className="grid grid-cols-6 gap-1">
+        {[0.70, 0.85, 1.0, 1.15, 1.30, 1.50].map((b) => {
+          const on = Math.abs(b - value) < 0.04;
           return (
             <button
               key={b}
               onClick={() => onPick(b)}
-              className={`tile cut-sm pointer-events-auto relative px-1 py-1.5 text-center ${on ? 'tile-on' : ''}`}
+              className={`tile cut-sm pointer-events-auto relative px-0.5 py-1 text-center ${on ? 'tile-on' : ''}`}
               style={cssVar('--c', GFX_COLOR)}
             >
-              <div className="font-display text-[16px] leading-none" style={{ color: on ? GFX_COLOR : '#ffffff' }}>
-                {b === 1 ? '1.0' : b.toFixed(2).slice(1)}
+              <div className="font-display text-[13px] leading-none" style={{ color: on ? GFX_COLOR : '#ffffff' }}>
+                {Math.round(b * 100)}%
               </div>
-              <div className="mt-0.5 font-tech text-[7px] font-bold tracking-[0.1em] text-white/65">{BRIGHT_LABEL[b] ?? ''}</div>
+              <div className="mt-0.5 font-tech text-[6.5px] font-bold tracking-[0.05em] text-white/60">{BRIGHT_LABEL[b] ?? ''}</div>
             </button>
           );
         })}
       </div>
-      <div className="mt-1.5 text-[10px] leading-tight text-white/45">
-        Menyetel exposure seluruh gambar (arena dan lobby) tanpa mengubah pencahayaan panggung — lampu, bloom dan
-        warna tetap sama, hanya terangnya yang bergeser.
+      <div className="mt-1.5 text-[9.5px] leading-tight text-white/50">
+        Menyetel intensitas cahaya dan exposure visual arena &amp; robot secara real-time.
       </div>
     </div>
   );
@@ -390,47 +407,84 @@ export function RobotTexturePicker({ value, onPick }: { value: boolean; onPick: 
   );
 }
 
-export function BloomPicker({ value, onPick }: { value: BloomMode; onPick: (mode: BloomMode) => void }) {
+export function BloomPicker({
+  value,
+  onPick,
+}: {
+  value: number | BloomMode;
+  onPick: (pct: number) => void;
+}) {
+  const numVal = typeof value === 'number' ? value : value === 'off' ? 0 : value === 'smooth' ? 18 : 28;
+  const pct = Math.max(0, Math.min(50, Math.round(numVal)));
+  const statusLabel = pct === 0 ? 'NONAKTIF' : pct <= 18 ? 'HALUS LEMBUT' : pct <= 35 ? 'STANDAR VIVID' : 'MAKSIMAL';
+  const statusColor = pct === 0 ? '#94a3b8' : pct <= 20 ? '#34d399' : '#fbbf24';
+
   return (
     <div className="mt-3">
       <SectionTitle
         right={
-          <span className={`font-tech text-[9px] tracking-[0.2em] ${value === 'smooth' ? 'text-emerald-300' : value === 'normal' ? 'text-amber-300' : 'text-slate-400'}`}>
-            {value === 'smooth' ? 'HALUS LEMBUT (AKTIF)' : value === 'normal' ? 'STANDAR TENANG' : 'NONAKTIF'}
+          <span className="font-tech text-[9px] tracking-[0.2em]" style={{ color: statusColor }}>
+            {pct}% · {statusLabel}
           </span>
         }
       >
-        EFEK CAHAYA BLOOM
+        EFEK CAHAYA BLOOM (0 - 50%)
       </SectionTitle>
-      <div className="grid grid-cols-3 gap-1.5">
-        {BLOOM_MODES.map((bm) => {
-          const on = bm.id === value;
-          const color = bm.id === 'smooth' ? '#34d399' : bm.id === 'normal' ? '#fbbf24' : '#94a3b8';
+
+      {/* Interactive Bloom Range Slider: 0% to 50% */}
+      <div className="mb-2 flex items-center gap-3 rounded border border-white/10 bg-black/40 px-3 py-2">
+        <span className="font-tech text-[10px] font-bold text-white/50">0%</span>
+        <input
+          type="range"
+          min={0}
+          max={50}
+          step={1}
+          value={pct}
+          onChange={(e) => onPick(Number(e.target.value))}
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-amber-400"
+        />
+        <span className="font-tech text-[10px] font-bold text-white/50">50%</span>
+        <span className="min-w-[42px] text-right font-display text-[15px] font-bold text-amber-300">
+          {pct}%
+        </span>
+      </div>
+
+      {/* Quick Bloom Presets */}
+      <div className="grid grid-cols-5 gap-1.5">
+        {[
+          { p: 0, label: '0%', sub: 'MATI' },
+          { p: 15, label: '15%', sub: 'LEMBUT' },
+          { p: 25, label: '25%', sub: 'STANDAR' },
+          { p: 35, label: '35%', sub: 'TERANG' },
+          { p: 50, label: '50%', sub: 'MAKS 50%' },
+        ].map((item) => {
+          const on = Math.abs(pct - item.p) < 4;
+          const col = item.p === 0 ? '#94a3b8' : item.p <= 20 ? '#34d399' : '#fbbf24';
           return (
             <button
-              key={bm.id}
-              onClick={() => onPick(bm.id)}
+              key={item.p}
+              onClick={() => onPick(item.p)}
               className={`tile cut-sm pointer-events-auto relative px-1 py-1.5 text-center ${on ? 'tile-on' : ''}`}
-              style={cssVar('--c', color)}
+              style={cssVar('--c', col)}
             >
-              <div className="font-display text-[13px] leading-none tracking-wide" style={{ color: on ? color : '#ffffff' }}>
-                {bm.name}
+              <div className="font-display text-[13px] leading-none" style={{ color: on ? col : '#ffffff' }}>
+                {item.label}
               </div>
-              <div className="mt-0.5 font-tech text-[7px] font-bold tracking-[0.06em] text-white/60">
-                {bm.id === 'smooth' ? 'ANTI-KEDIP' : bm.id === 'normal' ? 'MINIMAL' : 'MATI'}
+              <div className="mt-0.5 font-tech text-[6.5px] font-bold tracking-[0.05em] text-white/60">
+                {item.sub}
               </div>
             </button>
           );
         })}
       </div>
       <div className="mt-1.5 flex items-center gap-1.5 rounded border border-white/5 bg-white/[0.03] px-2 py-1 font-tech text-[8.5px] tracking-wide text-white/65">
-        <span style={{ color: value === 'smooth' ? '#34d399' : '#fbbf24' }}>✦</span>
+        <span style={{ color: statusColor }}>✦</span>
         <span className="truncate">
-          {value === 'smooth'
-            ? 'Cahaya glow sinematik lembut & stabil tanpa kedipan/flicker (Rekomendasi)'
-            : value === 'normal'
-            ? 'Pendaran cahaya lembut standar original'
-            : 'Bloom dimatikan sepenuhnya, tampilan tajam dan direct'}
+          {pct === 0
+            ? 'Bloom dinonaktifkan (0%) — pencahayaan tajam tanpa pendaran glow'
+            : pct <= 20
+            ? `Bloom halus (${pct}%) — glow sinematik lembut & stabil anti-flicker`
+            : `Bloom intensif (${pct}%) — pendaran cahaya spektakuler pada lampu & efek`}
         </span>
       </div>
     </div>
@@ -557,6 +611,53 @@ export function CamPicker({ value, onPick }: { value: number; onPick: (i: number
       <div className="mt-1.5 text-[10px] leading-tight text-white/45">
         Semua mode lewat pengaman framing yang sama: robot tidak akan pernah terpotong tepi layar. Ganti kapan saja —
         di menu, saat jeda, atau tengah ronde dengan tombol <b className="text-white/70">/</b> dan <b className="text-white/70">.</b>
+      </div>
+    </div>
+  );
+}
+
+export function PyroPicker({
+  value,
+  onPick,
+}: {
+  value: PyroPlacement;
+  onPick: (p: PyroPlacement) => void;
+}) {
+  const options: { id: PyroPlacement; name: string; desc: string; icon: string }[] = [
+    {
+      id: 'ring_posts',
+      name: 'POJOK TIANG RING',
+      desc: 'Nozel semburan api di 4 tiang sudut ring tinju',
+      icon: '🏟️',
+    },
+    {
+      id: 'steel_platform',
+      name: 'PLATFORM BAJA',
+      desc: 'Meriam api konser megah di 4 ujung dek platform baja',
+      icon: '🔥',
+    },
+  ];
+  return (
+    <div>
+      <SectionTitle>LETAK NOZEL PYRO API KONSER</SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((opt) => {
+          const on = opt.id === value;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => onPick(opt.id)}
+              className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${on ? 'tile-on' : ''}`}
+              style={cssVar('--c', '#ff7814')}
+            >
+              <div className="flex items-center gap-1.5 font-display text-[15px] tracking-wider" style={{ color: on ? '#ff9b30' : '#ffffff' }}>
+                <span>{opt.icon}</span>
+                <span>{opt.name}</span>
+              </div>
+              <div className="mt-0.5 text-[10px] leading-tight text-white/55">{opt.desc}</div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

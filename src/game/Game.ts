@@ -9,7 +9,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Robot, type Pose, type RobotStyle } from './robot';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from './build';
 import { FREESTYLE, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
-import { buildArena, type Arena } from './arena';
+import { buildArena, type Arena, type PyroPlacement, loadPyroPlacement, savePyroPlacement } from './arena';
+export { type PyroPlacement, loadPyroPlacement, savePyroPlacement };
 import { HANGAR_POS, buildHangar, type Hangar } from './hangar';
 import { Effects, Trail } from './fx';
 import { Decap } from './decap';
@@ -339,6 +340,10 @@ export interface HudState {
   textureEnhance?: boolean;
   /** bloom lighting mode ('smooth' | 'normal' | 'off') */
   bloomMode?: BloomMode;
+  /** bloom intensity percentage (0 - 50%) */
+  bloomPercent?: number;
+  /** placement of the arena flame pyro nozzles ('ring_posts' | 'steel_platform') */
+  pyroPlacement?: PyroPlacement;
   stats?: MatchStats; // the fight sheet shown on the result screen
   /** TEAM MATCH (2v2): the second robot on each side */
   team?: {
@@ -1340,6 +1345,9 @@ const LS_BRIGHT = 'steel-titans-brightness-v1';
 const LS_SAT = 'steel-titans-saturation-v1';
 const LS_TEX = 'steel-titans-textures-v1';
 const LS_BLOOM = 'steel-titans-bloom-v1';
+const LS_BLOOM_PCT = 'steel-titans-bloom-percent-v2';
+
+export const DEFAULT_BLOOM_PCT = 18; // 18% default bloom (sinematik lembut & stabil)
 
 export type BloomMode = 'smooth' | 'normal' | 'off';
 export const BLOOM_MODES: { id: BloomMode; name: string; hint: string }[] = [
@@ -1348,13 +1356,25 @@ export const BLOOM_MODES: { id: BloomMode; name: string; hint: string }[] = [
   { id: 'off', name: 'NONAKTIF', hint: 'Tanpa bloom, pencahayaan tajam murni' },
 ];
 
-export const loadBloomMode = (): BloomMode => {
+export const loadBloomPercent = (): number => {
   try {
-    const v = localStorage.getItem(LS_BLOOM) as BloomMode | null;
-    return v === 'smooth' || v === 'normal' || v === 'off' ? v : 'smooth';
+    const v = localStorage.getItem(LS_BLOOM_PCT);
+    if (v !== null) {
+      const num = Number(v);
+      if (Number.isFinite(num)) return Math.max(0, Math.min(50, Math.round(num)));
+    }
+    const legacy = localStorage.getItem(LS_BLOOM) as BloomMode | null;
+    if (legacy === 'off') return 0;
+    if (legacy === 'normal') return 25;
+    return DEFAULT_BLOOM_PCT;
   } catch {
-    return 'smooth';
+    return DEFAULT_BLOOM_PCT;
   }
+};
+
+export const loadBloomMode = (): BloomMode => {
+  const pct = loadBloomPercent();
+  return pct === 0 ? 'off' : pct <= 20 ? 'smooth' : 'normal';
 };
 
 export const NORMAL_SAT = 1.15;
@@ -1378,12 +1398,12 @@ export const loadTextureEnhance = (): boolean => {
   }
 };
 
-/** the manual exposure steps. 1.0 is the tuned picture; the two either side are for a bright room and a dark one. */
-export const BRIGHTNESS_STEPS = [0.85, 0.95, 1.0, 1.12, 1.25] as const;
+/** the manual exposure steps. 1.0 is the tuned picture; range allows 0.50x to 1.60x. */
+export const BRIGHTNESS_STEPS = [0.70, 0.85, 1.0, 1.15, 1.30, 1.50] as const;
 export const loadBrightness = (): number => {
   try {
     const v = Number(localStorage.getItem(LS_BRIGHT));
-    return (BRIGHTNESS_STEPS as readonly number[]).includes(v) ? v : 1.0;
+    return Number.isFinite(v) && v >= 0.5 && v <= 1.6 ? v : 1.0;
   } catch {
     return 1.0;
   }
@@ -1491,6 +1511,7 @@ export class Game {
   private sat = loadSaturation(); // color saturation & vibrance
   private textureEnhance = loadTextureEnhance(); // whether enhanced PBR micro-textures are applied
   private bloomMode: BloomMode = loadBloomMode();
+  private bloomPercent: number = loadBloomPercent();
   private smoothBloomStrength = 0.14;
   private smoothBloomRadius = 0.55;
   private enemyCache = new Map<number, Fighter>();
@@ -1628,8 +1649,9 @@ export class Game {
     // the canvas, the steel and the crowd stay exactly as lit as they were and only the things that are genuinely
     // over-bright (a lamp lens, an LED strip, a jumbotron, a hot spark) bleed a soft glow into the dark of the
     // hall. Soft knee (smoothWidth = 0.55) ensures gradual light transition without flickering or strobing.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.14, 0.55, 1.3);
-    this.bloom.enabled = this.bloomMode !== 'off' && this.tierCfg().bloom;
+    const initialBloomStrength = this.bloomPercent <= 0 ? 0 : (this.bloomPercent / 100) * 0.9;
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), initialBloomStrength, 0.55, 1.3);
+    this.bloom.enabled = this.bloomPercent > 0 && this.tierCfg().bloom;
     const hpUni = this.bloom.highPassUniforms as Record<string, { value: number }> | undefined;
     if (hpUni && hpUni.smoothWidth) {
       hpUni.smoothWidth.value = 0.55;
@@ -3201,10 +3223,18 @@ export class Game {
     this.showBanner('FIGHT!', '', 'fight', 1.0);
     this.sfx.say('Fight!');
     this.sfx.cheer(1);
-    this.trauma = 0.5;
+    this.trauma = 0.55;
     this.fovKick = -4;
-    this.hype = 0.6;
+    this.hype = 0.65;
     this.pyro(0.8); // the corner towers fire as the fight starts
+
+    // Pas "FIGHT!" apinya nyala besar dari keempat nozel sudut tiang arena!
+    this.arena.fireCornerPyro(1.0, 1.8, 'blast');
+    this.sfx.flameBlast(1.0);
+    for (const p of this.arena.cornerNozzles) {
+      this.fx.spark(p, 36, 12, 0xffd27a, new THREE.Vector3(0, 1.2, 0), 0.35, 1.7, 14);
+      this.fx.spark(p, 18, 9, 0xffffff, new THREE.Vector3(0, 1.0, 0), 0.3, 1.1, 10);
+    }
   }
 
   private endRound(winner: Fighter, how: 'ko' | 'time') {
@@ -3258,10 +3288,14 @@ export class Game {
     this.startRound();
   }
 
-  /** PYRO: all four corner towers shoot a fountain of welding sparks into the air */
+  /** PYRO: all four corner towers and four ring corner nozzles shoot flame jets & sparks into the air */
   private pyro(level: number) {
     for (const t of this.arena.towers) {
       this.fx.spark(t, 28 + Math.floor(level * 40), 10 + level * 8, 0xffd27a, new THREE.Vector3(0, 1, 0), 0.3, 1.7, 14);
+    }
+    this.arena.fireCornerPyro(level, 1.4, 'blast');
+    for (const p of this.arena.cornerNozzles) {
+      this.fx.spark(p, 24 + Math.floor(level * 20), 8 + level * 6, 0xffbe50, new THREE.Vector3(0, 1.1, 0), 0.35, 1.4, 12);
     }
     this.sfx.pyro(level);
     this.trauma = Math.min(1, this.trauma + 0.1 * level);
@@ -3444,15 +3478,18 @@ export class Game {
     return gpu ? 1 : cores > 6 ? 1 : 2;
   }
 
-  /** the manual exposure step (0.85 … 1.25), remembered between visits */
+  /** the manual exposure step (0.50 … 1.60), remembered between visits */
   setBrightness(b: number) {
-    const v = (BRIGHTNESS_STEPS as readonly number[]).includes(b) ? b : 1.0;
-    if (v === this.bright) return;
+    const v = Math.max(0.5, Math.min(1.6, Number(b) || 1.0));
+    if (Math.abs(v - this.bright) < 0.005) return;
     this.bright = v;
     try {
       localStorage.setItem(LS_BRIGHT, String(v));
     } catch {
       /* ignore */
+    }
+    if (this.grade) {
+      this.grade.uniforms.exposure.value = 1.0 * this.aeGain * this.bright;
     }
     this.resetExposure();
     this.emitHud(true);
@@ -3506,30 +3543,59 @@ export class Game {
     this.emitHud(true);
   }
 
-  setBloomMode(mode: BloomMode) {
-    this.bloomMode = mode;
+  /** set bloom intensity from 0 to 50 percent */
+  setBloomPercent(pct: number) {
+    const v = Math.max(0, Math.min(50, Math.round(Number(pct) || 0)));
+    this.bloomPercent = v;
+    this.bloomMode = v <= 0 ? 'off' : v <= 20 ? 'smooth' : 'normal';
     try {
-      localStorage.setItem(LS_BLOOM, mode);
+      localStorage.setItem(LS_BLOOM_PCT, String(v));
+      localStorage.setItem(LS_BLOOM, this.bloomMode);
     } catch {
       /* ignore */
     }
     if (this.bloom) {
-      this.bloom.enabled = mode !== 'off' && this.tierCfg().bloom;
+      if (v <= 0) {
+        this.bloom.enabled = false;
+        this.bloom.strength = 0;
+        this.smoothBloomStrength = 0;
+      } else {
+        this.bloom.enabled = this.tierCfg().bloom;
+        const target = (v / 50) * 0.40;
+        this.bloom.strength = target;
+        this.smoothBloomStrength = target;
+      }
     }
     this.emitHud(true);
   }
 
+  setBloomMode(mode: BloomMode) {
+    this.bloomMode = mode;
+    const pct = mode === 'off' ? 0 : mode === 'smooth' ? 18 : 30;
+    this.setBloomPercent(pct);
+  }
+
   /**
    * Reset all visual configurations back to standard neutral defaults:
-   * Normal Saturation (1.15), Normal Brightness (1.0), Standard Textures, Normal Bloom, Auto 60 FPS
+   * Normal Saturation (1.15), Normal Brightness (1.0), Standard Textures, Normal Bloom (18%), Auto 60 FPS
    */
   resetVisualsToNormal() {
     this.setBrightness(1.0);
     this.setSaturation(NORMAL_SAT);
     this.setTextureEnhance(false);
-    this.setBloomMode('normal');
+    this.setBloomPercent(DEFAULT_BLOOM_PCT);
     this.setGfxMode('auto');
     this.emitHud(true);
+  }
+
+  /** set arena flame pyro nozzle placement: 'ring_posts' (tiang ring) or 'steel_platform' (ujung platform baja) */
+  setPyroPlacement(p: PyroPlacement) {
+    this.arena.setPyroPlacement(p);
+    this.emitHud(true);
+  }
+
+  getPyroPlacement(): PyroPlacement {
+    return this.arena.getPyroPlacement();
   }
 
   /** The one-pixel iris readback is asynchronous so it cannot stall the render thread on a GPU/CPU sync point. */
@@ -3620,13 +3686,13 @@ export class Game {
     this.grade.uniforms.time.value = this.time;
     this.grade.uniforms.sat.value = this.sat;
     // The 1×1 meter pass only runs when a fresh exposure sample is due, not on every full-resolution frame.
-    this.meter.enabled = !this.aeDead && !this.aePending && this.aeFrames >= 11;
+    this.meter.enabled = !this.aeDead && !this.aePending && this.aeFrames >= 23;
     this.composer.render();
     // the iris runs on world time so it never counts a paused frame, and the flash hold keeps a strobe a strobe
     this.aeHold = Math.max(this.aeHold, this.flashAmt * 0.5 + (this.phase === 'intro' || this.phase === 'matchEnd' ? 0.3 : 0));
     this.updateAutoExposure(Math.min(0.05, raw));
     this.aeFrames++;
-    if (this.aeFrames >= 12) {
+    if (this.aeFrames >= 24) {
       this.aeFrames = 0;
       this.sampleScene();
     }
@@ -3741,6 +3807,15 @@ export class Game {
             this.sfx.tick(1);
             this.sfx.say(String(n));
             this.fovKick = -1.2;
+
+            // Nozel api pyro: letupan api dan percikan saat hitungan 3, 2, 1!
+            const puffLevel = 0.5 + k * 0.2;
+            this.arena.fireCornerPyro(puffLevel, 0.42, 'puff');
+            this.sfx.pyroPuff(puffLevel);
+            for (const p of this.arena.cornerNozzles) {
+              this.fx.spark(p, 16 + k * 8, 8 + k * 2, 0xffbe50, new THREE.Vector3(0, 1, 0), 0.35, 0.6, 12);
+            }
+
             if (k === 2) {
               // the last count: show over — every guard snaps up
               for (const f of this.fighters()) f.tauntT = Math.min(f.tauntT, 0.12);
@@ -5793,6 +5868,46 @@ export class Game {
     }
     f.pos.x = cx;
     f.pos.y = cz;
+
+    // BANTALAN KHUSUS POJOK TIANG (Turnbuckle Corner Protector Pad collision & cushioning)
+    const H_CORNER = 13.6 * (RING / RING_BASE);
+    const cornerOffsets: [number, number][] = [
+      [H_CORNER, H_CORNER],
+      [-H_CORNER, H_CORNER],
+      [H_CORNER, -H_CORNER],
+      [-H_CORNER, -H_CORNER],
+    ];
+    for (let cIdx = 0; cIdx < 4; cIdx++) {
+      const [cx0, cz0] = cornerOffsets[cIdx];
+      const dx = f.pos.x - cx0;
+      const dz = f.pos.y - cz0;
+      const dist = Math.hypot(dx, dz);
+      const PAD_RADIUS = 2.4 * f.scale; // corner cushion clearance
+      if (dist < PAD_RADIUS && dist > 0.001) {
+        const pen = PAD_RADIUS - dist;
+        const nx0 = dx / dist;
+        const nz0 = dz / dist;
+        f.pos.x += nx0 * pen;
+        f.pos.y += nz0 * pen;
+
+        // How fast he was slamming toward this corner
+        const vTowardsCorner = -(f.vel.x * nx0 + f.vel.y * nz0 + f.kb.x * nx0 + f.kb.y * nz0);
+        if (vTowardsCorner > 0.25) {
+          f.vel.x *= 0.3;
+          f.vel.y *= 0.3;
+          f.kb.x *= 0.35;
+          f.kb.y *= 0.35;
+          this.arena.triggerCornerPad(cIdx, vTowardsCorner);
+          if (vTowardsCorner > 2.0 && f.wallCd <= 0) {
+            f.wallCd = 0.45;
+            this.sfx.cornerPadHit(Math.min(1, vTowardsCorner / 5.5));
+            this.fx.spark(new THREE.Vector3(f.pos.x, 3.8 * f.scale, f.pos.y), 12, 5.5, 0xffd27a, new THREE.Vector3(nx0, 0.4, nz0), 0.8, 0.45, 8);
+            this.popup(new THREE.Vector3(f.pos.x, 6.2 * f.scale, f.pos.y), 'BANTALAN SUDUT!', 'pop-info');
+          }
+        }
+      }
+    }
+
     f.speed = f.state === 'ko' ? 0 : f.vel.length();
 
     // facing (locks onto the strike direction once a punch is thrown)
@@ -7933,22 +8048,25 @@ export class Game {
       if (hpUni && hpUni.smoothWidth) {
         hpUni.smoothWidth.value = 0.55;
       }
-      if (this.bloomMode === 'off') {
+      const pct = Math.max(0, Math.min(50, this.bloomPercent ?? DEFAULT_BLOOM_PCT));
+      if (this.bloomMode === 'off' || pct <= 0) {
         this.bloom.enabled = false;
+        this.bloom.strength = 0;
+        this.smoothBloomStrength = 0;
       } else {
         this.bloom.enabled = this.tierCfg().bloom;
+        const pctRatio = pct / 50; // 0 to 1
         const isSmooth = this.bloomMode === 'smooth';
         const targetThreshold = isSmooth
           ? (this.phase === 'menu' ? 1.35 : 1.25)
-          : (this.phase === 'menu' ? 1.6 : 1.55);
-        const baseStrength = isSmooth
-          ? (this.phase === 'menu' ? 0.14 : 0.15)
-          : (this.phase === 'menu' ? 0.08 : 0.09);
+          : (this.phase === 'menu' ? 1.55 : 1.5);
+        // Base strength directly scaled by percentage: 0% = 0, 18% = ~0.14, 50% = ~0.40
+        const baseStrength = pctRatio * 0.40;
         const dynamicBoost = isSmooth
-          ? (this.trauma * 0.02 + this.flashAmt * 0.025)
+          ? (this.trauma * 0.02 + this.flashAmt * 0.025) * pctRatio
           : 0;
-        const targetStrength = Math.min(0.24, baseStrength + dynamicBoost);
-        const targetRadius = isSmooth ? 0.58 : 0.42;
+        const targetStrength = Math.min(0.48, baseStrength + dynamicBoost);
+        const targetRadius = isSmooth ? (0.42 + 0.25 * pctRatio) : (0.35 + 0.2 * pctRatio);
 
         const lerpFactor = 1 - Math.exp(-8.0 * raw);
         this.smoothBloomStrength += (targetStrength - this.smoothBloomStrength) * lerpFactor;
@@ -8039,6 +8157,8 @@ export class Game {
       sat: this.sat,
       textureEnhance: this.textureEnhance,
       bloomMode: this.bloomMode,
+      bloomPercent: this.bloomPercent,
+      pyroPlacement: this.arena.getPyroPlacement(),
       team:
         this.teamMode && this.ally && this.enemy2 && this.def2
           ? {

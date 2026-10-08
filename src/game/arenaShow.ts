@@ -12,7 +12,7 @@ export interface Show {
   setFaces(left: { name: string; color: string; img: string | null }, right: { name: string; color: string; img: string | null }): void;
 }
 
-export function buildShow(scene: THREE.Scene, entryAngles: number[]): Show {
+export function buildShow(scene: THREE.Scene, _entryAngles: number[]): Show {
   // ---------- the LED ribbon ----------
   const rc = document.createElement('canvas');
   rc.width = 2048;
@@ -161,121 +161,8 @@ export function buildShow(scene: THREE.Scene, entryAngles: number[]): Show {
     }
   }
 
-  // ---------- the soft glow sheet shared by every neon element ----------
-  const glowTex = (() => {
-    const c = document.createElement('canvas');
-    c.width = 64;
-    c.height = 256;
-    const g = c.getContext('2d')!;
-    const h = g.createLinearGradient(0, 0, 64, 0);
-    h.addColorStop(0, 'rgba(255,255,255,0)');
-    h.addColorStop(0.5, 'rgba(255,255,255,1)');
-    h.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = h;
-    g.fillRect(0, 0, 64, 256);
-    const v = g.createLinearGradient(0, 0, 0, 256);
-    v.addColorStop(0, 'rgba(0,0,0,1)');
-    v.addColorStop(0.12, 'rgba(0,0,0,0)');
-    v.addColorStop(0.9, 'rgba(0,0,0,0)');
-    v.addColorStop(1, 'rgba(0,0,0,1)');
-    g.globalCompositeOperation = 'destination-out';
-    g.fillStyle = v;
-    g.fillRect(0, 0, 64, 256);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
-
-  // ---------- THE LIGHT COLUMNS — eight giant blue / red pillars of light round the bowl (the Tekken arena look):
-  // a hot core, a wide additive glow sheet, a beam that keeps going up into the roof and a hot spot on the floor
+  // Note: The red and blue pillars around the spectator arena bowl have been removed as requested.
   const columns: { core: THREE.MeshBasicMaterial; glow: THREE.MeshBasicMaterial; beam: THREE.MeshBasicMaterial; spot: THREE.MeshBasicMaterial; base: THREE.Color; ph: number }[] = [];
-  const COL_H = 27;
-  const COL_R = 29.4;
-  const coreGeo = new THREE.BoxGeometry(1.3, COL_H, 1.3);
-  const colGlowGeo = new THREE.PlaneGeometry(4.2, COL_H + 3);
-  const beamGeo = new THREE.CylinderGeometry(0.35, 1.4, 16, 10, 1, true);
-  const spotGeo = new THREE.CircleGeometry(5.2, 24);
-  const spotTex = (() => {
-    const c = document.createElement('canvas');
-    c.width = 128;
-    c.height = 128;
-    const g = c.getContext('2d')!;
-    const r = g.createRadialGradient(64, 64, 2, 64, 64, 64);
-    r.addColorStop(0, 'rgba(255,255,255,1)');
-    r.addColorStop(0.35, 'rgba(255,255,255,0.35)');
-    r.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = r;
-    g.fillRect(0, 0, 128, 128);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
-  const colFrame = new THREE.MeshStandardMaterial({ color: 0x0c0e14, metalness: 0.9, roughness: 0.45 });
-  // the LED tower face: a hot white centre line falling off to dark edges (so the box reads as a lit cylinder),
-  // panel seams every 2.2 m — not a flat painted stick
-  const ledTex = (() => {
-    const c = document.createElement('canvas');
-    c.width = 64;
-    c.height = 1024;
-    const g = c.getContext('2d')!;
-    const h = g.createLinearGradient(0, 0, 64, 0);
-    h.addColorStop(0, '#1a1a22');
-    h.addColorStop(0.3, '#8a8a95');
-    h.addColorStop(0.5, '#ffffff');
-    h.addColorStop(0.7, '#8a8a95');
-    h.addColorStop(1, '#1a1a22');
-    g.fillStyle = h;
-    g.fillRect(0, 0, 64, 1024);
-    g.fillStyle = 'rgba(0,0,0,0.75)';
-    for (let y = 0; y < 1024; y += 84) g.fillRect(0, y, 64, 5);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + 0.26;
-    if (i % 3 === 1) continue; // the four corner pyro towers stand here
-    const dEntry = Math.min(...entryAngles.map((ea) => Math.abs(Math.atan2(Math.sin(a - ea), Math.cos(a - ea)))));
-    if (dEntry < 0.2) continue; // the entrance aisles stay clear
-    const x = Math.cos(a) * COL_R;
-    const z = Math.sin(a) * COL_R;
-    const base = new THREE.Color(i % 2 ? 0x4f86e8 : 0xe03a44);
-    const core = new THREE.MeshBasicMaterial({ color: base.clone().multiplyScalar(1.25), map: ledTex });
-    const glow = new THREE.MeshBasicMaterial({ color: base, map: glowTex, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    const beam = new THREE.MeshBasicMaterial({ color: base, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
-    const spot = new THREE.MeshBasicMaterial({ color: base, map: spotTex, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false });
-    const g = new THREE.Group();
-    g.position.set(x, -1.4, z);
-    g.rotation.y = Math.atan2(-x, -z);
-    const c = new THREE.Mesh(coreGeo, core);
-    c.position.y = COL_H / 2;
-    markReflect(c, true);
-    g.add(c);
-    for (const ry of [0, Math.PI / 2]) {
-      const gl = new THREE.Mesh(colGlowGeo, glow);
-      gl.position.y = COL_H / 2 + 0.5;
-      gl.rotation.y = ry;
-      g.add(gl);
-    }
-    const bm = new THREE.Mesh(beamGeo, beam);
-    bm.position.y = COL_H + 8;
-    g.add(bm);
-    const sp = new THREE.Mesh(spotGeo, spot);
-    sp.rotation.x = -Math.PI / 2;
-    sp.position.y = 0.06;
-    g.add(sp);
-    // the steel housing: a plinth at the foot and rails up the back of the core
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 2.4), colFrame);
-    plinth.position.y = 0.45;
-    g.add(plinth);
-    for (const sx of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, COL_H, 0.16), colFrame);
-      rail.position.set(sx * 0.78, COL_H / 2, -0.75);
-      g.add(rail);
-    }
-    scene.add(g);
-    columns.push({ core, glow, beam, spot, base, ph: i * 0.9 });
-  }
 
   // ---------- the LED rings in the hall floor (two chasing light lines round the apron) ----------
   const floorRings: { mat: THREE.MeshBasicMaterial; base: THREE.Color; ph: number }[] = [];

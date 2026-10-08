@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 /**
- * THE BROADCAST LIGHT RIG — eight restrained warm followspots, eight coloured heads and two blue key beams shape the arena with
- * view-dependent volumetric cones (soft silhouettes fading along the throw), not flat lines or an overbright wash.
+ * THE BROADCAST LIGHT RIG — focused boxing spotlights, tracking hero followspots,
+ * and atmospheric volumetric beams that shape the arena with high contrast.
  */
 export interface SpotRig {
   update(t: number, dt: number, hype: number, focus: THREE.Vector3): void;
@@ -15,10 +15,10 @@ export interface SpotRig {
 const CONE_SHADER = {
   uniforms: {
     color: { value: new THREE.Color(0xffffff) },
-    intensity: { value: 0.3 },
-    anglePower: { value: 2.6 },
+    intensity: { value: 0.35 },
+    anglePower: { value: 2.2 },
     apex: { value: new THREE.Vector3() },
-    len: { value: 36 },
+    len: { value: 38 },
   },
   vertexShader: /* glsl */ `
     varying vec3 vN;
@@ -39,11 +39,14 @@ const CONE_SHADER = {
     varying vec3 vW;
     void main() {
       float d = clamp( distance( vW, apex ) / len, 0.0, 1.0 );
-      // bright and tight at the lamp, thinning out through the haze towards the canvas
-      float fall = ( 1.0 - smoothstep( 0.0, 1.0, d ) ) * ( 0.3 + 0.7 * ( 1.0 - d ) ) + 0.06 * ( 1.0 - d );
+      // Smooth sustained throw through the arena haze, tapering towards the floor
+      float fall = ( 1.0 - smoothstep( 0.0, 1.0, d ) ) * 0.72 + 0.28 * ( 1.0 - d * d );
       vec3 v = normalize( cameraPosition - vW );
-      float edge = pow( abs( dot( normalize( vN ), v ) ), anglePower );
-      float a = intensity * fall * edge;
+      float ndotv = abs( dot( normalize( vN ), v ) );
+      // Atmospheric volumetric beam: luminous core + soft glancing edges
+      float rim = pow( clamp( 1.0 - ndotv, 0.0, 1.0 ), 1.4 ) * 0.65;
+      float core = pow( ndotv, anglePower ) * 0.75;
+      float a = intensity * fall * ( rim + core );
       gl_FragColor = vec4( color * a, a );
     }`,
 };
@@ -57,8 +60,8 @@ function poolTexture() {
   const g = c.getContext('2d')!;
   const r = g.createRadialGradient(128, 128, 4, 128, 128, 128);
   r.addColorStop(0, 'rgba(255,255,255,1)');
-  r.addColorStop(0.3, 'rgba(255,255,255,0.55)');
-  r.addColorStop(0.62, 'rgba(255,255,255,0.22)');
+  r.addColorStop(0.3, 'rgba(255,255,255,0.65)');
+  r.addColorStop(0.65, 'rgba(255,255,255,0.25)');
   r.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = r;
   g.fillRect(0, 0, 256, 256);
@@ -181,36 +184,47 @@ export function buildSpotRig(scene: THREE.Scene): SpotRig {
     return lamp;
   };
 
-  // Eight warm followspots on the inner truss; restrained pools overlap softly without turning the canvas white.
+  // Dedicated ring spotlights: focused down onto the canvas and ring corners
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-    const pos = new THREE.Vector3(Math.cos(a) * 18, 26.4, Math.sin(a) * 18);
-    const tr = 4.6;
+    const pos = new THREE.Vector3(Math.cos(a) * 18, 26.8, Math.sin(a) * 18);
+    const tr = 5.2;
     const target = new THREE.Vector3(Math.cos(a) * tr, 0, Math.sin(a) * tr);
-    const warm = i % 2 === 0 ? 0xfff1dc : 0xf4f6ff; // alternating warm / daylight heads, like a real rig
-    mkLamp(pos, target, warm, 34, 5.0, 0.22, false, i * 0.7);
+    const warm = i % 2 === 0 ? 0xfff4e2 : 0xf4f8ff; // crisp warm / daylight heads
+    mkLamp(pos, target, warm, 36, 5.2, 0.28, false, i * 0.7);
   }
-  // Eight coloured moving heads sweep through the haze; fewer layered beams keep the arena lively without excess overdraw.
+
+  // Four corner ring-post flood spotlights: focused directly on the ring corners
+  const CORNERS = [
+    { pos: new THREE.Vector3(20, 30, 20), tgt: new THREE.Vector3(13.6, 0, 13.6), col: 0x4a9aff },
+    { pos: new THREE.Vector3(-20, 30, 20), tgt: new THREE.Vector3(-13.6, 0, 13.6), col: 0xffedd0 },
+    { pos: new THREE.Vector3(20, 30, -20), tgt: new THREE.Vector3(13.6, 0, -13.6), col: 0xffedd0 },
+    { pos: new THREE.Vector3(-20, 30, -20), tgt: new THREE.Vector3(-13.6, 0, -13.6), col: 0xff4d5a },
+  ];
+  for (let i = 0; i < CORNERS.length; i++) {
+    const c = CORNERS[i];
+    mkLamp(c.pos, c.tgt, c.col, 42, 5.8, 0.32, false, i * 1.1);
+  }
+
+  // Eight coloured moving heads sweep through the haze around the arena perimeter
   const HEAD_COLORS = [0x3f86ff, 0xff3a46, 0xff4dd2, 0x2fe6ff, 0xffb03a, 0x9a5bff, 0x3fffa6, 0xff7a3a];
   for (let i = 0; i < HEAD_COLORS.length; i++) {
     const a = (i / HEAD_COLORS.length) * Math.PI * 2 + Math.PI / 4 + 0.2;
     const pos = new THREE.Vector3(Math.cos(a) * 40, 33.0 + (i % 2) * 2.2, Math.sin(a) * 40);
-    mkLamp(pos, new THREE.Vector3(0, 0, 0), HEAD_COLORS[i], 58, 4.0, 0.11, true, i * 1.3);
+    mkLamp(pos, new THREE.Vector3(0, 0, 0), HEAD_COLORS[i], 58, 4.4, 0.16, true, i * 1.3);
   }
 
-  // Two deliberate blue shafts cut diagonally across the ring like a televised main-event light cue.
-  // Their restrained intensity adds colour and depth without bleaching the canvas or the steel.
-  mkLamp(new THREE.Vector3(-28.3, 34, -28.3), new THREE.Vector3(3, 0, 2), 0x2878ff, 60, 7.2, 0.23, false, 0.7);
-  mkLamp(new THREE.Vector3(28.3, 34, -28.3), new THREE.Vector3(-3, 0, -2), 0x2878ff, 60, 7.2, 0.23, false, 2.0);
+  // High-contrast central main-event shafts cutting diagonally across the ring
+  mkLamp(new THREE.Vector3(-26.0, 34, -26.0), new THREE.Vector3(1.5, 0, 1.0), 0x3b8aff, 58, 7.5, 0.30, false, 0.7);
+  mkLamp(new THREE.Vector3(26.0, 34, -26.0), new THREE.Vector3(-1.5, 0, -1.0), 0xfff2e0, 58, 7.5, 0.30, false, 2.0);
 
-  // THE HERO FOLLOWSPOTS: two warm-white followspots on the inner truss, one tracking each fighter. They are real
-  // lights with restrained pools and a soft cone, so the chassis stays legible instead of getting a hot white wash.
+  // THE HERO FOLLOWSPOTS: two focused followspots on the inner truss tracking each fighter
   for (let i = 0; i < 2; i++) {
     const pos = i === 0 ? new THREE.Vector3(-15.5, 26.8, -9.5) : new THREE.Vector3(15.5, 26.8, 9.5);
     const foot = i === 0 ? new THREE.Vector3(-3, 0, 0) : new THREE.Vector3(3, 0, 0);
-    const lamp = mkLamp(pos, foot.clone().setY(3.2), 0xfff4e6, 40, 4.0, 0.18, false, 2.1 + i);
+    const lamp = mkLamp(pos, foot.clone().setY(3.2), 0xfff6ec, 40, 4.6, 0.32, false, 2.1 + i);
     lamp.track = i;
-    const light = new THREE.SpotLight(0xfff4e6, 18, 100, 0.32, 0.5, 0.95);
+    const light = new THREE.SpotLight(0xfff6ec, 22, 105, 0.36, 0.48, 0.95);
     light.position.copy(pos);
     light.target.position.copy(foot).setY(3.2);
     scene.add(light, light.target);

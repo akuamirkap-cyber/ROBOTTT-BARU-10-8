@@ -51,6 +51,7 @@ export class SparkStreaks {
   private geo = new THREE.BufferGeometry();
   private head = 0;
   private rgb = [0, 0, 0];
+  private wasTouched = false;
   readonly mesh: THREE.Mesh;
 
   constructor(scene: THREE.Scene) {
@@ -255,9 +256,10 @@ export class SparkStreaks {
       C[o + 7] = C[o + 10] = hg * 0.1;
       C[o + 8] = C[o + 11] = hb * 0.1;
     }
-    if (touched) {
+    if (touched || this.wasTouched) {
       this.geo.attributes.position.needsUpdate = true;
       this.geo.attributes.color.needsUpdate = true;
     }
+    this.wasTouched = touched;
   }
 }

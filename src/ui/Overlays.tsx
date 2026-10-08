@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, type BloomMode, type GfxMode, type HudState, type TransId } from '../game/Game';
+import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from '../game/Game';
 import type { SfxProfile } from '../game/audio';
 import { Emblem, Key } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, FootworkPicker, GfxPicker, IqPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TierLadder, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TierLadder, TransitionPicker } from './Pickers';
 import { TOURNEY_STAGES, modeOf, type Series } from '../game/progress';
 
 export function PauseMenu({
@@ -29,6 +29,8 @@ export function PauseMenu({
   bloom,
   onBloom,
   onResetVisuals,
+  pyro,
+  onPyro,
   trans,
   onTrans,
 }: {
@@ -52,9 +54,11 @@ export function PauseMenu({
   onSat: (s: number) => void;
   tex: boolean;
   onTex: (t: boolean) => void;
-  bloom: BloomMode;
-  onBloom: (mode: BloomMode) => void;
+  bloom: BloomMode | number;
+  onBloom: (mode: BloomMode | number) => void;
   onResetVisuals: () => void;
+  pyro: PyroPlacement;
+  onPyro: (p: PyroPlacement) => void;
   trans: TransId;
   onTrans: (id: TransId) => void;
 }) {
@@ -67,6 +71,9 @@ export function PauseMenu({
         </div>
         <div className="my-4 h-px bg-gradient-to-r from-amber-300/70 to-transparent" />
         <CamPicker value={cam} onPick={onCam} />
+        <div className="mt-4">
+          <PyroPicker value={pyro} onPick={onPyro} />
+        </div>
         <div className="mt-4">
           <SfxPicker value={sfx} onPick={onSfx} />
         </div>

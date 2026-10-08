@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAM_MODES, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomMode, loadBrightness, loadCamMode, loadDifficulty, loadFootwork, loadGfxMode, loadIq, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type TransId } from './game/Game';
+import { CAM_MODES, DEFAULT_BLOOM_PCT, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadFootwork, loadGfxMode, loadIq, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type TransId } from './game/Game';
 import { loadSfxProfile, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
@@ -89,11 +89,12 @@ export default function App() {
     gameRef.current?.setTextureEnhance(t);
   };
 
-  const [bloomLocal, setBloomLocal] = useState<BloomMode>(loadBloomMode);
-  const bloomNow = hud?.bloomMode ?? bloomLocal;
-  const pickBloom = (m: BloomMode) => {
-    setBloomLocal(m);
-    gameRef.current?.setBloomMode(m);
+  const [bloomLocal, setBloomLocal] = useState<number>(loadBloomPercent);
+  const bloomNow = hud?.bloomPercent ?? bloomLocal;
+  const pickBloom = (p: number | BloomMode) => {
+    const pct = typeof p === 'number' ? p : p === 'off' ? 0 : p === 'smooth' ? 18 : 28;
+    setBloomLocal(pct);
+    gameRef.current?.setBloomPercent(pct);
   };
 
   const resetVisuals = () => {
@@ -101,7 +102,7 @@ export default function App() {
     setBrightLocal(1.0);
     setSatLocal(NORMAL_SAT);
     setTexLocal(false);
-    setBloomLocal('normal');
+    setBloomLocal(DEFAULT_BLOOM_PCT);
     setGfxLocal('auto');
   };
 
