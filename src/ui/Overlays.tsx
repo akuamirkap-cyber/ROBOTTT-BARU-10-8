@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from '../game/Game';
 import type { SfxProfile } from '../game/audio';
 import { Emblem, Key } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TierLadder, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TierLadder, TransitionPicker } from './Pickers';
 import { TOURNEY_STAGES, modeOf, type Series } from '../game/progress';
 
 export function PauseMenu({
@@ -33,6 +33,8 @@ export function PauseMenu({
   onPyro,
   trans,
   onTrans,
+  directionalHeadSnap,
+  onDirectionalHeadSnap,
 }: {
   onResume: () => void;
   onMenu: () => void;
@@ -61,6 +63,8 @@ export function PauseMenu({
   onPyro: (p: PyroPlacement) => void;
   trans: TransId;
   onTrans: (id: TransId) => void;
+  directionalHeadSnap: boolean;
+  onDirectionalHeadSnap: (on: boolean) => void;
 }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
@@ -70,7 +74,10 @@ export function PauseMenu({
           <div className="font-display text-6xl leading-none tracking-[0.15em]">PAUSE</div>
         </div>
         <div className="my-4 h-px bg-gradient-to-r from-amber-300/70 to-transparent" />
-        <CamPicker value={cam} onPick={onCam} />
+        <DirectionalHeadSnapPicker value={directionalHeadSnap} onPick={onDirectionalHeadSnap} />
+        <div className="mt-4">
+          <CamPicker value={cam} onPick={onCam} />
+        </div>
         <div className="mt-4">
           <PyroPicker value={pyro} onPick={onPyro} />
         </div>

@@ -5,9 +5,9 @@ import { buildProps } from './arenaProps';
 import { buildSheen } from './mirror';
 import { buildSpotRig } from './spotlights';
 import { markReflect, REFLECT_LIGHTS_LAYER } from './layers';
+import { AtmosphereEffects } from './AtmosphereEffects';
 import {
   ROWS_PER_TIER,
-  SPECTATOR_SEAT_SPACING,
   STAND_ROW_SPACING,
   STAND_TIERS,
   standRowHeight,
@@ -37,7 +37,7 @@ export function savePyroPlacement(p: PyroPlacement) {
 }
 
 export interface Arena {
-  update(t: number, dt: number, hype: number, focus?: THREE.Vector3): void;
+  update(t: number, dt: number, hype: number, focus?: THREE.Vector3, camera?: THREE.Camera): void;
   /** the pyro nozzles on top of the four corner towers */
   towers: THREE.Vector3[];
   /** the 4 active pyrotechnic flame nozzles (either on corner posts or steel platform corners) */
@@ -48,6 +48,7 @@ export interface Arena {
   setPyroPlacement(placement: PyroPlacement): void;
   /** gets the current placement of the pyro nozzles */
   getPyroPlacement(): PyroPlacement;
+  dispose?(): void;
   /** compresses and jolts the specialized corner turnbuckle protector pad when a fighter collides with it */
   triggerCornerPad(cornerIdx: number, strength: number): void;
   setScreen(left: string, right: string, sub: string, lc: string, rc: string): void;
@@ -147,20 +148,21 @@ function arcText(g: CanvasRenderingContext2D, text: string, cx: number, cy: numb
 function ringTexture() {
   const S = 1024;
   const { c, g } = canvas(S, S);
+  // Tekstur kanvas ring WRC: Dark slate / deep charcoal bertekstur, warna seimbang (tidak terlalu gelap, tidak memutih)
   const grad = g.createLinearGradient(0, 0, 0, S);
-  grad.addColorStop(0, '#0a0d14');
-  grad.addColorStop(1, '#05070d');
+  grad.addColorStop(0, '#151922');
+  grad.addColorStop(1, '#0e121a');
   g.fillStyle = grad;
   g.fillRect(0, 0, S, S);
   // the weave of the canvas
-  g.fillStyle = 'rgba(255,255,255,0.024)';
+  g.fillStyle = 'rgba(255,255,255,0.028)';
   for (let y = 0; y < S; y += 3) g.fillRect(0, y, S, 1);
-  g.fillStyle = 'rgba(0,0,0,0.18)';
+  g.fillStyle = 'rgba(0,0,0,0.22)';
   for (let x = 0; x < S; x += 3) g.fillRect(x, 0, 1, S);
-  // scuffs and sweat
-  for (let i = 0; i < 1400; i++) {
-    g.strokeStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
-    g.lineWidth = Math.random() * 1.4;
+  // scuffs and combat marks
+  for (let i = 0; i < 1100; i++) {
+    g.strokeStyle = `rgba(255,255,255,${Math.random() * 0.022})`;
+    g.lineWidth = Math.random() * 1.2;
     const x = Math.random() * S;
     const y = Math.random() * S;
     g.beginPath();
@@ -168,36 +170,36 @@ function ringTexture() {
     g.lineTo(x + (Math.random() - 0.5) * 140, y + (Math.random() - 0.5) * 140);
     g.stroke();
   }
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 35; i++) {
     const x = Math.random() * S;
     const y = Math.random() * S;
     const r = 30 + Math.random() * 90;
     const rg = g.createRadialGradient(x, y, 0, x, y, r);
-    rg.addColorStop(0, 'rgba(0,0,0,0.18)');
+    rg.addColorStop(0, 'rgba(0,0,0,0.20)');
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = rg;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  // the boundary line and the centre mark - high contrast
-  g.strokeStyle = 'rgba(240,245,255,0.85)';
+  // the boundary line and the centre mark - high contrast, vibrant & sharp
+  g.strokeStyle = 'rgba(230,238,255,0.85)';
   g.lineWidth = 6;
   g.strokeRect(64, 64, S - 128, S - 128);
   g.beginPath();
   g.arc(S / 2, S / 2, 332, 0, Math.PI * 2);
-  g.strokeStyle = 'rgba(216,180,88,0.55)';
-  g.lineWidth = 4;
+  g.strokeStyle = 'rgba(215,172,70,0.85)';
+  g.lineWidth = 4.5;
   g.stroke();
-  // centre: the emblem, printed into the fabric
-  g.globalAlpha = 0.72;
+  // centre: the emblem and graphics, jelas & tajam dengan kontras tinggi
+  g.globalAlpha = 0.95;
   wrcEmblem(g, S / 2, S / 2 - 30, 180);
   g.globalAlpha = 1;
-  g.fillStyle = 'rgba(230,234,240,0.62)';
+  g.fillStyle = 'rgba(235,240,252,0.92)';
   g.font = font(44);
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText('WORLD ROBOT CHAMPIONSHIP', S / 2, S / 2 + 200);
-  g.fillStyle = 'rgba(201,162,74,0.7)';
-  g.fillRect(S / 2 - 150, S / 2 + 236, 300, 3);
+  g.fillStyle = 'rgba(215,172,70,0.95)';
+  g.fillRect(S / 2 - 150, S / 2 + 236, 300, 3.5);
   return toTex(c);
 }
 
@@ -525,112 +527,6 @@ function cornerPadTexture(type: 'blue' | 'red' | 'neutral', title: string) {
   return tex;
 }
 
-/**
- * NOZEL API PYRO (Concert Flame Plume Texture)
- * Procedural stadium-concert flame texture with organic licking flame tongues,
- * incandescent white plasma core, and radiant vermilion flame crests.
- */
-function concertFlameTexture() {
-  const W = 256;
-  const H = 512;
-  const { c, g } = canvas(W, H);
-  g.clearRect(0, 0, W, H);
-
-  // Outer glowing radiant flame envelope
-  const bgGrad = g.createLinearGradient(0, H, 0, 0);
-  bgGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-  bgGrad.addColorStop(0.12, 'rgba(255, 210, 60, 0.9)');
-  bgGrad.addColorStop(0.35, 'rgba(255, 120, 16, 0.8)');
-  bgGrad.addColorStop(0.68, 'rgba(235, 45, 8, 0.55)');
-  bgGrad.addColorStop(0.9, 'rgba(180, 20, 0, 0.25)');
-  bgGrad.addColorStop(1, 'rgba(100, 10, 0, 0)');
-  g.fillStyle = bgGrad;
-  g.beginPath();
-  g.ellipse(W / 2, H * 0.5, W * 0.42, H * 0.48, 0, 0, Math.PI * 2);
-  g.fill();
-
-  // Organic licking tongues of fire with cubic bezier curves
-  const drawFlameTongue = (cx: number, cy: number, w: number, h: number, col: string) => {
-    g.save();
-    g.fillStyle = col;
-    g.beginPath();
-    g.moveTo(cx - w, cy);
-    g.bezierCurveTo(cx - w * 1.1, cy - h * 0.35, cx - w * 0.4, cy - h * 0.75, cx, cy - h);
-    g.bezierCurveTo(cx + w * 0.4, cy - h * 0.75, cx + w * 1.1, cy - h * 0.35, cx + w, cy);
-    g.bezierCurveTo(cx + w * 0.5, cy + h * 0.15, cx - w * 0.5, cy + h * 0.15, cx - w, cy);
-    g.fill();
-    g.restore();
-  };
-
-  // Stacked layered flame tongues (outer orange to inner white-hot)
-  drawFlameTongue(W * 0.34, H * 0.88, W * 0.22, H * 0.65, 'rgba(255, 90, 10, 0.65)');
-  drawFlameTongue(W * 0.66, H * 0.86, W * 0.24, H * 0.7, 'rgba(255, 85, 10, 0.65)');
-  drawFlameTongue(W * 0.5, H * 0.92, W * 0.32, H * 0.82, 'rgba(255, 140, 20, 0.75)');
-  drawFlameTongue(W * 0.42, H * 0.94, W * 0.18, H * 0.72, 'rgba(255, 195, 40, 0.85)');
-  drawFlameTongue(W * 0.58, H * 0.94, W * 0.18, H * 0.75, 'rgba(255, 200, 45, 0.85)');
-  // Blinding incandescent plasma core at base
-  drawFlameTongue(W * 0.5, H * 0.96, W * 0.16, H * 0.48, 'rgba(255, 255, 220, 0.98)');
-  drawFlameTongue(W * 0.5, H * 0.98, W * 0.1, H * 0.3, 'rgba(255, 255, 255, 1)');
-
-  // Golden flying sparks embedded in flame column
-  g.fillStyle = 'rgba(255, 245, 180, 0.95)';
-  for (let s = 0; s < 36; s++) {
-    const sx = W * 0.2 + Math.random() * W * 0.6;
-    const sy = H * 0.05 + Math.random() * H * 0.85;
-    const sr = 1 + Math.random() * 2.8;
-    g.beginPath();
-    g.arc(sx, sy, sr, 0, Math.PI * 2);
-    g.fill();
-  }
-
-  const tex = toTex(c, 4);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.RepeatWrapping; // enable vertical looping for live flame scroll
-  return tex;
-}
-
-/**
- * Procedural billowing fireball puff texture for rolling mushroom flame crests
- */
-function billowFireballTexture() {
-  const S = 256;
-  const { c, g } = canvas(S, S);
-  g.clearRect(0, 0, S, S);
-
-  const cx = S / 2;
-  const cy = S / 2;
-  const R = S * 0.46;
-
-  // Radial undulating fireball puff
-  const radGrad = g.createRadialGradient(cx, cy, 0, cx, cy, R);
-  radGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
-  radGrad.addColorStop(0.18, 'rgba(255, 220, 80, 0.92)');
-  radGrad.addColorStop(0.42, 'rgba(255, 130, 20, 0.8)');
-  radGrad.addColorStop(0.72, 'rgba(220, 45, 6, 0.5)');
-  radGrad.addColorStop(0.92, 'rgba(160, 15, 0, 0.18)');
-  radGrad.addColorStop(1, 'rgba(80, 5, 0, 0)');
-
-  g.fillStyle = radGrad;
-  g.beginPath();
-  // Draw organic multi-lobed puff boundary
-  const steps = 32;
-  for (let i = 0; i < steps; i++) {
-    const a = (i / steps) * Math.PI * 2;
-    const rVar = R * (0.86 + Math.sin(a * 5) * 0.08 + Math.cos(a * 7) * 0.06);
-    const px = cx + Math.cos(a) * rVar;
-    const py = cy + Math.sin(a) * rVar;
-    if (i === 0) g.moveTo(px, py);
-    else g.lineTo(px, py);
-  }
-  g.closePath();
-  g.fill();
-
-  const tex = toTex(c, 4);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  return tex;
-}
-
 function bannerTexture() {
   const W = 1024;
   const Hh = 512;
@@ -791,7 +687,7 @@ function floorDecalTexture() {
   return toTex(c, 4);
 }
 
-export function buildArena(scene: THREE.Scene): Arena {
+export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
   scene.background = new THREE.Color(0x010206);
   // Deep dark stadium contrast: crisp midnight shadows without milky fog bleaching
   scene.fog = new THREE.FogExp2(0x020308, 0.0016);
@@ -799,7 +695,7 @@ export function buildArena(scene: THREE.Scene): Arena {
   // ---------- BROADCAST RING LIGHTING: rich saturated colours, crisp highlights, deep shadows ----------
   scene.add(new THREE.AmbientLight(0x5a70a8, 0.05));
   scene.add(new THREE.HemisphereLight(0x7da4f0, 0x0c0d18, 0.18));
-  const key = new THREE.DirectionalLight(0xfff3e2, 2.2);
+  const key = new THREE.DirectionalLight(0xfff0dc, 1.25);
   key.position.set(12, 40, 18);
   key.castShadow = true;
   key.shadow.mapSize.set(1536, 1536);
@@ -823,13 +719,13 @@ export function buildArena(scene: THREE.Scene): Arena {
     scene.add(s, s.target);
     return s;
   };
-  // THE RING KEY: tuned so canvas and robots retain rich saturated colors without being bleached to white
-  const ringKey = new THREE.SpotLight(0xfff4e6, 24, 96, 0.65, 0.48, 0.94);
+  // THE RING KEY: spotlight seimbang (intensity 3.8) agar gambar logo & tekstur matras tampil jernih tanpa silau/pucat
+  const ringKey = new THREE.SpotLight(0xffeed6, 3.8, 96, 0.65, 0.52, 0.94);
   ringKey.position.set(5, 33, 7);
   ringKey.target.position.set(0, 0, 0);
   scene.add(ringKey, ringKey.target);
-  // A softer cool fill from the opposite corner separates far-side armour with clear definition
-  const ringFill = new THREE.SpotLight(0x9fc4ff, 9.5, 88, 0.84, 0.60, 1.0);
+  // A gentle cool fill from the opposite corner (intensity 1.8) menjaga bayangan lembut dan warna tidak mati
+  const ringFill = new THREE.SpotLight(0x9fc4ff, 1.8, 88, 0.84, 0.60, 1.0);
   ringFill.position.set(-11, 30, -13);
   ringFill.target.position.set(0, 0, 0);
   scene.add(ringFill, ringFill.target);
@@ -852,7 +748,13 @@ export function buildArena(scene: THREE.Scene): Arena {
 
   // ---------- ring ----------
   const ringTex = ringTexture();
-  const topMat = new THREE.MeshStandardMaterial({ map: ringTex, roughness: 0.74, metalness: 0.04 });
+  // Matras dengan respon pencahayaan seimbang & tekstur warna tajam, tidak silau dan tidak terlalu gelap
+  const topMat = new THREE.MeshStandardMaterial({
+    map: ringTex,
+    color: new THREE.Color(0xffffff),
+    roughness: 0.82,
+    metalness: 0.04,
+  });
   const apronTex = stripTexture(true);
   apronTex.repeat.set(1, 1);
   const apronMat = new THREE.MeshStandardMaterial({ map: apronTex, emissiveMap: apronTex, emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.3, roughness: 0.66, metalness: 0.22 });
@@ -946,17 +848,18 @@ export function buildArena(scene: THREE.Scene): Arena {
   mkHalo(DECK_W / 2 + haloD / 2 - 0.4, 0, -Math.PI / 2);
   mkHalo(-DECK_W / 2 - haloD / 2 + 0.4, 0, Math.PI / 2);
 
-  // ---------- THE GLOSSY FLOORS: real reflections of the Titans and the lights in the canvas and the hall floor
-  const canvasSheen = buildSheen(new THREE.PlaneGeometry(30.6, 30.6), { strength: 0.55, res: 384 });
+  // ---------- THE GLOSSY FLOORS: disabled on canvas to keep matras pure deep dark matte without bleached white sheen
+  const canvasSheen = buildSheen(new THREE.PlaneGeometry(30.6, 30.6), { strength: 0.0, res: 256 });
   canvasSheen.mesh.rotation.x = -Math.PI / 2;
   canvasSheen.mesh.position.y = 0.025;
+  canvasSheen.setEnabled(false);
   ring.add(canvasSheen.mesh);
-  const hallSheen = buildSheen(new THREE.RingGeometry(18, 62, 72, 1), { strength: 0.6, res: 256, layer: REFLECT_LIGHTS_LAYER });
+  const hallSheen = buildSheen(new THREE.RingGeometry(18, 62, 72, 1), { strength: 0.4, res: 256, layer: REFLECT_LIGHTS_LAYER });
   hallSheen.mesh.rotation.x = -Math.PI / 2;
   hallSheen.mesh.position.y = -1.375;
+  hallSheen.setEnabled(false);
   scene.add(hallSheen.mesh);
-  // the two glossies are switched separately: the canvas sheen carries the heroes (switch it off last), the hall
-  // floor is the big, soft one that the quality governor gives up first
+  // the two glossies are switched separately; default is off for 60 FPS performance and dark canvas contrast
   const setMirrors = (canvasOn: boolean, hallOn = canvasOn) => {
     canvasSheen.setEnabled(canvasOn);
     hallSheen.setEnabled(hallOn);
@@ -979,37 +882,7 @@ export function buildArena(scene: THREE.Scene): Arena {
   const postMat = new THREE.MeshStandardMaterial({ color: 0x181b22, metalness: 0.92, roughness: 0.28 });
   const chromeMat = new THREE.MeshStandardMaterial({ color: 0x485264, metalness: 0.96, roughness: 0.18 });
   const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x15181f, metalness: 0.9, roughness: 0.32 });
-  const concertFlameTex = concertFlameTexture();
-  const billowTex = billowFireballTexture();
 
-  const flameCoreMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0xffffff),
-    transparent: true,
-    opacity: 0.96,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const flamePlumeMat = new THREE.MeshBasicMaterial({
-    map: concertFlameTex,
-    color: new THREE.Color(0xffb848),
-    transparent: true,
-    opacity: 0.88,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    toneMapped: false,
-  });
-  const flameBillowMat = new THREE.MeshBasicMaterial({
-    map: billowTex,
-    color: new THREE.Color(0xff7414),
-    transparent: true,
-    opacity: 0.82,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    toneMapped: false,
-  });
   const pilotAmberMat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0xff9820),
     transparent: true,
@@ -1049,16 +922,8 @@ export function buildArena(scene: THREE.Scene): Arena {
   // Volumetric concert flame emitter interface
   interface ConcertFlameEmitter {
     group: THREE.Group;
-    coreSpindle: THREE.Mesh;
-    plumePlanes: THREE.Mesh[];
-    billowLobes: THREE.Mesh[];
     pilotGroup: THREE.Group;
-    light: THREE.PointLight;
     ledRing: THREE.MeshBasicMaterial;
-    level: number;
-    targetLevel: number;
-    timer: number;
-    mode: 'idle' | 'puff' | 'blast';
     placement: PyroPlacement;
     cornerIdx: number;
   }
@@ -1073,37 +938,15 @@ export function buildArena(scene: THREE.Scene): Arena {
   ];
 
   let currentPyroPlacement: PyroPlacement = loadPyroPlacement();
+  const atmosphere = new AtmosphereEffects(scene);
+  let currentCamera: THREE.Camera | undefined = camera;
 
   const buildConcertFlameMesh = (parentGroup: THREE.Group, baseY: number, placement: PyroPlacement, cornerIdx: number, cType: string) => {
     const flameMount = new THREE.Group();
     flameMount.position.y = baseY;
     parentGroup.add(flameMount);
 
-    // 1. Incandescent white-hot core plasma spindle
-    const coreSpindle = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.44, 1.0, 16, 2), flameCoreMat);
-    coreSpindle.visible = false;
-    flameMount.add(coreSpindle);
-
-    // 2. 3 crossed billowing flame plume planes with live scrolling flame tongues
-    const plumePlanes: THREE.Mesh[] = [];
-    for (let p = 0; p < 3; p++) {
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0, 4, 8), flamePlumeMat);
-      plane.visible = false;
-      plane.rotation.y = (p / 3) * Math.PI;
-      flameMount.add(plane);
-      plumePlanes.push(plane);
-    }
-
-    // 3. 3 rolling volumetric fireball lobes (lower puff, mid body, top mushroom canopy)
-    const billowLobes: THREE.Mesh[] = [];
-    for (let b = 0; b < 3; b++) {
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), flameBillowMat);
-      lobe.visible = false;
-      flameMount.add(lobe);
-      billowLobes.push(lobe);
-    }
-
-    // 4. Dual-color realistic pilot flame (blue base bulb + flickering amber tongue)
+    // Dual-color realistic pilot flame (blue base bulb + flickering amber tongue)
     const pilotGroup = new THREE.Group();
     const pilotBase = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), pilotBlueMat);
     pilotBase.position.y = 0.08;
@@ -1113,13 +956,7 @@ export function buildArena(scene: THREE.Scene): Arena {
     pilotGroup.add(pilotTongue);
     flameMount.add(pilotGroup);
 
-    // 5. Dynamic point light with zero overhead when idle (visible = false when not firing!)
-    const flameLight = new THREE.PointLight(0xff6810, 0, 24, 1.3);
-    flameLight.position.set(0, 1.2, 0);
-    flameLight.visible = false;
-    flameMount.add(flameLight);
-
-    // 6. Glowing LED status ring
+    // Glowing LED status ring
     const ledMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(cType === 'blue' ? 0x00e1ff : cType === 'red' ? 0xff4d00 : 0xffbe00).multiplyScalar(1.2),
       toneMapped: false,
@@ -1127,16 +964,8 @@ export function buildArena(scene: THREE.Scene): Arena {
 
     const emitter: ConcertFlameEmitter = {
       group: parentGroup,
-      coreSpindle,
-      plumePlanes,
-      billowLobes,
       pilotGroup,
-      light: flameLight,
       ledRing: ledMat,
-      level: 0,
-      targetLevel: 0,
-      timer: 0,
-      mode: 'idle',
       placement,
       cornerIdx,
     };
@@ -1371,6 +1200,7 @@ export function buildArena(scene: THREE.Scene): Arena {
   const applyPyroPlacement = (placement: PyroPlacement) => {
     currentPyroPlacement = placement;
     savePyroPlacement(placement);
+    atmosphere.setPlacement(placement);
     for (let i = 0; i < 4; i++) {
       if (placement === 'ring_posts') {
         cornerNozzlePositions[i].copy(postNozzlePositions[i]);
@@ -1388,15 +1218,9 @@ export function buildArena(scene: THREE.Scene): Arena {
 
   const getPyroPlacement = (): PyroPlacement => currentPyroPlacement;
 
-  const fireCornerPyro = (level: number, duration = 1.8, mode: 'puff' | 'blast' = 'blast') => {
-    const lvl = Math.max(0, Math.min(1.2, level));
-    for (const nz of nozzleEmitters) {
-      if (nz.placement !== currentPyroPlacement) continue;
-      nz.targetLevel = lvl;
-      nz.level = Math.max(nz.level, lvl * 0.85);
-      nz.timer = duration;
-      nz.mode = mode;
-    }
+  const fireCornerPyro = (level: number, duration = 1.4, mode: 'puff' | 'blast' = 'blast') => {
+    const lvl = Math.max(0.2, Math.min(1.2, level));
+    atmosphere.fire(cornerNozzlePositions, lvl, duration, mode);
   };
 
   const triggerCornerPad = (cornerIdx: number, strength: number) => {
@@ -1817,7 +1641,9 @@ export function buildArena(scene: THREE.Scene): Arena {
   for (let k = 0; k < tiers; k++) {
     for (let r = 0; r < rowsPer; r++) {
       const rs = rowInner(k, r) + rowW * 0.5;
-      const n = Math.floor((Math.PI * 2 * rs) / SPECTATOR_SEAT_SPACING);
+      // Distance LOD: Near tiers stay dense (1.25m spacing), distant upper tiers have 1.85m spacing
+      const seatSpacing = k < 2 ? 1.25 : 1.85;
+      const n = Math.floor((Math.PI * 2 * rs) / seatSpacing);
       const off = r * 0.5 + k * 0.3;
       for (let i = 0; i < n; i++) {
         const a = ((i + off) / n) * Math.PI * 2;
@@ -1829,7 +1655,7 @@ export function buildArena(scene: THREE.Scene): Arena {
         if (k < 2 && dEntry < 5.4) continue;
         const x = Math.cos(a) * rs;
         const z = Math.sin(a) * rs;
-        spots.push({ x, y: rowH(k, r), z, yaw: Math.atan2(-x, -z), empty: Math.random() < 0.1 });
+        spots.push({ x, y: rowH(k, r), z, yaw: Math.atan2(-x, -z), empty: Math.random() < 0.14 });
       }
     }
   }
@@ -1987,19 +1813,21 @@ export function buildArena(scene: THREE.Scene): Arena {
     kick = Math.max(kick, Math.min(1, k));
     spotRig.strobe(k);
   };
-  const update = (t: number, dt: number, hype: number, focus?: THREE.Vector3) => {
+  const update = (t: number, dt: number, hype: number, focus?: THREE.Vector3, cam?: THREE.Camera) => {
+    if (cam) currentCamera = cam;
     smoothHype += (hype - smoothHype) * (1 - Math.exp(-3 * dt));
     kick = Math.max(0, kick - dt * 5);
     updateRopes(dt);
     updateRing(dt);
     frame++;
-    crowd.update(t, smoothHype, frame % 3, 3);
+    // Pass camera for behind-the-camera frustum culling
+    crowd.update(t, smoothHype, frame % 3, 3, currentCamera);
     const foc = focus ?? ORIGIN;
-    props.update(t, dt, smoothHype, foc);
-    rimSide.intensity = 1.25 + smoothHype * 0.3;
-    // Keep the center bright enough to read, with rich contrast and saturated canvas colors
-    ringKey.intensity = 20 + smoothHype * 2.5 + Math.sin(t * 0.4) * 0.2 + kick * 1.2;
-    ringFill.intensity = 7.5 + smoothHype * 1.2;
+    props.update(t, dt, smoothHype, foc, currentCamera);
+    rimSide.intensity = 1.0 + smoothHype * 0.2;
+    // Balanced canvas lighting: cahaya pas dan cocok agar gambar & warna matras tampak jelas dan tajam
+    ringKey.intensity = 3.8 + smoothHype * 0.4 + kick * 0.25;
+    ringFill.intensity = 1.8 + smoothHype * 0.25;
     ledTex.offset.x = (ledTex.offset.x + dt * 0.012) % 1;
     spotRig.update(t, dt, smoothHype, foc);
     show.update(t, dt, smoothHype);
@@ -2017,76 +1845,23 @@ export function buildArena(scene: THREE.Scene): Arena {
       sp.group.scale.set(comp, 1, 1 - sp.jolt * 0.1);
     }
 
-    // Update concert flame nozzles (plume scroll, billowing, mushroom bloom & pilot flicker)
-    concertFlameTex.offset.y = -(t * 3.6) % 1;
+    // Update concert flame particle physics & dynamic flash pointlight (AtmosphereEffects)
+    if (cam) currentCamera = cam;
+    if (currentCamera) {
+      atmosphere.update(dt, currentCamera);
+    }
 
+    // Update hardware nozzle pilot lights (blue base + flickering amber flame tongue)
     for (let i = 0; i < nozzleEmitters.length; i++) {
       const nz = nozzleEmitters[i];
       if (nz.placement !== currentPyroPlacement) {
         nz.group.visible = false;
-        nz.light.visible = false;
-        nz.level = 0;
         continue;
       }
       nz.group.visible = true;
-
-      if (nz.timer > 0) {
-        nz.timer -= dt;
-        if (nz.timer <= 0) {
-          nz.targetLevel = 0;
-          nz.mode = 'idle';
-        }
-      }
-      nz.level += (nz.targetLevel - nz.level) * (1 - Math.exp(-22 * dt));
-      const flicker = 0.88 + Math.sin(t * 34 + nz.cornerIdx * 2.1) * 0.12 + Math.cos(t * 52 + nz.cornerIdx * 1.5) * 0.08;
-      const isFiring = nz.level > 0.035;
-
-      if (isFiring) {
-        const isPlatform = nz.placement === 'steel_platform';
-        const baseH = nz.mode === 'puff' ? (isPlatform ? 4.2 : 3.0) : (isPlatform ? 9.8 : 6.8);
-        const baseW = nz.mode === 'puff' ? (isPlatform ? 1.6 : 1.3) : (isPlatform ? 3.0 : 2.4);
-        const height = baseH * nz.level * flicker;
-        const width = baseW * (0.8 + nz.level * 0.4) * flicker;
-
-        nz.light.visible = true;
-        nz.pilotGroup.visible = false;
-        nz.coreSpindle.visible = true;
-        nz.coreSpindle.scale.set(width * 0.42, height * 0.85, width * 0.42);
-        nz.coreSpindle.position.y = height * 0.42;
-
-        for (let p = 0; p < nz.plumePlanes.length; p++) {
-          const plane = nz.plumePlanes[p];
-          plane.visible = true;
-          plane.scale.set(width, height, 1);
-          plane.position.y = height * 0.5;
-          plane.rotation.y = (p / 3) * Math.PI + t * 2.2 + nz.cornerIdx * 0.75;
-        }
-
-        // Billow lobes (lower puff, mid body, top mushrooming concert bloom)
-        nz.billowLobes[0].visible = true;
-        nz.billowLobes[0].scale.set(width * 0.75, width * 0.75, width * 0.75);
-        nz.billowLobes[0].position.y = height * 0.28;
-
-        nz.billowLobes[1].visible = true;
-        nz.billowLobes[1].scale.set(width * 1.05, width * 1.05, width * 1.05);
-        nz.billowLobes[1].position.y = height * 0.62;
-
-        nz.billowLobes[2].visible = true;
-        nz.billowLobes[2].scale.set(width * 1.45, width * 1.25, width * 1.45);
-        nz.billowLobes[2].position.y = height * 0.95;
-
-        nz.light.intensity = (nz.mode === 'puff' ? 4.8 : 12.5) * nz.level * flicker;
-      } else {
-        // Zero point-light overhead when idle (essential for 60 FPS in combat!)
-        nz.light.visible = false;
-        nz.coreSpindle.visible = false;
-        for (const p of nz.plumePlanes) p.visible = false;
-        for (const b of nz.billowLobes) b.visible = false;
-
-        nz.pilotGroup.visible = true;
-        const pilotH = 0.22 + Math.sin(t * 16 + nz.cornerIdx) * 0.06;
-        nz.pilotGroup.scale.set(1, pilotH * 4.2, 1);
-      }
+      nz.pilotGroup.visible = true;
+      const pilotH = 0.22 + Math.sin(t * 16 + nz.cornerIdx) * 0.06;
+      nz.pilotGroup.scale.set(1, pilotH * 4.2, 1);
     }
   };
 
@@ -2111,5 +1886,6 @@ export function buildArena(scene: THREE.Scene): Arena {
     triggerCornerPad,
     track: spotRig.track,
     strobe,
+    dispose: () => atmosphere.dispose(),
   };
 }

@@ -55,6 +55,58 @@ export function SfxPicker({ value, onPick }: { value: SfxProfile; onPick: (id: S
   );
 }
 
+export function DirectionalHeadSnapPicker({ value, onPick }: { value: boolean; onPick: (on: boolean) => void }) {
+  return (
+    <div>
+      <SectionTitle
+        right={
+          <span className={`font-tech text-[8px] font-bold tracking-[0.2em] ${value ? 'text-emerald-300' : 'text-white/45'}`}>
+            {value ? 'FITUR AKTIF' : 'STANDAR'}
+          </span>
+        }
+      >
+        DIRECTIONAL HEAD SNAP (ANIMASI PUKULAN)
+      </SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => onPick(true)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${value ? 'tile-on' : ''}`}
+          style={cssVar('--c', '#34d399')}
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-display text-[18px] leading-none tracking-wider" style={{ color: value ? '#6ee7b7' : '#ffffff' }}>
+              HEAD SNAP: ON
+            </span>
+            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 font-tech text-[8px] font-bold text-emerald-300">
+              AKTIF
+            </span>
+          </div>
+          <div className="mt-1 font-tech text-[8.5px] leading-tight tracking-wider text-emerald-200/80">
+            Jab lurus · Hook leher + delayed torso · Uppercut angkat badan
+          </div>
+        </button>
+        <button
+          onClick={() => onPick(false)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${!value ? 'tile-on' : ''}`}
+          style={cssVar('--c', '#94a3b8')}
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-display text-[18px] leading-none tracking-wider" style={{ color: !value ? '#cbd5e1' : '#ffffff' }}>
+              HEAD SNAP: OFF
+            </span>
+            <span className="rounded bg-white/10 px-1.5 py-0.5 font-tech text-[8px] font-bold text-white/50">
+              STANDAR
+            </span>
+          </div>
+          <div className="mt-1 font-tech text-[8.5px] leading-tight tracking-wider text-white/50">
+            Animasi reaksi benturan / kepala standar bawaan
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function DifficultyPicker({ ultra, onPick }: { ultra: boolean; onPick: (ultra: boolean) => void }) {
   return (
     <div>

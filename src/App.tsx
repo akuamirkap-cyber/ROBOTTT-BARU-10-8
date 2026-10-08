@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAM_MODES, DEFAULT_BLOOM_PCT, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadFootwork, loadGfxMode, loadIq, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type TransId } from './game/Game';
+import { CAM_MODES, DEFAULT_BLOOM_PCT, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
 import { loadSfxProfile, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
@@ -97,6 +97,13 @@ export default function App() {
     gameRef.current?.setBloomPercent(pct);
   };
 
+  const [pyroLocal, setPyroLocal] = useState<PyroPlacement>(loadPyroPlacement);
+  const pyroNow = hud?.pyroPlacement ?? pyroLocal;
+  const pickPyro = (p: PyroPlacement) => {
+    setPyroLocal(p);
+    gameRef.current?.setPyroPlacement(p);
+  };
+
   const resetVisuals = () => {
     gameRef.current?.resetVisualsToNormal();
     setBrightLocal(1.0);
@@ -116,6 +123,13 @@ export default function App() {
   const pickSfx = (id: SfxProfile) => {
     setSfxId(id);
     gameRef.current?.setSoundProfile(id);
+  };
+
+  const [snapLocal, setSnapLocal] = useState<boolean>(loadDirectionalHeadSnap);
+  const snapNow = hud?.directionalHeadSnap ?? snapLocal;
+  const pickSnap = (on: boolean) => {
+    setSnapLocal(on);
+    gameRef.current?.setDirectionalHeadSnap(on);
   };
 
   // ---------------------------------------------------------------- the ring transition (see TRANSITIONS in Game.ts)
@@ -294,6 +308,10 @@ export default function App() {
           onResetVisuals={resetVisuals}
           gfx={gfxNow}
           onGfx={pickGfx}
+          pyro={pyroNow}
+          onPyro={pickPyro}
+          directionalHeadSnap={snapNow}
+          onDirectionalHeadSnap={pickSnap}
           game={game}
           hud={hud}
         />
@@ -403,8 +421,12 @@ export default function App() {
           bloom={bloomNow}
           onBloom={pickBloom}
           onResetVisuals={resetVisuals}
+          pyro={pyroNow}
+          onPyro={pickPyro}
           trans={transId}
           onTrans={pickTrans}
+          directionalHeadSnap={snapNow}
+          onDirectionalHeadSnap={pickSnap}
           onResume={() => game?.togglePause()}
           onMenu={() => {
             game?.togglePause();
@@ -417,10 +439,24 @@ export default function App() {
       {/* ---------- the live FPS / graphics chip on the lobby screen ---------- */}
       {phase === 'menu' && <div className="absolute bottom-3 left-3 z-40 flex gap-2">{gfxChip()}</div>}
 
-      {/* ---------- utility buttons (fps / graphics / pause / sound during match) ---------- */}
+      {/* ---------- utility buttons (fps / graphics / pause / sound / directional head snap during match) ---------- */}
       {phase !== 'menu' && (
         <div className="absolute right-3 z-30 flex gap-2" style={inMatch ? (touch ? { top: 78 } : { bottom: 12 }) : { top: 12 }}>
           {gfxChip()}
+          {inMatch && (
+            <button
+              onClick={() => pickSnap(!snapNow)}
+              className={`ghost cut-sm pointer-events-auto flex h-9 items-center gap-1.5 px-2.5 font-tech text-[9px] font-bold tracking-[0.16em] transition-all ${
+                snapNow
+                  ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200 shadow-[0_0_12px_rgba(52,211,153,0.3)]'
+                  : 'border-white/20 text-white/50'
+              }`}
+              title="Toggle Directional Head Snap (Tekan 0)"
+            >
+              <span>{snapNow ? '⚡' : '⚪'}</span>
+              <span className="hidden sm:inline">HEAD SNAP: {snapNow ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
           {inMatch && (
             <button
               onClick={() => pickCam((camNow + 1) % CAM_MODES.length)}

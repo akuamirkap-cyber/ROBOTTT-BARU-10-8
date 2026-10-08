@@ -77,6 +77,8 @@ export class Effects {
   private sDummy = new THREE.Object3D();
   private sColor = new THREE.Color();
 
+  private wasPointsActive = false;
+
   constructor(scene: THREE.Scene) {
     const N = this.N;
     this.pos = new Float32Array(N * 3).fill(-100);
@@ -120,9 +122,9 @@ export class Effects {
     }
     scene.add(this.shardMesh);
 
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       const m = new THREE.Mesh(
-        new THREE.RingGeometry(0.86, 1, 56),
+        new THREE.RingGeometry(0.86, 1, 28),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
       );
       m.rotation.x = -Math.PI / 2;
@@ -130,9 +132,9 @@ export class Effects {
       scene.add(m);
       this.rings.push({ m, age: 1, life: 1, max: 1 });
     }
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(
-        new THREE.RingGeometry(0.76, 1, 48),
+        new THREE.RingGeometry(0.76, 1, 24),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
       );
       m.visible = false;
@@ -172,7 +174,8 @@ export class Effects {
    * and sometimes pop into a few tiny sparks. Most are fast (long streaks), ~20% drift slowly and glow for longer.
    */
   private weldBurst(p: THREE.Vector3, n: number, speed: number, c: THREE.Color, warm: boolean, dir: THREE.Vector3 | undefined, spread: number, life: number, grav: number) {
-    for (let k = 0; k < n; k++) {
+    const actualN = Math.min(n, 32);
+    for (let k = 0; k < actualN; k++) {
       let vx = (Math.random() * 2 - 1) * spread;
       let vy = (Math.random() * 2 - 1) * spread * 0.8 + 0.3;
       let vz = (Math.random() * 2 - 1) * spread;
@@ -198,7 +201,7 @@ export class Effects {
         c.r,
         c.g,
         c.b,
-        !drift && Math.random() < 0.2 ? 0.35 + Math.random() * 0.25 : 0,
+        !drift && Math.random() < 0.08 ? 0.35 + Math.random() * 0.25 : 0,
       );
     }
   }
@@ -213,7 +216,8 @@ export class Effects {
       this.weldBurst(p, n, speed, c, warm, dir, spread, life, grav);
       return;
     }
-    for (let k = 0; k < n; k++) {
+    const actualN = Math.min(n, 30);
+    for (let k = 0; k < actualN; k++) {
       const i = this.head;
       this.head = (this.head + 1) % this.N;
       const rx = Math.random() * 2 - 1;
@@ -292,7 +296,7 @@ export class Effects {
     const r = this.rings.find((q) => q.age >= q.life) ?? this.rings[0];
     r.age = 0;
     r.life = life;
-    r.max = max;
+    r.max = Math.min(max, 5.5);
     r.m.position.set(x, y, z);
     (r.m.material as THREE.MeshBasicMaterial).color.setHex(color);
     r.m.visible = true;
@@ -305,7 +309,7 @@ export class Effects {
     const r = this.impactRings.find((q) => q.age >= q.life) ?? this.impactRings[0];
     r.age = 0;
     r.life = life;
-    r.max = max;
+    r.max = Math.min(max, 4.6);
     r.m.position.copy(p);
     // Orient ring perpendicular to the punch vector so it bursts outward like a 3D sonic boom halo
     r.m.lookAt(p.x + dir.x, p.y + dir.y * 0.4, p.z + dir.z);
@@ -315,7 +319,7 @@ export class Effects {
     const sf = this.starFlares.find((q) => q.age >= q.life) ?? this.starFlares[0];
     sf.age = 0;
     sf.life = life * 0.65;
-    sf.size = max * 0.95;
+    sf.size = Math.min(max * 0.85, 4.2);
     sf.s.position.copy(p);
     const smat = sf.s.material as THREE.SpriteMaterial;
     smat.color.setHex(0xffffff);
@@ -339,8 +343,10 @@ export class Effects {
   update(dt: number, cam?: THREE.Camera) {
     if (cam) this.streaks.update(dt, cam);
     const N = this.N;
+    let anyPoint = false;
     for (let i = 0; i < N; i++) {
       if (this.life[i] <= 0) continue;
+      anyPoint = true;
       this.life[i] -= dt;
       const i3 = i * 3;
       if (this.life[i] <= 0) {
@@ -363,9 +369,12 @@ export class Effects {
       this.col[i3 + 1] = this.base[i3 + 1] * f;
       this.col[i3 + 2] = this.base[i3 + 2] * f;
     }
-    const g = this.points.geometry;
-    g.attributes.position.needsUpdate = true;
-    g.attributes.color.needsUpdate = true;
+    if (anyPoint || this.wasPointsActive) {
+      const g = this.points.geometry;
+      g.attributes.position.needsUpdate = true;
+      g.attributes.color.needsUpdate = true;
+      this.wasPointsActive = anyPoint;
+    }
 
     // ---- debris: gravity, tumble, bounce + skid on the canvas, shrink away at the end of life
     let anyShard = false;

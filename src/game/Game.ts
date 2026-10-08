@@ -92,6 +92,24 @@ export const loadDifficulty = (): Difficulty => {
   }
 };
 
+// ------------------------------------------------------------------ directional head snap
+export const LS_DIRECTIONAL_HEAD_SNAP = 'steel-titans-directional-head-snap-v1';
+export const loadDirectionalHeadSnap = (): boolean => {
+  try {
+    const v = localStorage.getItem(LS_DIRECTIONAL_HEAD_SNAP);
+    return v === null ? true : v === 'true'; // default ON for authentic boxing impact
+  } catch {
+    return true;
+  }
+};
+export const saveDirectionalHeadSnap = (on: boolean) => {
+  try {
+    localStorage.setItem(LS_DIRECTIONAL_HEAD_SNAP, String(on));
+  } catch {
+    /* ignore */
+  }
+};
+
 /**
  * ULTRA HARD: the same four champions, but upgraded across the board — tougher chassis, harder hits, faster
  * attacks, near-instant reads, relentless counters, and every one of them carries Overdrive.
@@ -344,6 +362,8 @@ export interface HudState {
   bloomPercent?: number;
   /** placement of the arena flame pyro nozzles ('ring_posts' | 'steel_platform') */
   pyroPlacement?: PyroPlacement;
+  /** directional head snap toggle */
+  directionalHeadSnap?: boolean;
   stats?: MatchStats; // the fight sheet shown on the result screen
   /** TEAM MATCH (2v2): the second robot on each side */
   team?: {
@@ -1018,6 +1038,10 @@ class Fighter {
   juggle = 0;
   comboTaken = 0;
   hitConfirmed = false;
+  hitKind: 'jab' | 'hook' | 'upper' | 'cross' | 'standard' = 'standard';
+  hitArm = 0;
+  hitSeq = 0;
+  hitPower = 0.5;
   moveSeq = 0;
   downT = 0;
   wallT = 0;
@@ -1326,11 +1350,11 @@ export interface QualityTier {
   bloomScale: number;
 }
 export const QUALITY_TIERS: QualityTier[] = [
-  { key: 'max', name: 'MAKSIMAL', mirror: 2, samples: 0, scale: 1.0, shadow: 1536, bloom: true, bloomScale: 0.50 },
-  { key: 'high', name: 'TINGGI', mirror: 1, samples: 0, scale: 1.0, shadow: 1280, bloom: true, bloomScale: 0.50 },
-  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.45 },
-  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.40 },
-  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.88, shadow: 512, bloom: true, bloomScale: 0.35 },
+  { key: 'max', name: 'MAKSIMAL', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.45 },
+  { key: 'high', name: 'TINGGI', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.45 },
+  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.40 },
+  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.35 },
+  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.88, shadow: 512, bloom: true, bloomScale: 0.30 },
 ];
 
 export type GfxMode = 'auto' | 'max' | 'balanced' | 'performance';
@@ -1484,8 +1508,8 @@ export class Game {
   private dprCap = 1.5; // the device pixel ratio this screen is allowed to render at (see bootDprCap)
   private quality = 1.0; // the render scale of the CURRENT tier
   private bloomScale = 0.5; // current bloom mip scale; changing tiers must resize the pass even if render scale stays HD
-  private mirrorsOn = true;
-  private hallMirrorOn = true;
+  private mirrorsOn = false;
+  private hallMirrorOn = false;
   // THE QUALITY LADDER: target a locked 60 without downscaling HD early. Rungs shed reflections, samples and shadow
   // detail before the final tier modestly lowers render scale; the governor climbs back only after sustained headroom.
   private qTier = 0;
@@ -1603,6 +1627,7 @@ export class Game {
   private heroMouseX = 0;
   private heroMouseY = 0;
   private menuCamMode: 'hero' | 'arena' | 'full' = 'hero';
+  directionalHeadSnap = loadDirectionalHeadSnap();
 
   constructor(container: HTMLElement, onHud: (h: HudState) => void) {
     this.container = container;
@@ -1632,7 +1657,7 @@ export class Game {
     this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.30; // retain metallic reflections while preserving darker armour and canvas contrast
 
-    this.arena = buildArena(this.scene);
+    this.arena = buildArena(this.scene, this.camera);
     this.hangar = buildHangar(this.scene);
     this.fx = new Effects(this.scene);
     this.decap = new Decap(this.scene);
@@ -1795,9 +1820,11 @@ export class Game {
         this.sfx.step(light * Math.min(1.7, 0.7 * scale + 0.25));
       }
       v.y = f.y + 0.1;
-      if (spd > 1.5) {
-        this.fx.ring(wx, wz, 0x7d8cab, 0.9 * scale + spd * 0.1, 0.3, f.y + 0.06);
+      if (spd > 5.5 && f.y < 0.05) {
+        this.fx.ring(wx, wz, 0x7d8cab, 0.9 * scale + spd * 0.08, 0.28, f.y + 0.06);
         this.fx.spark(v, 2 + Math.floor(spd * 0.7), 1.4 + spd * 0.15, 0x8a8a99, undefined, 1.1, 0.3, 2);
+      } else if (spd > 2.0) {
+        this.fx.spark(v, 1 + Math.floor(spd * 0.4), 1.0 + spd * 0.1, 0x8a8a99, undefined, 0.9, 0.25, 1);
       }
       // TONNAGE: a striding / sprinting machine makes the ring itself answer — the canvas gives a hair under each
       // footfall and the ropes shiver (a fraction of the landing slam), and a full sprint thumps through the camera
@@ -1983,6 +2010,26 @@ export class Game {
     this.emitHud(true);
   }
 
+  setDirectionalHeadSnap(on: boolean) {
+    if (this.directionalHeadSnap === on) return;
+    this.directionalHeadSnap = on;
+    saveDirectionalHeadSnap(on);
+    this.sfx.init();
+    this.sfx.click();
+    if (this.player) {
+      this.popup(
+        new THREE.Vector3(this.player.pos.x, 6.2 * this.player.scale, this.player.pos.y),
+        on ? 'HEAD SNAP: ON' : 'HEAD SNAP: OFF',
+        on ? 'pop-crit' : 'pop-block'
+      );
+    }
+    this.emitHud(true);
+  }
+
+  toggleDirectionalHeadSnap() {
+    this.setDirectionalHeadSnap(!this.directionalHeadSnap);
+  }
+
   /** / and . change the camera preset in the middle of a fight */
   private cycleCamMode(dir: number) {
     const n = (this.camMode + dir + CAM_MODES.length) % CAM_MODES.length;
@@ -2055,6 +2102,7 @@ export class Game {
       mat.map?.dispose();
       mat.dispose();
     }
+    this.arena.dispose?.();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.container.innerHTML = '';
@@ -2849,6 +2897,10 @@ export class Game {
         break;
       case 'BracketLeft':
         this.cycleFootwork(-1);
+        break;
+      case 'Digit0':
+      case 'Backquote':
+        this.toggleDirectionalHeadSnap();
         break;
     }
   }
@@ -3674,7 +3726,7 @@ export class Game {
       this.focus.set((this.player.pos.x + this.enemy.pos.x) / 2, 3.4, (this.player.pos.y + this.enemy.pos.y) / 2);
       // the hero followspots ride the fighters' feet — from the walk-in, through the fight, to the count
       this.arena.track(this.player.robot.root.position, this.enemy.robot.root.visible ? this.enemy.robot.root.position : null);
-      this.arena.update(this.time, raw, this.hype, this.focus);
+      this.arena.update(this.time, raw, this.hype, this.focus, this.camera);
       this.hype = Math.max(0.15, this.hype - raw * 0.12);
       if (this.bannerT > 0) {
         this.bannerT -= raw;
@@ -4588,8 +4640,8 @@ export class Game {
   private startDodge(f: Fighter, dir: THREE.Vector2, kind: 'evade' | 'fwd' | 'back' | 'side' = 'evade') {
     const cfg = {
       evade: { dur: 0.36, speed: 13.5, inv: true, cost: 9, cd: 0.22 },
-      fwd: { dur: 0.3, speed: 23.5, inv: false, cost: 6, cd: 0.2 },
-      back: { dur: 0.33, speed: 16.8, inv: true, cost: 7, cd: 0.24 },
+      fwd: { dur: 0.30, speed: 16.5, inv: false, cost: 6, cd: 0.2 },
+      back: { dur: 0.31, speed: 15.6, inv: true, cost: 7, cd: 0.22 },
       // Shorter lateral travel keeps the body in range of its two planted recovery steps instead of skating across the ring.
       side: { dur: 0.32, speed: 15.2, inv: true, cost: 6, cd: 0.2 },
     }[kind];
@@ -4600,9 +4652,8 @@ export class Game {
     f.dodgeDur = cfg.dur;
     f.dodgeTail = 0.24;
     const rageBoost = f.isPlayer && f.rage ? 1.18 : 1;
-    // A lateral shuffle is foot-led, not a long skate: higher footwork settings add only 5% per rung (3× → 1.1×),
-    // while forward/back evades keep their existing speed scaling. This keeps the two recovery steps under the hips.
-    const fwBoost = f.isPlayer ? (kind === 'side' ? 1 + (this.fwMul - 1) * 0.05 : Math.pow(this.fwMul, 0.6)) : 1;
+    // Controlled footwork boost across all dash directions so recovery steps stay firmly planted under the hips
+    const fwBoost = f.isPlayer ? (kind === 'side' ? 1 + (this.fwMul - 1) * 0.05 : 1 + (this.fwMul - 1) * 0.07) : 1;
     f.dodgeSpeed = cfg.speed * fwBoost * rageBoost;
     // Player sidesteps/backsteps/evades and 3×+ AI dodges have full invulnerability mid-dodge so deadly punches can always be slipped!
     f.dodgeInv = cfg.inv || (f.isPlayer && kind !== 'fwd') || (!f.isPlayer && this.iq >= 3);
@@ -4616,7 +4667,7 @@ export class Game {
     this.sfx.dodge();
     this.fx.spark(new THREE.Vector3(f.pos.x, 0.3, f.pos.y), kind === 'evade' ? 14 : 22, 6, 0x8fd0ff, undefined, 1, 0.4, 3);
     this.fx.ring(f.pos.x, f.pos.y, 0x8fd0ff, 3, 0.3, 0.07);
-    if (f.isPlayer) this.fovKick = kind === 'fwd' ? 2.0 : kind === 'back' ? -1.1 : 0.6;
+    if (f.isPlayer) this.fovKick = kind === 'fwd' ? 0.9 : kind === 'back' ? -0.7 : 0.6;
     return true;
   }
 
@@ -6185,15 +6236,15 @@ export class Game {
       // a straight: shock ring at the fist, speed-streak sparks down the line of the punch
       const fxp = new THREE.Vector3(a.pos.x - toA.x * 3.4, 3.5 * a.scale, a.pos.y - toA.y * 3.4);
       this.fx.ring(a.pos.x - toA.x * 2.4, a.pos.y - toA.y * 2.4, 0x9fe6ff, 9, 0.55);
-      this.fx.spark(fxp, 36, 14, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.6, 3);
+      this.fx.spark(fxp, 16, 13, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.6, 3);
     }
     if (m.id === 'windmill') {
-      // FREESTYLE WINDMILL OVERDRIVE: twin cyclone shockwaves and a massive burst of golden-cyan plasma sparks
+      // FREESTYLE WINDMILL OVERDRIVE: twin cyclone shockwaves and a crisp burst of golden-cyan plasma sparks
       const fxp = new THREE.Vector3(a.pos.x - toA.x * 3.2, 3.8 * a.scale, a.pos.y - toA.y * 3.2);
       this.fx.ring(a.pos.x - toA.x * 2.2, a.pos.y - toA.y * 2.2, 0xffb830, 12.5, 0.65);
       this.fx.ring(a.pos.x - toA.x * 2.2, a.pos.y - toA.y * 2.2, 0x5fe2ff, 8.5, 0.48, 0.14);
-      this.fx.spark(fxp, 52, 16, 0xffb830, new THREE.Vector3(-toA.x, 0.18, -toA.y), 0.75, 0.75, 6);
-      this.fx.spark(fxp, 28, 13, 0x5fe2ff, new THREE.Vector3(-toA.x, 0.1, -toA.y), 0.65, 0.6, 4);
+      this.fx.spark(fxp, 20, 15, 0xffb830, new THREE.Vector3(-toA.x, 0.18, -toA.y), 0.75, 0.75, 6);
+      this.fx.spark(fxp, 12, 12, 0x5fe2ff, new THREE.Vector3(-toA.x, 0.1, -toA.y), 0.65, 0.6, 4);
     }
     if (m.id === 'skyhook') {
       // OVERDRIVE UPPERCUT: the shock goes UP. A white-gold sonic wave is driven straight up off the fist and two
@@ -6204,8 +6255,8 @@ export class Game {
       this.fx.impactWave(fxp, up, 0xffe6b0, 6.5, 0.3);
       this.fx.ring(a.pos.x - toA.x * 1.4, a.pos.y - toA.y * 1.4, 0xffd27a, 8.6, 0.5, 3.5 * a.scale);
       this.fx.ring(a.pos.x - toA.x * 1.2, a.pos.y - toA.y * 1.2, 0xfff6dc, 5.2, 0.42, 4.5 * a.scale);
-      this.fx.spark(fxp, 46, 16, 0xffd27a, up, 0.8, 0.75, 9);
-      this.fx.spark(fxp, 24, 12, 0xffffff, up, 0.6, 0.6, 7);
+      this.fx.spark(fxp, 18, 15, 0xffd27a, up, 0.8, 0.75, 9);
+      this.fx.spark(fxp, 10, 12, 0xffffff, up, 0.6, 0.6, 7);
       this.fx.ring(a.pos.x, a.pos.y, 0xcfd6e6, 4.2, 0.35); // the canvas he pushed off
     }
     if (m.id === 'counter') {
@@ -6213,12 +6264,12 @@ export class Game {
       // streak down the line of the punch, so a counter that connects reads as the Overdrive's little brother.
       const fxp = new THREE.Vector3(a.pos.x - toA.x * 2.4, 3.5 * a.scale, a.pos.y - toA.y * 2.4);
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0x9fe6ff, 5.5, 0.42);
-      this.fx.spark(fxp, 20, 10, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.5, 3);
+      this.fx.spark(fxp, 12, 10, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.5, 3);
     }
     if (m.id === 'slam') {
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffb040, 14, 0.7);
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffffff, 8, 0.45);
-      this.fx.spark(new THREE.Vector3(a.pos.x - toA.x * 2.4, 0.3, a.pos.y - toA.y * 2.4), 60, 11, 0xffa040, undefined, 1.4, 1.0, 16);
+      this.fx.spark(new THREE.Vector3(a.pos.x - toA.x * 2.4, 0.3, a.pos.y - toA.y * 2.4), 22, 11, 0xffa040, undefined, 1.4, 1.0, 16);
     }
 
     // TIMED DODGE: the player pressed dodge while THIS very attack was winding up → it whiffs, wherever he stands
@@ -6351,9 +6402,9 @@ export class Game {
       // Boxing guard pushback: even blocked punches drive the defender backward across the ring while the attacker presses in!
       d.kb.addScaledVector(away, m.knock * 0.88 * (a.rage ? 1.32 : 1));
       if (dist > 2.9 * avg) a.kb.addScaledVector(away, m.knock * 0.34);
-      this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 8, 3.8, 0xb8c4d8, new THREE.Vector3(-away.x, 0.2, -away.y), 1.1, 0.4, 4);
-      this.fx.spark(hitPos, 28 + Math.floor(m.power * 32), 10 + m.power * 5, 0xffd27a, dirAD, 1, 0.6); // steel on steel: a shower of sparks
-      this.fx.spark(hitPos, 8 + Math.floor(m.power * 12), 7, 0xffffff, dirAD, 1.2, 0.35);
+      this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 4, 3.8, 0xb8c4d8, new THREE.Vector3(-away.x, 0.2, -away.y), 1.1, 0.4, 4);
+      this.fx.spark(hitPos, 12 + Math.floor(m.power * 10), 10 + m.power * 4, 0xffd27a, dirAD, 1, 0.55); // steel on steel: a shower of sparks
+      this.fx.spark(hitPos, 4 + Math.floor(m.power * 4), 7, 0xffffff, dirAD, 1.2, 0.32);
       this.fx.flash(hitPos, 2.2 + m.power * 1.6, 0x9fd6ff, 0.16);
       this.fx.shards(hitPos, 2 + Math.floor(m.power * 5), dirAD, d.robot.armorColor, 6 + m.power * 5, 0.6);
       a.recoilArm = this.armOf(a, m);
@@ -6383,6 +6434,10 @@ export class Game {
         d.hitSpin = d.hitL * 0.9;
         d.hitSign = Math.abs(d.hitL) > 0.1 ? Math.sign(d.hitL) : Math.random() < 0.5 ? 1 : -1;
         d.hitPt = aim === AIM_HEAD ? 1 : 0;
+        d.hitKind = m.id === 'jab' ? 'jab' : (m.kind === 'side' || m.id === 'hook' ? 'hook' : (m.kind === 'up' || m.id === 'upper' ? 'upper' : (m.id === 'cross' ? 'cross' : 'standard')));
+        d.hitArm = m.arm;
+        d.hitPower = m.power;
+        d.hitSeq++;
         this.ai.blockT = 0;
         this.sfx.guardBreak();
         this.popup(new THREE.Vector3(d.pos.x, 6.4 * d.scale, d.pos.y), 'GUARD BREAK!', 'pop-crit');
@@ -6414,6 +6469,10 @@ export class Game {
     d.hitPt = aim === AIM_HEAD ? 1 : 0;
     d.hitSpin = d.hitL * (m.kind === 'side' ? 1.7 : 0.9);
     d.hitSign = Math.abs(d.hitL) > 0.1 ? Math.sign(d.hitL) : Math.random() < 0.5 ? 1 : -1;
+    d.hitKind = m.id === 'jab' ? 'jab' : (m.kind === 'side' || m.id === 'hook' ? 'hook' : (m.kind === 'up' || m.id === 'upper' ? 'upper' : (m.id === 'cross' ? 'cross' : 'standard')));
+    d.hitArm = m.arm;
+    d.hitPower = m.power;
+    d.hitSeq++;
     // THE JAB IS HOW YOU CHARGE (see meterGainFor): measure with the jab, bank the meter, cash it in with R
     a.meter = Math.min(100, a.meter + meterGainFor(m.id, dmg, !a.isPlayer && this.ultra));
     d.meter = Math.min(100, d.meter + dmg * 0.55);
@@ -6574,10 +6633,10 @@ export class Game {
     this.fovKick = -(1.8 + big * 4.6);
     this.hype = Math.min(1, this.hype + 0.35 + big * 0.35);
     const hot = aim === AIM_BODY ? 0xff9840 : 0xffc458; // body shots burn warmer, head shots stay golden
-    this.fx.spark(hitPos, 46 + Math.floor(big * 105), 11.5 + big * 15, hot, dirAD, 1.05, 0.98);
-    this.fx.spark(hitPos, 18 + Math.floor(big * 38), 7.5 + big * 9, 0xffffff, dirAD, 1.35, 0.48);
-    this.fx.spark(hitPos, 12 + Math.floor(big * 26), 9.5 + big * 11, 0x7fe0ff, dirAD, 0.9, 0.58); // high-voltage servo arc sparks
-    this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 14 + Math.floor(big * 32), 4.5 + big * 6.5, 0xb9c2d6, undefined, 1.4, 0.65, 7); // floor debris
+    this.fx.spark(hitPos, 14 + Math.floor(big * 16), 11.5 + big * 14, hot, dirAD, 1.0, 0.9);
+    this.fx.spark(hitPos, 6 + Math.floor(big * 6), 7.5 + big * 8, 0xffffff, dirAD, 1.25, 0.45);
+    this.fx.spark(hitPos, 4 + Math.floor(big * 5), 9.5 + big * 10, 0x7fe0ff, dirAD, 0.85, 0.52); // high-voltage servo arc sparks
+    this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 5 + Math.floor(big * 5), 4.5 + big * 6, 0xb9c2d6, undefined, 1.4, 0.6, 7); // floor debris
     // ARMOUR CHIPS: real solid debris knocked off the plating, tinted to the armour that was hit, tumbling & bouncing
     this.fx.shards(hitPos, 5 + Math.floor(big * 14) + (crit ? 5 : 0), dirAD, d.robot.armorColor, 7 + big * 7, 0.8 + big * 0.7);
     // the dent keeps dripping embers for a moment (heavier blows bleed longer)
@@ -6596,14 +6655,11 @@ export class Game {
     a.recoilAmt = 0.55 + big * 0.9 + (crit ? 0.3 : 0);
     this.fx.flash(hitPos, 3.2 + big * 5.6, 0xffe0a8, 0.25);
     if (big >= 0.4 || crit || launched) this.arena.strobe(0.3 + big * 0.7 + (launched ? 0.3 : 0)); // the rig kicks with the blow
-    this.fx.impactWave(hitPos, dirAD, aim === AIM_BODY ? 0xff9c48 : 0xffdf88, 2.8 + big * 5.2, 0.28); // 3D sonic halo perpendicular to punch vector + 4-point starburst!
-    if (big >= 0.55 || crit || launched) {
-      this.fx.impactWave(hitPos, dirAD, 0xffffff, 1.8 + big * 3.4, 0.18); // inner white-hot sonic core ring on heavy/counter hits
+    this.fx.impactWave(hitPos, dirAD, aim === AIM_BODY ? 0xff9c48 : 0xffdf88, 2.4 + big * 2.6, 0.24); // 3D sonic halo perpendicular to punch vector + 4-point starburst
+    // Dynamic canvas shockwave ring on heavy impact / counter blow (eliminates redundant overlapping rings)
+    if (big >= 0.45 || crit || launched) {
+      this.fx.ring(d.pos.x, d.pos.y, aim === AIM_BODY ? 0xffa050 : 0xffdf90, 3.2 + big * 2.2, 0.32);
     }
-    this.fx.ring(hitPos.x, hitPos.z, aim === AIM_BODY ? 0xffa860 : 0xffe498, 2.8 + big * 5.2, 0.36, hitPos.y); // primary shock ring AT the impact point
-    this.fx.ring(hitPos.x, hitPos.z, 0xffffff, 1.6 + big * 3.0, 0.22, hitPos.y); // inner sonic snap ring
-    this.fx.ring(d.pos.x, d.pos.y, 0xffe0a0, 4.0 + big * 6.5, 0.46);
-    this.fx.ring(d.pos.x, d.pos.y, 0xffffff, 2.2 + big * 3.8, 0.28, 0.1);
     this.sfx.hit(Math.min(1, big * 1.15));
     this.sfx.crackle(0.25 + big * 0.55); // heavy steel armor crunch & electrical arc on every clean blow!
     this.sfx.cheer(0.3 + big * 0.7);
@@ -6655,7 +6711,7 @@ export class Game {
       this.startCine('rip', hitPos, away); // four angles: the cut, the head in flight, the sparking stump, the fall-out
       this.fx.flash(hitPos, 9, 0xffffff, 0.3);
       this.fx.ring(hitPos.x, hitPos.z, 0x9fe6ff, 12, 0.7, hitPos.y);
-      this.fx.spark(hitPos, 90, 16, 0x9fe6ff, dirAD, 1.4, 1.0, 10);
+      this.fx.spark(hitPos, 28, 15, 0x9fe6ff, dirAD, 1.3, 0.9, 10);
       this.popup(new THREE.Vector3(d.pos.x, 7.4 * d.scale, d.pos.y), 'HEAD RIP!', 'pop-crit');
       this.popup(hitPos, 'KEPALA TERPENTAL!', 'pop-big');
       this.slowT = 0.85;
@@ -6706,7 +6762,7 @@ export class Game {
       this.sfx.say('K O!');
       this.crowdRoar(d.team === 0 ? 0.65 : 0.95, 3.0);
       this.showBanner('K.O.!', `${this.nameOf(d)} TUMBANG · ${this.nameOf(mate)} MELANJUTKAN`, 'ko', 2.4);
-      this.fx.spark(new THREE.Vector3(d.pos.x, 3.5 * d.scale, d.pos.y), 70, 12, 0xffaa40, undefined, 1.5, 1.2, 12);
+      this.fx.spark(new THREE.Vector3(d.pos.x, 3.5 * d.scale, d.pos.y), 24, 11, 0xffaa40, undefined, 1.4, 1.0, 12);
       this.fx.ring(d.pos.x, d.pos.y, 0xffffff, 12, 0.8);
       if (d === this.enemy) this.swapEnemies();
       return;
@@ -6730,7 +6786,7 @@ export class Game {
     this.endRound(a, 'ko');
     // a decapitation deserves its own card
     if (d.decapitated) this.showBanner('K.O.!', d.isPlayer ? 'KEPALAMU TERPENTAL!' : `${this.def.name} KEHILANGAN KEPALA`, 'ko', 3.8);
-    this.fx.spark(new THREE.Vector3(d.pos.x, 3.5 * d.scale, d.pos.y), 90, 14, 0xffaa40, undefined, 1.5, 1.2, 12);
+    this.fx.spark(new THREE.Vector3(d.pos.x, 3.5 * d.scale, d.pos.y), 26, 12, 0xffaa40, undefined, 1.4, 1.0, 12);
     this.fx.ring(d.pos.x, d.pos.y, 0xffffff, 14, 0.9);
   }
 
@@ -7247,19 +7303,19 @@ export class Game {
       const uCurve = Math.sin(Math.PI * du);
       const rollFollow = Math.sin(Math.PI * Math.pow(du, 1.15));
       const wave = Math.sin(Math.PI * 2 * du);
-      const sgn = Math.abs(dot) > 0.3 ? Math.sign(dot) : f.aliSign;
       if (back >= 0.35) {
-        // Pro Pull-Counter & Muhammad Ali Matrix Lean-Back Shoulder Roll:
-        // Weight glides onto the rear leg, lead shoulder rolls across the chin, rear hand coils low for a counter!
-        ln = -0.34 * uCurve - 0.08 * wave;
-        lg = -0.44 * rollFollow;
-        tw = sgn * 0.56 * rollFollow - sgn * 0.14 * wave;
-        rl = sgn * 0.32 * uCurve + sgn * 0.11 * wave;
-        dp = 0.16 + 0.18 * dipLoad;
-        const phillyLead = P(-0.34, -0.24, 0.34, -1.28);
-        const coiledRear = P(-0.68, -0.52, 0.18, -1.92);
-        a0 = lerpPose(a0, sgn > 0 ? phillyLead : coiledRear, rollFollow * 0.86);
-        a1 = lerpPose(a1, sgn > 0 ? coiledRear : phillyLead, rollFollow * 0.86);
+        // Disciplined Boxing Backstep & Pull-Retreat:
+        // Hips slide back smoothly, knees compress to absorb momentum, lead shoulder covers the chin,
+        // and rear hand is cocked ready to fire a pull-counter. Rock-solid stability without erratic twisting!
+        ln = -0.16 * uCurve; // slight athletic lean-back, centered over rear foot
+        lg = -0.32 * rollFollow; // smooth hip retreat
+        tw = 0.08 * rollFollow; // slight orthodox lead-shoulder forward angle, crisp & stable
+        rl = 0.02 * uCurve; // stable lateral plane
+        dp = 0.14 + 0.16 * dipLoad; // athletic stance compression
+        const backLead = P(-0.52, -0.34, 0.26, -1.58);
+        const backRear = P(-0.78, -0.56, 0.16, -2.06);
+        a0 = lerpPose(a0, backLead, rollFollow * 0.85);
+        a1 = lerpPose(a1, backRear, rollFollow * 0.85);
       } else if (Math.abs(dot) > 0.35) {
         // Canelo / Lomachenko 3D Lateral U-Weave & Shoulder Roll:
         // Phase 1 dips under the punch (ln > 0 at bottom of U), Phase 2 rolls the head & shoulders to the outside
@@ -7275,17 +7331,19 @@ export class Game {
         a0 = lerpPose(a0, dot > 0 ? templeGuard : counterCoil, rollFollow * 0.86);
         a1 = lerpPose(a1, dot > 0 ? counterCoil : templeGuard, rollFollow * 0.86);
       } else {
-        // Mike Tyson Peek-a-Boo Pendulum Slip-In:
-        // Drops low and weaves the head & shoulders in a fluid figure-8 while driving inside the opponent's reach!
-        rl = sgn * 0.42 * Math.sin(du * Math.PI * 1.35);
-        tw = -sgn * 0.56 * rollFollow + sgn * 0.14 * wave;
-        ln = 0.3 * uCurve;
-        lg = 0.42 * rollFollow;
-        dp = 0.28 + 0.28 * dipLoad;
-        const peekCoilL = P(-0.94, -0.66, 0.14, -2.22);
-        const peekCoilR = P(-0.86, -0.58, 0.18, -2.12);
-        a0 = lerpPose(a0, sgn > 0 ? peekCoilL : peekCoilR, rollFollow * 0.84);
-        a1 = lerpPose(a1, sgn > 0 ? peekCoilR : peekCoilL, rollFollow * 0.84);
+        // Controlled Boxing Step-In / Blitz Advance:
+        // Explosive forward penetration: hips drive forward off the rear foot, lead foot establishes distance,
+        // center of gravity stays compact, chin tucked behind the lead shoulder, hands in high attack-ready guard.
+        // Zero sideways wobble or wild figure-8 flailing!
+        ln = 0.16 * uCurve; // athletic forward drive, chin protected
+        lg = 0.32 * rollFollow; // forward hip displacement matching the step
+        tw = 0.06 * rollFollow; // squared forward with slight lead-shoulder lead
+        rl = 0; // perfectly stable laterally
+        dp = 0.16 + 0.18 * dipLoad; // low, compact center of gravity
+        const fwdLead = P(-0.58, -0.38, 0.26, -1.72);
+        const fwdRear = P(-0.80, -0.60, 0.15, -2.12);
+        a0 = lerpPose(a0, fwdLead, rollFollow * 0.85);
+        a1 = lerpPose(a1, fwdRear, rollFollow * 0.85);
       }
       kk = 42;
     }
@@ -7348,6 +7406,9 @@ export class Game {
     // hit reactions: snap in fast, relax slowly
     f.hitV += (f.hit - f.hitV) * (1 - Math.exp(-(f.hit > f.hitV ? 40 : 7) * dt));
     f.hitUpV += (f.hitUp - f.hitUpV) * (1 - Math.exp(-(Math.abs(f.hitUp) > Math.abs(f.hitUpV) ? 40 : 6) * dt));
+    if (f.hit < 0.005 && f.hitV < 0.01) {
+      f.hitKind = 'standard';
+    }
     // place
     f.robot.root.position.set(f.pos.x, f.y, f.pos.y);
     // in the air the body lays back WITH its travel: knocked straight up it stays near upright (and collapses when it
@@ -7455,6 +7516,11 @@ export class Game {
         riseOut: f.riseOut,
         strike,
         strikePow,
+        directionalHeadSnap: this.directionalHeadSnap,
+        hitKind: f.hitKind,
+        hitArm: f.hitArm,
+        hitSeq: f.hitSeq,
+        hitPower: f.hitPower,
       },
       dt,
     );
@@ -8159,6 +8225,7 @@ export class Game {
       bloomMode: this.bloomMode,
       bloomPercent: this.bloomPercent,
       pyroPlacement: this.arena.getPyroPlacement(),
+      directionalHeadSnap: this.directionalHeadSnap,
       team:
         this.teamMode && this.ally && this.enemy2 && this.def2
           ? {

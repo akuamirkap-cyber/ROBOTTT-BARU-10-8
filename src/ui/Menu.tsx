@@ -15,12 +15,13 @@ import {
   type HeroPose,
   type HudState,
   type OpponentDef,
+  type PyroPlacement,
   type TransId,
 } from '../game/Game';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from '../game/build';
 import type { SfxProfile } from '../game/audio';
 import { Key, cssVar } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, FootworkPicker, GfxPicker, IqPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, TransitionPicker } from './Pickers';
 import { ACCOUNT_NAME, MODES, levelOf, tierOf, weekResetIn, wrcPoints, type ModeId, type Profile } from '../game/progress';
 import { Avatar, ProfileCard, ProfileSheet } from './Profile';
 import { Leaderboard, ModeDossier, ModeHub, type LobbyView } from './Modes';
@@ -66,6 +67,10 @@ export interface MenuProps {
   onResetVisuals: () => void;
   gfx: GfxMode;
   onGfx: (g: GfxMode) => void;
+  pyro: PyroPlacement;
+  onPyro: (p: PyroPlacement) => void;
+  directionalHeadSnap?: boolean;
+  onDirectionalHeadSnap?: (on: boolean) => void;
 }
 
 const act = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => {
@@ -354,6 +359,10 @@ export function Menu({
   onResetVisuals,
   gfx,
   onGfx,
+  pyro,
+  onPyro,
+  directionalHeadSnap = true,
+  onDirectionalHeadSnap,
 }: MenuProps) {
   const [tab, setTab] = useState<MenuTab>('lobby');
   const [showProfile, setShowProfile] = useState(false);
@@ -1386,8 +1395,16 @@ export function Menu({
                 <BloomPicker value={bloom} onPick={onBloom} />
                 <ResetVisualsButton onReset={onResetVisuals} />
               </div>
+              {onDirectionalHeadSnap && (
+                <div className="lobby-subcard rounded-lg p-3.5">
+                  <DirectionalHeadSnapPicker value={directionalHeadSnap} onPick={onDirectionalHeadSnap} />
+                </div>
+              )}
               <div className="lobby-subcard rounded-lg p-3.5">
                 <TransitionPicker value={trans} onPick={onTrans} onTry={onTransTry} />
+              </div>
+              <div className="lobby-subcard rounded-lg p-3.5">
+                <PyroPicker value={pyro} onPick={onPyro} />
               </div>
               <div className="lobby-subcard rounded-lg p-3.5">
                 <SfxPicker value={sfx} onPick={onSfx} />

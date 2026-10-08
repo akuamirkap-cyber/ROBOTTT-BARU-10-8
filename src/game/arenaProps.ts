@@ -9,7 +9,7 @@ import {
   standTierInnerRadius,
 } from './stadiumLayout';
 
-type Upd = (t: number, dt: number, hype: number, focus: THREE.Vector3) => void;
+type Upd = (t: number, dt: number, hype: number, focus: THREE.Vector3, camera?: THREE.Camera) => void;
 
 export interface Props {
   update: Upd;
@@ -160,7 +160,7 @@ export function buildProps(scene: THREE.Scene): Props {
   const crewBlack = new THREE.MeshStandardMaterial({ color: 0x0e1014, roughness: 0.8 });
   const crewSkin = new THREE.MeshStandardMaterial({ color: 0xd9ad86, roughness: 0.7 });
   const crewHair = new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 0.85 });
-  const cams: { head: THREE.Group; op: THREE.Group; tally: THREE.MeshBasicMaterial; x: number; z: number; ph: number }[] = [];
+  const cams: { head: THREE.Group; op: THREE.Group; rig: THREE.Group; tally: THREE.MeshBasicMaterial; x: number; z: number; ph: number }[] = [];
   const addCam = (x: number, z: number) => {
     const g = new THREE.Group();
     g.position.set(x, FLOOR, z);
@@ -252,15 +252,27 @@ export function buildProps(scene: THREE.Scene): Props {
       arm.rotation.x = -1.35;
       put(new THREE.SphereGeometry(0.09, 7, 5), crewSkin, man, sx * 0.36, 2.72, 0.64);
     }
-    cams.push({ head, op, tally: tallyMat, x, z, ph: Math.random() * 10 });
+    cams.push({ head, op, rig, tally: tallyMat, x, z, ph: Math.random() * 10 });
   };
   addCam(-11, 21.5);
   addCam(11, 21.5);
   addCam(-21.5, -11);
   addCam(21.5, -11);
-  updaters.push((t, dt, _hype, focus) => {
+  updaters.push((t, dt, _hype, focus, camera) => {
     const k = 1 - Math.exp(-2.5 * dt);
+    let camDirX = 0, camDirZ = 0;
+    if (camera) {
+      camDirX = -camera.matrixWorld.elements[8];
+      camDirZ = -camera.matrixWorld.elements[10];
+    }
     for (const c of cams) {
+      if (camera) {
+        const dx = c.x - camera.position.x;
+        const dz = c.z - camera.position.z;
+        const dot = dx * camDirX + dz * camDirZ;
+        c.rig.visible = dot > -3.5;
+        if (!c.rig.visible) continue;
+      }
       const yaw = Math.atan2(focus.x - c.x, focus.z - c.z);
       const dist = Math.hypot(focus.x - c.x, focus.z - c.z);
       const pitch = Math.atan2(FLOOR + 3.3 - focus.y, dist);
@@ -345,8 +357,8 @@ export function buildProps(scene: THREE.Scene): Props {
   const judges = buildJudges(scene);
   updaters.push(judges.update);
 
-  const update: Upd = (t, dt, hype, focus) => {
-    for (const u of updaters) u(t, dt, hype, focus);
+  const update: Upd = (t, dt, hype, focus, camera) => {
+    for (const u of updaters) u(t, dt, hype, focus, camera);
   };
   return { update, towers };
 }

@@ -138,8 +138,8 @@ export class Decap {
     fx.flash(p, 3.4, 0xbfeaff, 0.2);
     fx.flash(p, 2.2, 0xffffff, 0.1);
     fx.ring(p.x, p.z, 0x9fe6ff, 5, 0.5, p.y);
-    fx.spark(p, 60, 12, 0x9fe6ff, new THREE.Vector3(0, 1, 0), 1.3, 0.8, 9);
-    fx.spark(p, 30, 9, 0xffffff, undefined, 1.5, 0.45, 7);
+    fx.spark(p, 18, 12, 0x9fe6ff, new THREE.Vector3(0, 1, 0), 1.3, 0.8, 9);
+    fx.spark(p, 8, 9, 0xffffff, undefined, 1.5, 0.45, 7);
   }
 
   update(dt: number, fx: Effects) {
@@ -179,10 +179,10 @@ export class Decap {
             h.vel.x *= 0.55;
             h.vel.z *= 0.55;
             h.spin.multiplyScalar(0.45);
-            fx.spark(h.obj.position, 18, 8, 0x9fe6ff, undefined, 1.3, 0.5, 11);
+            fx.spark(h.obj.position, 8, 8, 0x9fe6ff, undefined, 1.3, 0.5, 11);
             fx.ring(h.obj.position.x, h.obj.position.z, 0x9fe6ff, 2.4, 0.3, 0.1);
             fx.flash(h.obj.position, 1.2, 0xbfeaff, 0.1);
-            fx.spark(h.obj.position, 10, 5, 0xffffff, undefined, 1.5, 0.3, 6); // dust off the canvas
+            fx.spark(h.obj.position, 4, 5, 0xffffff, undefined, 1.5, 0.3, 6); // dust off the canvas
           } else {
             h.rest = true;
             h.vel.set(0, 0, 0);

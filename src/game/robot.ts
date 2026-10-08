@@ -74,6 +74,12 @@ export interface AnimState {
   riseDir?: number; // ±1: the shoulder he rolls onto and pushes off
   riseOut?: number; // 1 → 0 over the beat after he stands: the loose settle (shoulders shake out, chest drops)
   stepLift?: number; // optional foot clearance for a scripted step (the get-up plants its feet high and slow)
+  // DIRECTIONAL HEAD SNAP TOGGLE & PUNCH PARAMETERS
+  directionalHeadSnap?: boolean;
+  hitKind?: 'jab' | 'hook' | 'upper' | 'cross' | 'standard';
+  hitArm?: number;
+  hitSeq?: number;
+  hitPower?: number;
 }
 
 
@@ -228,6 +234,13 @@ export class Robot {
   private sWrist = [new Spring(), new Spring()];
   private sShoulderLag = [new Spring(), new Spring()];
   private prevEx = [-2, -2];
+
+  // Directional head snap & delayed torso follow-through springs
+  private lastHitSeq = -1;
+  private hookDelayTimer = 0;
+  private hookSide = 1;
+  private sDelayedTorsoYaw = new Spring();
+  private sUpperLift = new Spring();
 
   private tv = new THREE.Vector3();
   private qk = new THREE.Quaternion();
@@ -518,7 +531,6 @@ export class Robot {
 
     // ---- boxing dash: a low, committed lead step followed by the rear foot ----
     const dashing = a.dash > 0.5 && this.ikW > 0.5;
-    const sideDash = Math.abs(a.dashL) > 0.65;
     if (dashing && !this.dashOn) {
       this.dashOn = true;
       this.dashT = 0;
@@ -614,8 +626,8 @@ export class Robot {
         f.u = 0;
         f.p0 = f.pitch; // swings blend out of the pitch the foot really has — no pop at step-off
         f.dur = i === this.dashLead ? 0.19 : 0.23;
-        // Lateral double-tap dodges need enough toe clearance to read as a real shuffle, not a boot dragged over canvas.
-        f.lift = sideDash ? 0.16 : 0.08;
+        // Clean, athletic foot clearance across all dash directions so feet never drag or clip the canvas
+        f.lift = 0.16;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
@@ -760,13 +772,15 @@ export class Robot {
       let tl: { x: number; z: number };
       if (f.shuffle) {
         // land in the stance, offset along the dash: lead foot reaches out, rear foot closes the gap
-        const reach = i === this.dashLead ? 0.85 : 0.45;
-        let ox = this.dashDirX * reach + a.vl * K * rem * 0.5;
-        let oz = this.dashDirZ * reach + a.vf * K * rem * 0.5;
+        const reach = i === this.dashLead ? 0.82 : 0.46;
+        const velK = i === this.dashLead ? 0.35 : 0.22;
+        let ox = this.dashDirX * reach + a.vl * K * rem * velK;
+        let oz = this.dashDirZ * reach + a.vf * K * rem * velK;
         const om = Math.hypot(ox, oz);
-        if (om > 1.2) {
-          ox *= 1.2 / om;
-          oz *= 1.2 / om;
+        const maxReach = 1.35;
+        if (om > maxReach) {
+          ox *= maxReach / om;
+          oz *= maxReach / om;
         }
         tl = { x: ideal[i].x + ox, z: ideal[i].z + oz };
       } else if (f.gaitStep) {
@@ -815,13 +829,13 @@ export class Robot {
       tw.x = clamp(tw.x, -this.footLimit, this.footLimit);
       tw.z = clamp(tw.z, -this.footLimit, this.footLimit);
       // gait swings start and end with ~zero ground speed (no skidding on touch-down, no jerk at toe-off)
-      const e = f.shuffle ? (sideDash ? sm(u) : 1 - Math.pow(1 - u, 2.2)) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
+      const e = f.shuffle ? sm(u) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
       f.curX = f.fx + (tw.x - f.fx) * e;
       f.curZ = f.fz + (tw.z - f.fz) * e;
       const w = Math.sin(Math.PI * u);
       if (f.shuffle) {
-        // skimming the floor on the balls of the feet
-        f.pitch = lerp(f.p0, restP[i] + 0.2 + (i === this.dashLead ? 0 : 0.12 * (1 - u)), w);
+        // skimming the floor cleanly on the balls of the feet with natural compliance
+        f.pitch = lerp(f.p0, restP[i] + 0.15 + (i === this.dashLead ? 0 : 0.08 * (1 - u)), w);
         f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-16 * dt));
         sway += -s * 0.05 * w;
       } else if (f.gaitStep) {
@@ -1001,10 +1015,63 @@ export class Robot {
     // one signed term per axis: knocked back / lifted / turned (HK keeps a full-power blow to a readable snap —
     // the chain below adds up, so a single link must stay small)
     const HK = 0.17;
-    const hPitch = (hF * 0.6 - hUp * 0.42) * hMag * HK;
-    const hRoll = -hL * 0.52 * hMag * HK;
-    const hYaw = hSp * 0.4 * hMag * HK;
-    const tw = a.twist + hYaw * 1.05;
+    const stdPitch = (hF * 0.6 - hUp * 0.42) * hMag * HK;
+    const stdRoll = -hL * 0.52 * hMag * HK;
+    const stdYaw = hSp * 0.4 * hMag * HK;
+
+    const snapOn = !!a.directionalHeadSnap;
+    const kind = a.hitKind || 'standard';
+    const isHitting = hMag > 0.005;
+    const isJab = snapOn && isHitting && kind === 'jab';
+    const isHook = snapOn && isHitting && kind === 'hook';
+    const isUpper = snapOn && isHitting && kind === 'upper';
+
+    // Track new punch hit sequence
+    if (snapOn && a.hitSeq !== undefined && a.hitSeq !== this.lastHitSeq && a.hit > 0.05) {
+      this.lastHitSeq = a.hitSeq;
+      if (isHook) {
+        this.hookDelayTimer = 0.075; // 75ms delayed torso follow-through
+        const hookDir = (a.hitSpin && Math.abs(a.hitSpin) > 0.05) ? Math.sign(a.hitSpin) : (a.hitArm === 0 ? 1 : -1);
+        this.hookSide = hookDir;
+      } else if (isUpper) {
+        this.sUpperLift.v = 2.4 + a.hit * 2.8; // Uppercut upward kinetic impulse
+      }
+    }
+
+    // Delayed torso follow-through for hook
+    let delayedTorsoYaw = 0;
+    if (snapOn && isHook) {
+      if (this.hookDelayTimer > 0) {
+        this.hookDelayTimer -= dt;
+      }
+      const hookFollowTarget = (this.hookDelayTimer <= 0 && isHitting) ? this.hookSide * hMag * (0.42 + hMag * 0.35) * (0.3 + hPt * 0.7) : 0;
+      delayedTorsoYaw = this.sDelayedTorsoYaw.update(hookFollowTarget, 9.5, 0.75, dt);
+    } else {
+      this.hookDelayTimer = 0;
+      this.sDelayedTorsoYaw.update(0, 12, 0.8, dt);
+    }
+
+    let hPitch = stdPitch;
+    let hRoll = stdRoll;
+    let hYaw = stdYaw;
+    let tw = a.twist + hYaw * 1.05;
+
+    if (snapOn) {
+      if (isJab) {
+        // JAB: ZERO sideways rotation on head/torso, only straight recoil
+        hYaw = 0;
+        hRoll = 0;
+        tw = a.twist;
+      } else if (isHook) {
+        // HOOK: Torso follows through after a slight delay
+        tw = a.twist + delayedTorsoYaw;
+      } else if (isUpper) {
+        // UPPERCUT: Vertical impulse, no sideways twist
+        hYaw = 0;
+        hRoll = 0;
+        tw = a.twist;
+      }
+    }
 
     const pY = this.sPelvisYaw.update(tw * 0.4, 12, 0.8, dt);
     // stride-driven pelvis motion goes through its own slow springs → rolling, continuous motion (no twitching)
@@ -1075,13 +1142,22 @@ export class Robot {
     const dodgeFlow = this.dashW;
     const slipRoll = a.rise === undefined && e < 0.05 ? a.roll : 0;
     const slipLean = a.rise === undefined && e < 0.05 ? a.lean - 0.08 : 0;
+
+    let upperLiftY = 0;
+    if (snapOn && isUpper) {
+      const uLift = this.sUpperLift.update(0, 9.2, 0.72, dt);
+      upperLiftY = clamp(uLift, 0, 0.55);
+    } else {
+      this.sUpperLift.update(0, 14, 0.85, dt);
+    }
+
     this.body.position.set(
       bodyX + riseX + slipRoll * (0.28 + 0.16 * dodgeFlow),
-      lerp(yFall, yIK + fw.bob + land, heightW) + riseY,
+      lerp(yFall, yIK + fw.bob + land, heightW) + riseY + upperLiftY,
       bodyZ + riseZ + slipLean * 0.16 * dodgeFlow,
     );
     this.body.rotation.set(
-      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt,
+      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35,
       riseYaw + lieSide * 0.22, // the lie is rolled a little onto one shoulder (about the spine = the log-roll axis)
       (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0),
     );
@@ -1101,19 +1177,91 @@ export class Robot {
     );
 
     // head: lags the chest and counter-rotates to keep eyes on the opponent, and flows smoothly with head-slips/weaves
-    const hSnap = 0.25 + hPt * 1.15; // a head shot whips the neck, a body shot barely turns it
     // ...and during the get-up the head leads the whole move: chin tucked while he is flat, lifted early so he is
     // already looking at you before the torso arrives, then a small nod as he settles into the stance.
     const hRise =
       rs.head * 0.42 // the head comes up off the chest FIRST (before the hips, before the torso)
       + eSpan * 0.3 - rs.hipUp * 0.34 * (1 - rs.unroll) - eFold * 0.55 + rs.bounce * 0.1
       - riseOut * 0.06 * Math.sin(t * 11);
-    const headHz = lerp(4.8, 11.8, dodgeFlow); // a heavy head lags the chest a beat
-    const hx = this.sHeadX.update(-0.06 - a.lean * 0.55 + hRise - leanA * 0.3 + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
-    const hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0), headHz, 0.55, dt);
-    const hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58, headHz, 0.55, dt);
-    this.neck.rotation.set(hx * 0.45, hy * 0.5, hz * 0.5);
-    this.head.rotation.set(hx * 0.55, hy * 0.5, hz * 0.5);
+
+    const baseHeadX = 0.02 - a.lean * 0.52 + hRise - leanA * 0.28;
+    let hx: number;
+    let hy: number;
+    let hz: number;
+    let neckShare = 0.45;
+    let headShare = 0.55;
+
+    if (!snapOn || !isHitting) {
+      // Standar atau Idle: gunakan animasi hit/head reaction standar yang natural
+      const hSnap = 0.25 + hPt * 1.15;
+      const headHz = lerp(4.8, 11.8, dodgeFlow);
+      hx = this.sHeadX.update(baseHeadX + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0), headHz, 0.55, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58, headHz, 0.55, dt);
+    } else if (isJab) {
+      // 1. JAB:
+      // Kepala lawan terdorong/tersentak lurus ke belakang.
+      // Gerakan harus cepat dan tajam.
+      // Jangan membuat kepala berputar ke samping.
+      // Setelah impact, kepala kembali secara natural ke posisi normal.
+      const jabSnapPitch = - hMag * (0.38 + hMag * 0.36) * (0.5 + hPt * 0.5);
+      const targetHeadX = baseHeadX + jabSnapPitch;
+      const jabHz = 24.0;
+      const jabDamp = 0.72;
+      hx = this.sHeadX.update(targetHeadX, jabHz, jabDamp, dt);
+      // Strictly zero sideways rotation:
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + (a.headYaw ?? 0), jabHz, 0.75, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + slipRoll * 0.58, jabHz, 0.75, dt);
+      neckShare = 0.48;
+      headShare = 0.52;
+    } else if (isHook) {
+      // 2. HOOK:
+      // Kepala lawan terpelintir cepat ke arah samping sesuai sisi hook.
+      // Tambahkan sedikit delayed torso follow-through:
+      // Kepala bergerak terlebih dahulu. Torso mengikuti sepersekian detik kemudian.
+      // Efek harus terasa seperti leher terkena momentum pukulan, bukan seluruh tubuh bergerak bersamaan.
+      const hookHeadYaw = this.hookSide * hMag * (0.72 + hMag * 0.54) * (0.45 + hPt * 0.55);
+      const hookHeadRoll = -this.hookSide * hMag * (0.18 + hMag * 0.16) * (0.45 + hPt * 0.55);
+      const hookSnapPitch = - hMag * (0.08 + hMag * 0.12);
+      const hookHz = 22.0;
+      const hookDamp = 0.68;
+      hx = this.sHeadX.update(baseHeadX + hookSnapPitch, hookHz, hookDamp, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hookHeadYaw + (a.headYaw ?? 0), hookHz, hookDamp, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + hookHeadRoll + slipRoll * 0.58, hookHz, hookDamp, dt);
+      neckShare = 0.40;
+      headShare = 0.60;
+    } else if (isUpper) {
+      // 3. UPPERCUT:
+      // Dagu/kepala lawan tersentak ke atas.
+      // Kepala sedikit menengadah.
+      // Badan ikut terdorong/terangkat sedikit mengikuti momentum uppercut.
+      // Gerakan harus terasa seperti pukulan benar-benar mengangkat target.
+      const upperSnapPitch = - hMag * (0.55 + hMag * 0.48) * (0.5 + hPt * 0.5);
+      const upperHz = 20.0;
+      const upperDamp = 0.68;
+      hx = this.sHeadX.update(baseHeadX + upperSnapPitch, upperHz, upperDamp, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + (a.headYaw ?? 0), upperHz, 0.75, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + slipRoll * 0.58, upperHz, 0.75, dt);
+      neckShare = 0.42;
+      headShare = 0.58;
+    } else if (kind === 'cross') {
+      const crossSnapPitch = - hMag * (0.36 + hMag * 0.40) * (0.45 + hPt * 0.55);
+      const crossHz = 19.0;
+      hx = this.sHeadX.update(baseHeadX + crossSnapPitch, crossHz, 0.70, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * 0.4 + (a.headYaw ?? 0), crossHz, 0.75, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * 0.4 + slipRoll * 0.58, crossHz, 0.75, dt);
+      neckShare = 0.45;
+      headShare = 0.55;
+    } else {
+      const hSnap = 0.25 + hPt * 1.15;
+      const headHz = lerp(4.8, 11.8, dodgeFlow);
+      hx = this.sHeadX.update(baseHeadX + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0), headHz, 0.55, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58, headHz, 0.55, dt);
+    }
+
+    this.neck.rotation.set(hx * neckShare, hy * neckShare, hz * neckShare);
+    this.head.rotation.set(hx * headShare, hy * headShare, hz * headShare);
 
     // ---------------- ocular motion & eye effects ----------------
     if (this.eyePupils.length > 0 || this.eyePulses.length > 0) { // the brute head has the optics but no pupils

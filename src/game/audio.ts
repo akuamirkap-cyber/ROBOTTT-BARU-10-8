@@ -451,34 +451,42 @@ export class Sfx {
     }
   }
 
-  /** the pyro fountains on the corner towers: stadium launch whoosh, deep sub thud and spark crackles */
+  /** authentic concert stadium flame cannon burst: pneumatic solenoid valve hiss, roaring combustion whoosh, deep steady sub-rumble, crackling sparks */
   pyro(level: number) {
-    this.tone('sine', 75, 34, 0.48, 0.45 * level);
-    this.noise(1.4, 'bandpass', 360, 920, 0.42 * level, 0.01, 1.0);
-    this.noise(1.2, 'highpass', 1400, 3200, 0.28 * level, 0, 0.7);
-    this.crackle(level * 1.1);
+    const lvl = Math.max(0.25, Math.min(1.2, level));
+    // 1. Instantaneous high-pressure pneumatic valve trigger (crisp "TSHH", zero fart tone!)
+    this.noise(0.12, 'highpass', 2400, 4800, 0.38 * lvl, 0, 0.8);
+    // 2. Powerful roaring flame body - rushing combustion gas turbulence
+    this.noise(1.25, 'bandpass', 360, 680, 0.58 * lvl, 0.01, 1.1);
+    this.noise(0.95, 'bandpass', 920, 1950, 0.35 * lvl, 0.02, 0.85);
+    // 3. Steady chest-thumping sub-bass combustion roar (pure constant sub-rumble, NO pitch-dropping cartoon sweep!)
+    this.noise(1.1, 'lowpass', 130, 55, 0.52 * lvl, 0, 0.6);
+    // 4. Sizzling pyro embers & turbulent flare
+    this.crackle(lvl * 1.0);
   }
 
   /** a sharp pressurized pilot ignition pop and gas whoosh from the flame nozzles (countdown 1, 2, 3) */
   pyroPuff(level = 0.5) {
-    this.tone('sine', 92, 40, 0.18, 0.42 * level);
-    this.noise(0.18, 'highpass', 2800, 1100, 0.38 * level, 0, 0.6);
-    this.noise(0.34, 'bandpass', 420, 780, 0.46 * level, 0.01, 1.1);
-    this.crackle(level * 0.75);
+    const lvl = Math.max(0.2, Math.min(1.2, level));
+    // Sharp pressurized solenoid valve pop (crisp "TSS-HOOF", absolutely NO pitch-dropping sine!)
+    this.noise(0.08, 'highpass', 3200, 6200, 0.36 * lvl, 0, 0.9);
+    // Short pressurized gas puff body
+    this.noise(0.22, 'bandpass', 450, 880, 0.46 * lvl, 0.005, 1.0);
+    this.noise(0.18, 'lowpass', 240, 95, 0.34 * lvl, 0, 0.5);
+    this.crackle(lvl * 0.6);
   }
 
   /** a massive concert stadium flame cannon roar (FIGHT! & KO celebration) — pneumatic burst, deep sub thump, roaring gas turbulence */
   flameBlast(level = 1.0) {
-    // Deep cinematic sub-bass pressure wave (clean chest-thumping thump, NO buzz/fart tone!)
-    this.tone('sine', 60, 26, 0.85, 0.75 * level);
+    const lvl = Math.max(0.3, Math.min(1.3, level));
     // Instantaneous high-pressure pneumatic solenoid valve burst (sharp "K-TSHH")
-    this.noise(0.22, 'highpass', 2400, 850, 0.46 * level, 0, 0.55);
+    this.noise(0.16, 'highpass', 2600, 5200, 0.48 * lvl, 0, 0.6);
     // Powerful roaring expanding combustion body
-    this.noise(1.9, 'bandpass', 280, 560, 0.65 * level, 0.02, 1.3);
-    this.noise(2.1, 'lowpass', 640, 160, 0.58 * level, 0.03, 0.85);
-    this.noise(1.4, 'bandpass', 820, 1600, 0.34 * level, 0.05, 0.75);
+    this.noise(1.8, 'bandpass', 320, 640, 0.68 * lvl, 0.01, 1.25);
+    this.noise(1.9, 'lowpass', 220, 65, 0.62 * lvl, 0.02, 0.7);
+    this.noise(1.3, 'bandpass', 820, 1700, 0.36 * lvl, 0.03, 0.8);
     // Sizzling pyro embers and sparks
-    this.crackle(level * 1.35);
+    this.crackle(lvl * 1.35);
   }
 
   /** cushioned impact sound when a fighter collides with the specialized corner turnbuckle protector pad */

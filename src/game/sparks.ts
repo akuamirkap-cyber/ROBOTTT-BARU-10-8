@@ -36,7 +36,7 @@ function ramp(u: number, out: number[]) {
 }
 
 export class SparkStreaks {
-  private readonly N = 1100;
+  private readonly N = 450;
   private p: Float32Array;
   private v: Float32Array;
   private life: Float32Array;
@@ -49,9 +49,9 @@ export class SparkStreaks {
   private verts: Float32Array;
   private cols: Float32Array;
   private geo = new THREE.BufferGeometry();
-  private head = 0;
+  private aliveCount = 0;
   private rgb = [0, 0, 0];
-  private wasTouched = false;
+  private wasActive = false;
   readonly mesh: THREE.Mesh;
 
   constructor(scene: THREE.Scene) {
@@ -82,8 +82,14 @@ export class SparkStreaks {
   }
 
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, grav: number, weld: boolean, tr: number, tg: number, tb: number, pop: number) {
-    const i = this.head;
-    this.head = (this.head + 1) % this.N;
+    let i: number;
+    if (this.aliveCount < this.N) {
+      i = this.aliveCount;
+      this.aliveCount++;
+    } else {
+      // Buffer at capacity: recycle random existing spark slot
+      i = Math.floor(Math.random() * this.N);
+    }
     const i3 = i * 3;
     this.p[i3] = x;
     this.p[i3 + 1] = y;
@@ -102,15 +108,16 @@ export class SparkStreaks {
     this.pop[i] = pop;
   }
 
-  /** a spark bursts into a few tiny ones (the typical "star" you see on a weld) */
+  /** a spark bursts into a couple tiny ones (the typical "star" you see on a weld) */
   private burst(i: number) {
+    if (this.aliveCount >= this.N - 3) return;
     const i3 = i * 3;
-    const n = 3 + Math.floor(Math.random() * 4);
+    const n = 2; // tight, clean micro-burst
     for (let k = 0; k < n; k++) {
       const a = Math.random() * Math.PI * 2;
       const b = Math.random() * 2 - 1;
       const r = Math.sqrt(1 - b * b);
-      const s = 2.2 + Math.random() * 3.6;
+      const s = 2.0 + Math.random() * 2.5;
       this.emit(
         this.p[i3],
         this.p[i3 + 1],
@@ -118,8 +125,8 @@ export class SparkStreaks {
         this.v[i3] * 0.3 + Math.cos(a) * r * s,
         this.v[i3 + 1] * 0.3 + b * s,
         this.v[i3 + 2] * 0.3 + Math.sin(a) * r * s,
-        0.16 + Math.random() * 0.26,
-        this.size[i] * 0.7,
+        0.12 + Math.random() * 0.16,
+        this.size[i] * 0.65,
         this.grav[i],
         this.weld[i] === 1,
         this.tint[i3],
@@ -131,27 +138,63 @@ export class SparkStreaks {
   }
 
   update(dt: number, cam: THREE.Camera) {
+    if (this.aliveCount === 0) {
+      if (this.wasActive) {
+        this.verts.fill(0);
+        this.cols.fill(0);
+        this.geo.attributes.position.needsUpdate = true;
+        this.geo.attributes.color.needsUpdate = true;
+        this.wasActive = false;
+      }
+      return;
+    }
+
     const cx = cam.position.x;
     const cy = cam.position.y;
     const cz = cam.position.z;
     const rgb = this.rgb;
-    let touched = false;
-    for (let i = 0; i < this.N; i++) {
-      if (this.life[i] <= 0) continue;
-      touched = true;
+    let i = 0;
+
+    while (i < this.aliveCount) {
       this.life[i] -= dt;
-      const o = i * 12;
-      const i3 = i * 3;
       if (this.life[i] <= 0) {
-        this.verts.fill(0, o, o + 12);
-        this.cols.fill(0, o, o + 12);
+        // Swap-and-pop dead spark with the last alive spark
+        const last = this.aliveCount - 1;
+        const oLast = last * 12;
+        this.verts.fill(0, oLast, oLast + 12);
+        this.cols.fill(0, oLast, oLast + 12);
+
+        if (i < last) {
+          const i3 = i * 3;
+          const l3 = last * 3;
+          this.p[i3] = this.p[l3];
+          this.p[i3 + 1] = this.p[l3 + 1];
+          this.p[i3 + 2] = this.p[l3 + 2];
+          this.v[i3] = this.v[l3];
+          this.v[i3 + 1] = this.v[l3 + 1];
+          this.v[i3 + 2] = this.v[l3 + 2];
+          this.tint[i3] = this.tint[l3];
+          this.tint[i3 + 1] = this.tint[l3 + 1];
+          this.tint[i3 + 2] = this.tint[l3 + 2];
+          this.life[i] = this.life[last];
+          this.maxLife[i] = this.maxLife[last];
+          this.size[i] = this.size[last];
+          this.grav[i] = this.grav[last];
+          this.pop[i] = this.pop[last];
+          this.weld[i] = this.weld[last];
+        }
+        this.aliveCount--;
         continue;
       }
+
       const f = this.life[i] / this.maxLife[i];
       if (this.pop[i] > 0 && f < this.pop[i]) {
         this.pop[i] = 0;
         this.burst(i);
       }
+
+      const o = i * 12;
+      const i3 = i * 3;
 
       // ---- physics: gravity arc, a little air drag, bounce + skitter on the floor
       let vx = this.v[i3];
@@ -255,11 +298,12 @@ export class SparkStreaks {
       C[o + 6] = C[o + 9] = hr * 0.1;
       C[o + 7] = C[o + 10] = hg * 0.1;
       C[o + 8] = C[o + 11] = hb * 0.1;
+
+      i++;
     }
-    if (touched || this.wasTouched) {
-      this.geo.attributes.position.needsUpdate = true;
-      this.geo.attributes.color.needsUpdate = true;
-    }
-    this.wasTouched = touched;
+
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
+    this.wasActive = true;
   }
 }

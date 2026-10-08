@@ -169,11 +169,10 @@ export function buildSpotRig(scene: THREE.Scene): SpotRig {
     g.add(cm);
     g.lookAt(target);
     scene.add(g);
-    // EVERY beam lands somewhere: the coloured moving beams carry their own pool of light on the canvas, dragged
-    // where the head points each frame — that is what makes the show read as LIGHT, not just glowing cones in the air
+    // Floor pool: only subtle moving colour heads, zero white bleached glare on the dark matras
     const poolMesh = new THREE.Mesh(
       new THREE.CircleGeometry(spread * 1.35, 24),
-      new THREE.MeshBasicMaterial({ map: pool, color: col, transparent: true, opacity: moving ? 0.055 : 0.12, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ map: pool, color: col, transparent: true, opacity: moving ? 0.015 : 0.0, blending: THREE.AdditiveBlending, depthWrite: false }),
     );
     poolMesh.rotation.x = -Math.PI / 2;
     poolMesh.position.set(target.x, target.y + 0.035, target.z);
@@ -218,13 +217,13 @@ export function buildSpotRig(scene: THREE.Scene): SpotRig {
   mkLamp(new THREE.Vector3(-26.0, 34, -26.0), new THREE.Vector3(1.5, 0, 1.0), 0x3b8aff, 58, 7.5, 0.30, false, 0.7);
   mkLamp(new THREE.Vector3(26.0, 34, -26.0), new THREE.Vector3(-1.5, 0, -1.0), 0xfff2e0, 58, 7.5, 0.30, false, 2.0);
 
-  // THE HERO FOLLOWSPOTS: two focused followspots on the inner truss tracking each fighter
+  // THE HERO FOLLOWSPOTS: two focused followspots on the inner truss tracking each fighter with soft highlight on armor without bleaching the canvas
   for (let i = 0; i < 2; i++) {
     const pos = i === 0 ? new THREE.Vector3(-15.5, 26.8, -9.5) : new THREE.Vector3(15.5, 26.8, 9.5);
     const foot = i === 0 ? new THREE.Vector3(-3, 0, 0) : new THREE.Vector3(3, 0, 0);
-    const lamp = mkLamp(pos, foot.clone().setY(3.2), 0xfff6ec, 40, 4.6, 0.32, false, 2.1 + i);
+    const lamp = mkLamp(pos, foot.clone().setY(3.2), 0xfff6ec, 40, 4.6, 0.30, false, 2.1 + i);
     lamp.track = i;
-    const light = new THREE.SpotLight(0xfff6ec, 22, 105, 0.36, 0.48, 0.95);
+    const light = new THREE.SpotLight(0xfff6ec, 3.5, 105, 0.36, 0.48, 0.95);
     light.position.copy(pos);
     light.target.position.copy(foot).setY(3.2);
     scene.add(light, light.target);
@@ -252,7 +251,7 @@ export function buildSpotRig(scene: THREE.Scene): SpotRig {
         if (l.pool) l.pool.position.set(c.x, c.y + 0.04, c.z);
         if (l.light) {
           l.light.target.position.copy(tmp);
-          l.light.intensity = (trackOn[i] ? 18 : 0) + hype * 2.5 + st * 1.2;
+          l.light.intensity = (trackOn[i] ? 3.2 : 0) + hype * 0.6 + st * 0.3;
         }
       } else if (l.moving) {
         // a figure-of-eight sweep round the action — the pool of colour it carries slides across the canvas with it
@@ -262,7 +261,7 @@ export function buildSpotRig(scene: THREE.Scene): SpotRig {
         l.g.lookAt(tmp);
         if (l.pool) {
           l.pool.position.set(tmp.x, tmp.y + 0.04, tmp.z);
-          (l.pool.material as THREE.MeshBasicMaterial).opacity = 0.035 + hype * 0.03 + st * 0.03;
+          (l.pool.material as THREE.MeshBasicMaterial).opacity = 0.015 + hype * 0.01 + st * 0.01;
         }
         l.cone.uniforms.intensity.value = l.base * (0.88 + hype * 0.2 + st * 0.25) + (Math.sin(t * 1.5 + l.ph) * 0.5 + 0.5) * 0.008;
         // on an impact the colour heads flick to white for a beat
