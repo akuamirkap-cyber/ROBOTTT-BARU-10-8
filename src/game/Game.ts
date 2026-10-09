@@ -234,7 +234,7 @@ export const loadGloveSkin = (): number => {
 };
 
 export const OPPONENTS: OpponentDef[] = [
-  { name: 'SCRAP-9', title: 'Si Tukang Pukul Rongsokan', hp: 95, speed: 3.3, dmg: 0.88, react: 0.68, dodge: 0.52, punish: 0.72, adapt: 0.95, aggro: 0.74, rest: 0.68, tscale: 1.16, scale: 1.0, combo: 3, slam: true, color: '#ff8a2a', style: { main: 0x8a6a4a, secondary: 0x4b4038, accent: 0xff8a2a, glow: 0xff7a1a } },
+  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 95, speed: 3.3, dmg: 0.88, react: 0.68, dodge: 0.52, punish: 0.72, adapt: 0.95, aggro: 0.74, rest: 0.68, tscale: 1.16, scale: 1.0, combo: 3, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
   { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.08, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
@@ -1890,11 +1890,13 @@ export class Game {
       cached.robot.head.visible = true;
     }
     this.enemy = cached;
-    if (idx === 3 || this.def.name === 'OMEGA ZEUS') {
+    if (idx === 0) {
+      mount100PercentZeus(this.enemy.robot, '#22ff44');
+    } else if (idx === 3 || this.def.name === 'OMEGA ZEUS') {
       mount100PercentZeus(this.enemy.robot, '#c070ff');
     }
-    // Ultra opponents burn crimson-red so you can tell at a glance that this is the hard version
-    this.enemy.robot.setStyleGlow(this.ultra ? 0xff1a3a : this.def.style.glow);
+    // Ultra opponents burn crimson-red so you can tell at a glance that this is the hard version (except authentic green Zeus at idx 0)
+    this.enemy.robot.setStyleGlow(this.ultra && idx !== 0 ? 0xff1a3a : this.def.style.glow);
     this.arena.setScreen(PLAYER_NAME, this.def.name, this.roundLabel(), '#4da3ff', this.ultra ? ULTRA_COLOR : this.def.color);
     this.arena.rimRed.color.setHex(this.ultra ? 0xff1a3a : this.def.style.glow);
   }
@@ -2281,7 +2283,9 @@ export class Game {
     this.ally = ally;
     this.def2 = this.makeDef(idx2);
     const e2 = this.makeFighter(false, this.def2.style, this.def2.scale, this.def2.hp, this.def2.dmg, this.def2.tscale);
-    e2.robot.setStyleGlow(this.ultra ? 0xff1a3a : this.def2.style.glow);
+    if (idx2 === 0) mount100PercentZeus(e2.robot, '#22ff44');
+    else if (idx2 === 3 || this.def2.name === 'OMEGA ZEUS') mount100PercentZeus(e2.robot, '#c070ff');
+    e2.robot.setStyleGlow(this.ultra && idx2 !== 0 ? 0xff1a3a : this.def2.style.glow);
     this.enemy2 = e2;
     this.squadA = { cool: 0.6, strafe: 1, strafeT: 0, blockT: 0 };
     this.squadE = { cool: 1.0, strafe: -1, strafeT: 0, blockT: 0 };
@@ -2398,7 +2402,9 @@ export class Game {
     const robot = f.robot;
     const inScene = robot.root.parent === this.scene;
     if (!inScene) this.scene.add(robot.root);
-    robot.setStyleGlow(this.ultra ? 0xff1a3a : OPPONENTS[idx].style.glow);
+    if (idx === 0) mount100PercentZeus(robot, '#22ff44');
+    else if (idx === 3 || OPPONENTS[idx].name === 'OMEGA ZEUS') mount100PercentZeus(robot, '#c070ff');
+    robot.setStyleGlow(this.ultra && idx !== 0 ? 0xff1a3a : OPPONENTS[idx].style.glow);
     robot.head.visible = true;
     // settle the guard ON THE CANVAS (the floor solve probes world space — a parked robot would be lifted 200 m):
     // the rig is spring-driven, so pump the pose for a couple of simulated seconds
@@ -2658,6 +2664,7 @@ export class Game {
   setHeroPose(pose: HeroPose) {
     if (this.heroPose === pose) return;
     this.heroPose = pose;
+    this.menuHero?.snapFeet();
     this.sfx.init();
     this.sfx.click();
     this.emitHud(true);
@@ -2717,7 +2724,9 @@ export class Game {
       } else if (f.robot.root.parent !== this.scene) {
         this.scene.add(f.robot.root);
       }
-      f.robot.setStyleGlow(this.ultra ? 0xff1a3a : OPPONENTS[i].style.glow);
+      if (i === 0) mount100PercentZeus(f.robot, '#22ff44');
+      else if (i === 3 || OPPONENTS[i].name === 'OMEGA ZEUS') mount100PercentZeus(f.robot, '#c070ff');
+      f.robot.setStyleGlow(this.ultra && i !== 0 ? 0xff1a3a : OPPONENTS[i].style.glow);
       f.robot.head.visible = true;
       f.robot.root.visible = true;
       f.robot.floorY = 0; // the hangar floor
@@ -6979,17 +6988,17 @@ export class Game {
         break;
       }
       case 'sombong': {
-        // ZEUS POSE SOMBONG (ARROGANT REAL STEEL POSE):
-        // Dada dibusungkan, dagu terangkat tinggi, tangan kiri di pinggang, tangan kanan melambai menantang
+        // ZEUS POSE SOMBONG (ARROGANT REAL STEEL POSE - IDENTICAL TO ZeusViewer.tsx):
+        // Dada dibusungkan, dagu terangkat tinggi, tangan kiri (a1) di pinggang, tangan kanan (a0) melambai menantang
         const beckon = Math.sin(t * 1.5) > 0.05;
         const wave = Math.sin(t * 7.5) * 0.5 + 0.5;
-        a0 = { sx: 0.08, sy: -0.22, sz: 0.35, ex: -0.45 };
-        a1 = beckon
-          ? { sx: -1.25, sy: 0.12, sz: 0.18, ex: -1.35 - wave * 0.7 }
-          : { sx: 0.05, sy: 0.2, sz: 0.32, ex: -0.38 };
+        a0 = beckon
+          ? { sx: -1.25, sy: -0.1, sz: 0.18, ex: -1.35 - wave * 0.7 }
+          : { sx: 0.05, sy: -0.18, sz: 0.32, ex: -0.38 };
+        a1 = { sx: 0.08, sy: 0.2, sz: 0.35, ex: -0.45 };
         tw = Math.sin(t * 0.5) * 0.08 + mx * 0.06;
         ln = -0.16 + my * 0.02; // dada dibusungkan bangga
-        dp = 0.02 + Math.sin(t * 1.5) * 0.015;
+        dp = 0.015 + Math.sin(t * 1.5) * 0.01;
         break;
       }
       case 'stand':
@@ -7944,16 +7953,20 @@ export class Game {
           tp = new THREE.Vector3(heroX, 5.55 - punch * 0.12, heroZ + camDist);
           tl = new THREE.Vector3(heroX, 5.45, heroZ);
         } else if (this.menuCamMode === 'full') {
-          const camDist = 13.0 * distScale;
-          tp = new THREE.Vector3(heroX, 3.58, heroZ + camDist);
-          tl = new THREE.Vector3(heroX, camCenterY, heroZ);
+          const zMul = this.menuHero?.isZeus ? 1.12 : 1.0;
+          const camDist = 13.0 * distScale * zMul;
+          const lookY = this.menuHero?.isZeus ? camCenterY + 0.32 : camCenterY;
+          tp = new THREE.Vector3(heroX, 3.58 * zMul, heroZ + camDist);
+          tl = new THREE.Vector3(heroX, lookY, heroZ);
         } else {
           // waist up: hips (≈3.6) to a hand above the helmet (≈7.8), the lens a touch below the chest for presence
           // a slow, barely-there drift of the lens (a dolly breathing round him) keeps the still pose alive
-          const camDist = 6.9 * distScale + Math.sin(t * 0.21) * 0.16;
+          const zMul = this.menuHero?.isZeus ? 1.14 : 1.0;
+          const camDist = 6.9 * distScale * zMul + Math.sin(t * 0.21) * 0.16;
           const drift = Math.sin(t * 0.3) * 0.14;
-          tp = new THREE.Vector3(heroX + 0.15 + drift, 5.25 + Math.sin(t * 0.17) * 0.06, heroZ + camDist);
-          tl = new THREE.Vector3(heroX + 0.15 + drift * 0.4, 5.65, heroZ);
+          const yOff = this.menuHero?.isZeus ? 0.36 : 0;
+          tp = new THREE.Vector3(heroX + 0.15 + drift, 5.25 + yOff + Math.sin(t * 0.17) * 0.06, heroZ + camDist);
+          tl = new THREE.Vector3(heroX + 0.15 + drift * 0.4, 5.65 + yOff, heroZ);
         }
         direct = true;
         this.camRoll = 0;

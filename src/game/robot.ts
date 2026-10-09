@@ -5,7 +5,7 @@ import { L1, L2, HIP_Y, UP } from './rig';
 import { fallStages, riseStages } from './poses';
 import { markReflect } from './layers';
 import { getArmourNormalMap, getArmourRoughnessMap, getCarbonFiberTexture, getSteelNormalMap } from './textures';
-import { mount100PercentZeus, unmount100PercentZeus } from './zeusModel';
+import { mount100PercentZeus, unmount100PercentZeus, type ZeusRigMetrics } from './zeusModel';
 
 export interface Pose {
   sx: number; // shoulder pitch (negative = raise forward)
@@ -290,7 +290,8 @@ export class Robot {
     this.opt = atom ? ATOM_OPT : BRUTE_OPT;
     buildRobot(this, this.ctx, this.opt);
     if (style.isZeus100 || (style.helmetSkin === 1 && style.armorSkin === 1)) {
-      mount100PercentZeus(this);
+      const hex = style.glow ? `#${style.glow.toString(16).padStart(6, '0')}` : '#22ff44';
+      mount100PercentZeus(this, hex);
     }
     this.addProbes();
     markReflect(this.root); // the glossy arena floors mirror him
@@ -310,6 +311,7 @@ export class Robot {
       unmount100PercentZeus(this);
       rebuildHelmetAndGloves(this, this.ctx, this.opt);
     }
+    this.snapFeet();
     this.setEnhancedTextures(this.hasEnhancedTextures);
     markReflect(this.root);
   }
@@ -509,13 +511,19 @@ export class Robot {
     // spikes both of them, and letting that through would jerk the stance the planted feet are measured against.
     this.dipK += (a.dip - this.dipK) * (1 - Math.exp(-14 * dt));
     this.lungeK += (a.lunge - this.lungeK) * (1 - Math.exp(-12 * dt));
-    const wide = 1.18 + this.dipK * 0.3;
+    const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
+    const guardStance = zm ? clamp((this.dipK - 0.045) / 0.075, 0, 1) : 1;
+    const wide = zm
+      ? lerp(zm.hipX + 0.16, zm.hipX + 0.28 + this.dipK * 0.22, guardStance)
+      : 1.18 + this.dipK * 0.3;
+    const zLead = zm ? lerp(0.04, 0.44, guardStance) : 0.62;
+    const zRear = zm ? lerp(-0.04, -0.50, guardStance) : -0.72;
     const ideal = [
-      { x: wide, z: 0.62 + this.lungeK * 0.28 },
-      { x: -wide, z: -0.72 + this.lungeK * 0.12 },
+      { x: wide, z: zLead + this.lungeK * 0.28 },
+      { x: -wide, z: zRear + this.lungeK * 0.12 },
     ];
-    const restP = [0.05, 0.2];
-    const restYaw = [0.1, -0.5];
+    const restP = zm ? [lerp(0.0, 0.04, guardStance), lerp(0.0, 0.14, guardStance)] : [0.05, 0.2];
+    const restYaw = zm ? [lerp(0.06, 0.08, guardStance), lerp(-0.06, -0.36, guardStance)] : [0.1, -0.5];
 
     this.bounce += dt * Math.PI * 2 * (1.8 + sp01 * 0.5);
     const h = 0.5 + 0.5 * Math.sin(this.bounce);
@@ -935,12 +943,14 @@ export class Robot {
   }
 
   private storeFeetLocal(toL: (wx: number, wz: number) => { x: number; z: number }) {
+    const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
+    const ankleH = zm ? zm.ANKLE_H : ANKLE_H;
     for (let i = 0; i < 2; i++) {
       const f = this.feet[i];
       const l = toL(f.curX, f.curZ);
       this.feetL[i].x = l.x;
       this.feetL[i].z = l.z;
-      this.feetL[i].y = ANKLE_H + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0);
+      this.feetL[i].y = ankleH + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0);
     }
   }
 
@@ -1108,22 +1118,28 @@ export class Robot {
     // desired hip height: relaxed knees standing; walking is a touch taller and rises on single support
     // walking: the hips sink a little at double support (touch-down) and rise smoothly over the stance leg.
     // The height follows the stride phase directly, so it is a clean sine-like bob, not a reach-limited kink.
+    const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
+    const l1 = zm ? zm.L1 : L1;
+    const l2 = zm ? zm.L2 : L2;
+    const ankleH = zm ? zm.ANKLE_H : ANKLE_H;
+    const standY = zm ? zm.STAND_Y : STAND_Y;
+    const hipX = zm ? zm.hipX : 0.76;
     const sw2 = fw.swing * fw.swing;
     // running: the body sinks into each stride (knees absorb the landing) and springs up during the flight phase
     const walkBob = -0.17 + 0.25 * sw2; // heavier: the hips sink onto the touch-down and drive up over the stance leg
-    const baseHd = clamp(STAND_Y - a.dip * 1.15, 1.6 + UP * 0.6, 3.42 + UP);
+    const baseHd = clamp(standY - a.dip * (zm ? 0.85 : 1.15), 1.6 + UP * 0.6, zm ? standY + 0.12 : 3.42 + UP);
     // running: the knees stay bent; the hips are lowest in mid-stance and rise gently towards touch-down / toe-off / flight.
     // `depth` is a smooth sine of the stance progress, so the bob is a clean ~6% wave (the old version spiked by 25%).
-    const runHd = RUN_HIP_LOW + RUN_HIP_BOB * (1 - fw.depth);
+    const runHd = (zm ? standY - 0.62 : RUN_HIP_LOW) + RUN_HIP_BOB * (1 - fw.depth);
     const hd = lerp(baseHd + gw * walkBob, runHd, rw) - massDip - fs.buckle * 1.5; // the knees give way under a knock-down
     // never ask a leg to stretch further than it can reach
     let cap = 9;
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? 1 : -1;
-      const hx = bodyX + s * 0.76 * Math.cos(pelvisYaw);
-      const hz = bodyZ - s * 0.76 * Math.sin(pelvisYaw);
+      const hx = bodyX + s * hipX * Math.cos(pelvisYaw);
+      const hz = bodyZ - s * hipX * Math.sin(pelvisYaw);
       const hd2 = Math.hypot(this.feetL[i].x - hx, this.feetL[i].z - hz);
-      const R = (L1 + L2) * 0.972;
+      const R = (l1 + l2) * (zm ? 0.992 : 0.972);
       cap = Math.min(cap, Math.sqrt(Math.max(0.01, R * R - hd2 * hd2)) + this.feetL[i].y);
     }
     // soft limit: the reach cap can no longer introduce a kink in the vertical motion
@@ -1401,12 +1417,22 @@ export class Robot {
       const p = a.arms[i];
       const fwd = clamp(-p.sx / 1.7, 0, 1.2);
       const abd = clamp(p.sz, 0, 1.5);
-      this.clavs[i].rotation.set(
-        0,
-        -s * (fwd * 0.32 + abd * 0.05) - slipRoll * 0.14 * dodgeFlow,
-        s * (abd * 0.14 + fwd * 0.06) + slipRoll * 0.16 * dodgeFlow,
-      );
-      this.caps[i].rotation.set(p.sx * 0.28, 0, s * p.sz * 0.3);
+      if (zm) {
+        // On Zeus, the sculpted shoulder pauldron (cap) is anchored to the upper torso arch like ZeusViewer
+        this.clavs[i].rotation.set(
+          0,
+          -s * (fwd * 0.05 + abd * 0.02) - slipRoll * 0.05 * dodgeFlow,
+          s * (abd * 0.04 + fwd * 0.02) + slipRoll * 0.05 * dodgeFlow,
+        );
+        this.caps[i].rotation.set(0, 0, 0);
+      } else {
+        this.clavs[i].rotation.set(
+          0,
+          -s * (fwd * 0.32 + abd * 0.05) - slipRoll * 0.14 * dodgeFlow,
+          s * (abd * 0.14 + fwd * 0.06) + slipRoll * 0.16 * dodgeFlow,
+        );
+        this.caps[i].rotation.set(p.sx * 0.28, 0, s * p.sz * 0.3);
+      }
       const lagX = this.sShoulderLag[i].update(-leanA * 0.62, 4.2, 0.48, dt); // heavy arms trail the torso
       const swayA = Math.sin(t * 5.2 + i) * 0.025;
       // contralateral arm swing while walking (only when the arm is in its guard, so punches stay clean)
@@ -1418,7 +1444,8 @@ export class Robot {
       const elbowDrive = -lerp(0.14, 0, rw) * drive; // ...the hand comes up on the forward half of the swing
       // the guard is knocked about by the blow: the arm on the side the fist lands on swings out, the other braces
       const flail = hMag * 0.1 * (0.35 + 0.65 * clamp(s * hL, 0, 1)) * (0.4 + hPt * 0.6);
-      this.shoulders[i].rotation.set(p.sx + swayA + lagX + swing - flail * 0.5, p.sy * s, (p.sz + flail) * s);
+      const zeusLatFlare = zm ? 0.05 : 0;
+      this.shoulders[i].rotation.set(p.sx + swayA + lagX + swing - flail * 0.5, p.sy * s, (p.sz + zeusLatFlare + flail) * s);
       const ex = Math.min(0.02, p.ex + elbowDrive);
       this.elbows[i].rotation.x = ex;
       // wrist whips with forearm angular speed (follow-through)
@@ -1437,7 +1464,7 @@ export class Robot {
       const s = i === 0 ? 1 : -1;
       const f = this.feet[i];
       const hipPos = this.hipJ[i].position;
-      this.tv.set(f.curX, this.root.position.y + S * (ANKLE_H + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0)), f.curZ);
+      this.tv.set(f.curX, this.root.position.y + S * (ankleH + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0)), f.curZ);
       const tgtW = this.tv.clone();
       this.pelvis.worldToLocal(this.tv);
       const xt = this.tv.x - hipPos.x;
@@ -1445,10 +1472,10 @@ export class Robot {
       const zt = this.tv.z - hipPos.z;
       const g = Math.atan2(xt, -yt);
       const y0 = -Math.hypot(xt, yt);
-      const d = clamp(Math.hypot(zt, y0), Math.abs(L1 - L2) + 0.05, L1 + L2 - 0.015);
-      const kx = Math.acos(clamp((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1));
+      const d = clamp(Math.hypot(zt, y0), Math.abs(l1 - l2) + 0.05, l1 + l2 - 0.015);
+      const kx = Math.acos(clamp((d * d - l1 * l1 - l2 * l2) / (2 * l1 * l2), -1, 1));
       const phi = Math.atan2(-zt, -y0);
-      const beta = Math.atan2(L2 * Math.sin(kx), L1 + L2 * Math.cos(kx));
+      const beta = Math.atan2(l2 * Math.sin(kx), l1 + l2 * Math.cos(kx));
       const ikHx = phi - beta;
 
       // FK pose used in the air / when knocked down

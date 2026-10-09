@@ -187,13 +187,12 @@ function MechaCrest({ index, color, locked, size = 34 }: { index: number; color:
         strokeOpacity={locked ? 0.35 : 0.85}
       />
       {index === 0 && (
-        /* SCRAP-9: Industrial welded brawler visor */
+        /* ZEUS: Sovereign Real Steel Emerald Visor & Crown */
         <>
-          <rect x="13" y="13" width="22" height="22" rx="3" fill="#1e293b" stroke={c} strokeWidth="1.6" />
-          <rect x="16" y="18" width="16" height="6" rx="1" fill={c} />
-          <line x1="17" y1="29" x2="31" y2="29" stroke={c} strokeWidth="2" />
-          <line x1="20" y1="13" x2="20" y2="35" stroke="#0f172a" strokeWidth="1.5" />
-          <line x1="28" y1="13" x2="28" y2="35" stroke="#0f172a" strokeWidth="1.5" />
+          <polygon points="12,16 16,9 24,14 32,9 36,16" fill={c} />
+          <polygon points="13,16 35,16 33,35 24,39 15,35" fill="#090d16" stroke={c} strokeWidth="1.6" />
+          <polygon points="16,21 24,24 32,21 30,26 24,28 18,26" fill={c} />
+          <circle cx="24" cy="18" r="1.8" fill="#ffffff" />
         </>
       )}
       {index === 1 && (
