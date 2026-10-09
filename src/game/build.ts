@@ -1715,11 +1715,16 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
       ),
       c.sec,
     );
-    // front bicep plate + posterior triceps shield + one accent ring
-    b.add(sh, arcPlate(0.45 * th, 0.53 * th, 2.3, 0.68), c.main, 0, -0.4, 0.02);
-    b.add(sh, arcPlate(0.44 * th, 0.53 * th, 2.3, 0.74), c.main, 0, -0.43, 0, [0, Math.PI, 0]); // triceps shell
-    b.add(sh, RB(0.03, 0.42, 0.03, 0.01), c.dark, 0, -0.5, -0.52 * th);
-    b.add(sh, arcPlate(0.43 * th, 0.485 * th, 1.6, 0.05), c.accent, 0, -0.86, 0.01);
+    // sculpted bicep guard (sized & positioned to clear shoulder pauldron above & elbow below with zero clipping)
+    b.add(sh, arcPlate(0.45 * th, 0.525 * th, 2.2, 0.46), c.main, 0, -0.56, 0.02);
+    // top chamfer rim and lower accent band
+    b.add(sh, arcPlate(0.46 * th, 0.515 * th, 1.9, 0.04), c.accent, 0, -0.36, 0.02);
+    b.add(sh, arcPlate(0.43 * th, 0.49 * th, 1.8, 0.05), c.accent, 0, -0.75, 0.01);
+    // posterior triceps shell (proportioned to never penetrate shoulder or elbow)
+    b.add(sh, arcPlate(0.44 * th, 0.515 * th, 2.1, 0.46), c.main, 0, -0.57, 0, [0, Math.PI, 0]);
+    // lateral mechanical spine
+    b.add(sh, RB(0.04, 0.38, 0.04, 0.012), c.dark, s * 0.46 * th, -0.56, 0);
+    b.add(sh, RB(0.02, 0.28, 0.02, 0.006), c.glow, s * 0.48 * th, -0.56, 0);
 
     // =========================== 4. ELBOW & FOREARM (TAPERED ATHLETIC BRACER) ===========================
     const el = new THREE.Group();
@@ -1751,11 +1756,16 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
       ),
       c.sec,
     );
-    // one bracer plate over the forearm + one thin light line + the heavy wrist collar
-    b.add(el, arcPlate(0.42 * fa, 0.49 * fa, 2.5, 0.58), c.main, 0, -0.52, 0);
-    b.add(el, arcPlate(0.4 * fa, 0.47 * fa, 2.2, 0.56), c.main, 0, -0.54, 0, [0, Math.PI, 0]);
-    b.add(el, RB(0.03, 0.38, 0.03, 0.01), c.glow, s * 0.47 * fa, -0.56, 0);
-    b.add(el, arcPlate(0.32 * fa, 0.4 * fa, 2.5, 0.07), c.steel, 0, -1.12, 0);
+    // athletic forearm bracer extended gracefully toward wrist collar
+    b.add(el, arcPlate(0.42 * fa, 0.50 * fa, 2.5, 0.68), c.main, 0, -0.60, 0);
+    b.add(el, arcPlate(0.40 * fa, 0.48 * fa, 2.2, 0.66), c.main, 0, -0.62, 0, [0, Math.PI, 0]);
+    b.add(el, RB(0.028, 0.48, 0.028, 0.008), c.glow, s * 0.48 * fa, -0.62, 0);
+    // reinforced wrist sleeve collar
+    b.add(el, tcyl(0.30 * fa, 0.38 * fa, 0.16 * fa, 24), c.steel, 0, -1.14, 0);
+    b.add(el, torus(0.36 * fa, 0.022 * fa, 24).rotateX(Math.PI / 2), c.accent, 0, -1.14, 0);
+    // articulated spherical wrist gimbal bearing ball (prevents rod clipping at all wrist angles)
+    b.add(el, sph(0.24 * fa, 22, 14), c.joint, 0, -1.28, 0);
+    b.add(el, torus(0.25 * fa, 0.024 * fa, 24).rotateX(Math.PI / 2), c.steel, 0, -1.24, 0);
 
     // =========================== 5. WRIST & PRO BOXING GLOVES ===========================
     const wr = new THREE.Group();
@@ -1854,24 +1864,29 @@ function buildFistMesh(r: Robot, fist: THREE.Group, b: Batch, c: Ctx, o: Opt, s:
   const k = o.fs;
   const skin = c.style.gloveSkin ?? 0;
   if (skin === 0 || o.variant !== 'atom') {
-    // tapered wrist cuff + one glow ring (scaled together with the enlarged boxing glove `k = o.fs`)
-    b.add(fist, tcyl(0.29 * k, 0.39 * k, 0.32 * k, 26), c.steel, 0, -0.04 * k, 0);
-    b.add(fist, torus(0.39 * k, 0.028 * k, 30), c.glow, 0, -0.18 * k, 0, [Math.PI / 2, 0, 0]);
+    // tapered wrist cuff socket (flush with wrist gimbal pivot, preventing forearm rod penetration)
+    b.add(fist, tcyl(0.31 * k, 0.40 * k, 0.22 * k, 26), c.steel, 0, -0.11 * k, 0);
+    b.add(fist, torus(0.40 * k, 0.028 * k, 30), c.glow, 0, -0.20 * k, 0, [Math.PI / 2, 0, 0]);
     // padded lace-strap cuff band + 3 lace stitches on the palm side
-    b.add(fist, RB(0.82 * k, 0.14 * k, 0.84 * k, 0.05 * k), c.rubber, 0, -0.28 * k, 0.02 * k);
-    for (let lc = 0; lc < 3; lc++) b.add(fist, RB(0.3 * k, 0.025 * k, 0.03 * k, 0.008 * k), c.steel, 0, (-0.22 - lc * 0.06) * k, -0.42 * k);
+    b.add(fist, RB(0.82 * k, 0.13 * k, 0.84 * k, 0.04 * k), c.rubber, 0, -0.27 * k, 0.02 * k);
+    for (let lc = 0; lc < 3; lc++) b.add(fist, RB(0.28 * k, 0.022 * k, 0.028 * k, 0.006 * k), c.steel, 0, (-0.22 - lc * 0.05) * k, -0.42 * k);
     // ONE smooth heavy-duty glove body (full-sized robot boxing fist)
-    b.add(fist, RB(0.84 * k, 0.88 * k, 0.86 * k, 0.35 * k), c.dark, 0, -0.58 * k, 0.02 * k);
-    // rounded knuckle dome wrapping the striking face (true boxing-glove silhouette, not a brick)
-    b.add(fist, sph(0.4 * k, 22, 14), c.dark, 0, -0.84 * k, 0.1 * k, [0, 0, 0], [1.02, 0.58, 1.0]);
-    // ONE knuckle bar across the striking face of the fist (protrudes like a real glove's knuckle pad)
-    b.add(fist, RB(0.64 * k, 0.18 * k, 0.52 * k, 0.085 * k), c.main, 0, -0.92 * k, 0.15 * k);
-    // dorsal armor shield with accent chevron
-    b.add(fist, RB(0.6 * k, 0.5 * k, 0.1 * k, 0.05 * k), c.main, 0, -0.56 * k, 0.44 * k, [0.1, 0, 0]);
-    b.add(fist, RB(0.3 * k, 0.04 * k, 0.04 * k, 0.012 * k), c.accent, 0, -0.56 * k, 0.5 * k);
-    // tucked thumb (proper boxing form)
-    b.add(fist, new THREE.CapsuleGeometry(0.14 * k, 0.32 * k, 6, 14), c.rubber, -s * 0.46 * k, -0.68 * k, 0.03 * k, [0, 0, -s * 0.14]);
-    b.add(fist, RB(0.14 * k, 0.16 * k, 0.2 * k, 0.04 * k), c.main, -s * 0.5 * k, -0.6 * k, 0.1 * k, [0, 0, -s * 0.14]);
+    b.add(fist, RB(0.84 * k, 0.74 * k, 0.86 * k, 0.30 * k), c.dark, 0, -0.58 * k, 0.02 * k);
+    // rounded knuckle dome wrapping the striking face (true boxing-glove silhouette)
+    b.add(fist, sph(0.41 * k, 26, 16), c.dark, 0, -0.86 * k, 0.12 * k, [0, 0, 0], [1.02, 0.68, 1.02]);
+    // contoured knuckle striker plate (flush with front striking face, zero clipping through top/back)
+    b.add(fist, RB(0.66 * k, 0.14 * k, 0.24 * k, 0.06 * k), c.main, 0, -0.94 * k, 0.26 * k);
+    for (let kn = 0; kn < 4; kn++) {
+      const kx = (kn - 1.5) * 0.16 * k;
+      b.add(fist, sph(0.038 * k, 12, 8), c.steel, kx, -0.94 * k, 0.36 * k);
+    }
+    // dorsal armor shield with accent chevron & core light
+    b.add(fist, RB(0.62 * k, 0.46 * k, 0.06 * k, 0.025 * k), c.main, 0, -0.56 * k, 0.44 * k);
+    b.add(fist, RB(0.32 * k, 0.035 * k, 0.03 * k, 0.01 * k), c.accent, 0, -0.56 * k, 0.48 * k);
+    b.add(fist, RB(0.18 * k, 0.025 * k, 0.02 * k, 0.006 * k), c.glow, 0, -0.56 * k, 0.49 * k);
+    // tucked thumb with flush protective thumb-lock strap
+    b.add(fist, new THREE.CapsuleGeometry(0.13 * k, 0.28 * k, 8, 14), c.rubber, -s * 0.44 * k, -0.66 * k, 0.06 * k, [0.08, 0, -s * 0.16]);
+    b.add(fist, RB(0.10 * k, 0.18 * k, 0.18 * k, 0.04 * k), c.main, -s * 0.48 * k, -0.60 * k, 0.12 * k, [0.08, 0, -s * 0.16]);
     return;
   }
 
@@ -1906,14 +1921,14 @@ function buildFistMesh(r: Robot, fist: THREE.Group, b: Batch, c: Ctx, o: Opt, s:
   const mTrim = mkBody(gc.trim, chrome ? 0.98 : 0.94, chrome ? 0.08 : 0.18);
   const mGlow = mkGlow(gc.glow, 2.6);
 
-  // Heavy-duty Wrist Cuff + Energy Ring + Padded Strap Band + Core Fist Volume + Knuckle Dome + Thumb
-  b.add(fist, tcyl(0.3 * k, 0.41 * k, 0.34 * k, 26), mTrim, 0, -0.04 * k, 0);
-  b.add(fist, torus(0.4 * k, 0.03 * k, 30), mGlow, 0, -0.18 * k, 0, [Math.PI / 2, 0, 0]);
-  b.add(fist, RB(0.84 * k, 0.14 * k, 0.86 * k, 0.05 * k), c.rubber, 0, -0.28 * k, 0.02 * k);
-  for (let lc = 0; lc < 3; lc++) b.add(fist, RB(0.3 * k, 0.025 * k, 0.03 * k, 0.008 * k), mTrim, 0, (-0.22 - lc * 0.06) * k, -0.43 * k);
-  b.add(fist, RB(0.86 * k, 0.9 * k, 0.88 * k, 0.34 * k), mBody, 0, -0.58 * k, 0.02 * k);
-  b.add(fist, sph(0.41 * k, 22, 14), mBody, 0, -0.84 * k, 0.1 * k, [0, 0, 0], [1.02, 0.58, 1.0]); // rounded knuckle dome
-  b.add(fist, RB(0.76 * k, 0.62 * k, 0.26 * k, 0.08 * k), mPlate, 0, -0.56 * k, 0.38 * k); // Dorsal armor shield
+  // Heavy-duty Wrist Cuff Socket + Energy Ring + Padded Strap Band + Core Fist Volume + Knuckle Dome + Thumb
+  b.add(fist, tcyl(0.31 * k, 0.41 * k, 0.22 * k, 26), mTrim, 0, -0.11 * k, 0);
+  b.add(fist, torus(0.40 * k, 0.028 * k, 30), mGlow, 0, -0.20 * k, 0, [Math.PI / 2, 0, 0]);
+  b.add(fist, RB(0.84 * k, 0.13 * k, 0.86 * k, 0.04 * k), c.rubber, 0, -0.27 * k, 0.02 * k);
+  for (let lc = 0; lc < 3; lc++) b.add(fist, RB(0.28 * k, 0.022 * k, 0.028 * k, 0.006 * k), mTrim, 0, (-0.22 - lc * 0.05) * k, -0.43 * k);
+  b.add(fist, RB(0.86 * k, 0.76 * k, 0.88 * k, 0.30 * k), mBody, 0, -0.58 * k, 0.02 * k);
+  b.add(fist, sph(0.41 * k, 26, 16), mBody, 0, -0.86 * k, 0.12 * k, [0, 0, 0], [1.02, 0.68, 1.02]); // rounded knuckle dome
+  b.add(fist, RB(0.74 * k, 0.54 * k, 0.16 * k, 0.06 * k), mPlate, 0, -0.56 * k, 0.42 * k); // Dorsal armor shield
   // side palm/thumb-guard plates + bolted thumb
   b.add(fist, RB(0.1 * k, 0.5 * k, 0.6 * k, 0.03 * k), mPlate, s * 0.44 * k, -0.6 * k, 0.02 * k);
   b.add(fist, new THREE.CapsuleGeometry(0.15 * k, 0.34 * k, 6, 14), mPlate, -s * 0.47 * k, -0.68 * k, 0.04 * k, [0, 0, -s * 0.14]);

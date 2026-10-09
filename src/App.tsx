@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CAM_MODES, DEFAULT_BLOOM_PCT, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
-import { loadSfxProfile, type SfxProfile } from './game/audio';
+import { loadSfxProfile, loadAllOverdrivePunch, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
 import { MatchEnd, PauseMenu } from './ui/Overlays';
@@ -140,6 +140,13 @@ export default function App() {
     gameRef.current?.setNoSlowMoNormal(on);
   };
 
+  const [allOdLocal, setAllOdLocal] = useState<boolean>(loadAllOverdrivePunch);
+  const allOdNow = hud?.allOverdrivePunch ?? allOdLocal;
+  const pickAllOd = (on: boolean) => {
+    setAllOdLocal(on);
+    gameRef.current?.setAllOverdrivePunch(on);
+  };
+
   // ---------------------------------------------------------------- the ring transition (see TRANSITIONS in Game.ts)
   const [transId, setTransId] = useState<TransId>(loadTrans);
   const [trans, setTrans] = useState<{ id: TransId; run: number } | null>(null);
@@ -206,6 +213,7 @@ export default function App() {
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
+    gameRef.current?.reloadZeus();
   };
 
   /** drop the bell: the current bout of a series goes into the ring */
@@ -335,6 +343,8 @@ export default function App() {
           onDirectionalHeadSnap={pickSnap}
           noSlowMoNormal={noSlowMoNormalNow}
           onNoSlowMoNormal={pickNoSlowMoNormal}
+          allOverdrivePunch={allOdNow}
+          onAllOverdrivePunch={pickAllOd}
           onShowZeus={openZeus}
           game={game}
           hud={hud}
@@ -453,6 +463,8 @@ export default function App() {
           onDirectionalHeadSnap={pickSnap}
           noSlowMoNormal={noSlowMoNormalNow}
           onNoSlowMoNormal={pickNoSlowMoNormal}
+          allOverdrivePunch={allOdNow}
+          onAllOverdrivePunch={pickAllOd}
           onShowZeus={openZeus}
           onResume={() => game?.togglePause()}
           onMenu={() => {
@@ -466,10 +478,25 @@ export default function App() {
       {/* ---------- the live FPS / graphics chip on the lobby screen ---------- */}
       {phase === 'menu' && <div className="absolute bottom-3 left-3 z-40 flex gap-2">{gfxChip()}</div>}
 
-      {/* ---------- utility buttons (fps / graphics / pause / sound / directional head snap during match) ---------- */}
+      {/* ---------- utility buttons (fps / graphics / pause / sound / directional head snap / overdrive sound during match) ---------- */}
       {phase !== 'menu' && (
         <div className="absolute right-3 z-30 flex gap-2" style={inMatch ? (touch ? { top: 78 } : { bottom: 12 }) : { top: 12 }}>
           {gfxChip()}
+          {inMatch && (
+            <button
+              onClick={() => pickAllOd(!allOdNow)}
+              className={`ghost cut-sm pointer-events-auto flex h-9 items-center gap-1.5 px-2.5 font-tech text-[9px] font-bold tracking-[0.16em] transition-all ${
+                allOdNow
+                  ? 'border-orange-400/80 bg-orange-500/25 text-amber-200 shadow-[0_0_14px_rgba(255,120,20,0.4)]'
+                  : 'border-white/20 text-white/50'
+              }`}
+              title="Tombol Suara: Semua Pukulan Pakai Suara Pukulan Overdrive"
+            >
+              <span className="text-amber-400">⚡</span>
+              <span className="hidden sm:inline">SUARA OD: {allOdNow ? 'ON' : 'OFF'}</span>
+              <span className="sm:hidden">{allOdNow ? 'OD ON' : 'OD OFF'}</span>
+            </button>
+          )}
           {inMatch && (
             <button
               onClick={() => pickNoSlowMoNormal(!noSlowMoNormalNow)}

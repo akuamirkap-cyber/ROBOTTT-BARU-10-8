@@ -232,6 +232,12 @@ export interface ZeusRigMetrics {
   hipX: number;
 }
 
+export interface ZeusRuntimeLink {
+  f: THREE.Mesh;
+  l: THREE.Mesh;
+  off: THREE.Matrix4;
+}
+
 interface OrigBonePositions {
   waist: THREE.Vector3;
   chest: THREE.Vector3;
@@ -253,6 +259,7 @@ const LS_ZEUS_THEME = 'steel_titans_zeus_theme';
 const LS_VIEWER_THEME = 'zeus-theme-v1';
 const LS_VIEWER_ADJ = 'zeus-part-adjust-v1';
 const LS_VIEWER_HIDDEN = 'zeus-hidden-v1';
+const LS_VIEWER_GROUPS = 'zeus-groups-v1';
 
 // Master conversion factor from ZeusViewer native units (total height 12.31)
 // to Steel Titans Robot local units. At K = 0.72, Zeus's native leg length
@@ -336,6 +343,7 @@ export function unmount100PercentZeus(r: Robot) {
     r.footJ.forEach((o, i) => orig.footJ[i] && o.position.copy(orig.footJ[i]));
   }
   delete r.root.userData.zeusMetrics;
+  delete r.root.userData.zeusLinks;
 
   // Restore visibility of standard meshes
   r.root.traverse((node) => {
@@ -1030,12 +1038,17 @@ export function mount100PercentZeus(
     applyBend(m, a.b);
   };
 
+  const adjMap = new Map<string, Adj>();
   const setAdj = (id: string, a: Adj, mirror: boolean) => {
     const m = partById.get(id);
     if (!m) return;
+    adjMap.set(id, a);
     applyAdj(m, a);
     const o = m.userData.mirror as THREE.Mesh | undefined;
-    if (mirror && o) applyAdj(o, a);
+    if (mirror && o) {
+      adjMap.set(o.userData.id, a);
+      applyAdj(o, a);
+    }
   };
 
   // 1) Apply built-in ZEUS_PRESET (raises face/jaw p6..p42 by +0.45, neck p43 by +0.324,
@@ -1086,6 +1099,63 @@ export function mount100PercentZeus(
         }
       }
     }
+
+    // 3) Apply user groups from zeus-groups-v1 and weld group followers to leaders
+    const groupsRaw = localStorage.getItem(LS_VIEWER_GROUPS);
+    let groupsDict: Record<string, string[]> = { ...ZEUS_PRESET.groups };
+    if (groupsRaw) {
+      try {
+        const parsed = JSON.parse(groupsRaw);
+        if (parsed && typeof parsed === 'object') {
+          groupsDict = { ...groupsDict, ...parsed };
+        }
+      } catch {}
+    }
+
+    const runtimeLinks: ZeusRuntimeLink[] = [];
+    r.root.updateMatrixWorld(true);
+
+    Object.entries(groupsDict).forEach(([groupName, ids]) => {
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      ids.forEach((id) => {
+        const m = partById.get(id);
+        if (m) {
+          m.userData.group = groupName;
+          const om = m.userData.mirror as THREE.Mesh | undefined;
+          if (om) om.userData.group = groupName;
+        }
+      });
+
+      // Weld group followers to the leader so their movements stay active and matching 1:1 in Steel Titans
+      if (ids.length >= 2) {
+        const leaderId = ids[ids.length - 1];
+        const L = partById.get(leaderId);
+        if (L) {
+          for (const fid of ids.slice(0, -1)) {
+            const F = partById.get(fid);
+            if (!F || F === L) continue;
+            if (F.parent && L.parent && F.parent !== L.parent) {
+              const off = L.matrixWorld.clone().invert().multiply(F.matrixWorld);
+              runtimeLinks.push({ f: F, l: L, off });
+              const fm = F.userData.mirror as THREE.Mesh | undefined;
+              const lm = L.userData.mirror as THREE.Mesh | undefined;
+              if (fm && lm && fm.parent && lm.parent && fm.parent !== lm.parent) {
+                const offM = lm.matrixWorld.clone().invert().multiply(fm.matrixWorld);
+                runtimeLinks.push({ f: fm, l: lm, off: offM });
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (runtimeLinks.length > 0) {
+      r.root.userData.zeusLinks = runtimeLinks;
+    } else {
+      delete r.root.userData.zeusLinks;
+    }
+
+    // 4) Apply hidden/deleted parts
     const hiddenRaw = localStorage.getItem(LS_VIEWER_HIDDEN);
     if (hiddenRaw) {
       const hiddenIds = JSON.parse(hiddenRaw) as string[];

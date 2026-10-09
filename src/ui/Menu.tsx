@@ -21,7 +21,7 @@ import {
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from '../game/build';
 import type { SfxProfile } from '../game/audio';
 import { Key, cssVar } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, SlowMoModePicker, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, DifficultyPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, OverdrivePunchPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, SlowMoModePicker, TransitionPicker } from './Pickers';
 import { ACCOUNT_NAME, MODES, levelOf, tierOf, weekResetIn, wrcPoints, type ModeId, type Profile } from '../game/progress';
 import { Avatar, ProfileCard, ProfileSheet } from './Profile';
 import { Leaderboard, ModeDossier, ModeHub, type LobbyView } from './Modes';
@@ -73,6 +73,8 @@ export interface MenuProps {
   onDirectionalHeadSnap?: (on: boolean) => void;
   noSlowMoNormal?: boolean;
   onNoSlowMoNormal?: (on: boolean) => void;
+  allOverdrivePunch?: boolean;
+  onAllOverdrivePunch?: (on: boolean) => void;
   onShowZeus?: () => void;
 }
 
@@ -368,6 +370,8 @@ export function Menu({
   onDirectionalHeadSnap,
   noSlowMoNormal = false,
   onNoSlowMoNormal,
+  allOverdrivePunch = false,
+  onAllOverdrivePunch,
   onShowZeus,
 }: MenuProps) {
   const [tab, setTab] = useState<MenuTab>('lobby');
@@ -668,6 +672,18 @@ export function Menu({
               <span className="font-black">ZEUS 3D</span>
             </button>
           )}
+          {/* Quick Overdrive Sound Toggle Button */}
+          {onAllOverdrivePunch && (
+            <button
+              onClick={act(() => onAllOverdrivePunch(!allOverdrivePunch))}
+              className={`aaa-pill ${allOverdrivePunch ? '!border-orange-400 !bg-orange-950/90 !text-amber-200 shadow-[0_0_15px_rgba(255,100,20,0.45)]' : 'border-white/20 text-white/70 hover:text-white'} font-display tracking-wider cursor-pointer hidden md:flex`}
+              title="Tombol Suara Pukulan: Toggle Semua Suara Pukulan Jadi Suara Overdrive"
+            >
+              <span className="text-amber-400 font-bold">⚡</span>
+              <span className="font-black text-[11px]">SUARA OD: {allOverdrivePunch ? 'AKTIF' : 'OFF'}</span>
+            </button>
+          )}
+
           {/* WRC League Points */}
           <div className="aaa-pill aaa-pill-gold hidden xl:flex">
             <span className="aaa-pill-k">WRC</span>
@@ -1518,6 +1534,11 @@ export function Menu({
               <div className="lobby-subcard rounded-lg p-3.5">
                 <SfxPicker value={sfx} onPick={onSfx} />
               </div>
+              {onAllOverdrivePunch && (
+                <div className="lobby-subcard rounded-lg p-3.5">
+                  <OverdrivePunchPicker value={!!allOverdrivePunch} onToggle={onAllOverdrivePunch} />
+                </div>
+              )}
               <div className="lobby-subcard rounded-lg p-3.5">
                 <CamPicker value={cam} onPick={onCam} />
               </div>

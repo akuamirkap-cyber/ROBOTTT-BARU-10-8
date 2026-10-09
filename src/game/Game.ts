@@ -15,7 +15,8 @@ export { type PyroPlacement, loadPyroPlacement, savePyroPlacement };
 import { HANGAR_POS, buildHangar, type Hangar } from './hangar';
 import { Effects, Trail } from './fx';
 import { Decap } from './decap';
-import { Sfx, type SfxProfile } from './audio';
+import { Sfx, type SfxProfile, loadAllOverdrivePunch, LS_ALL_OD_PUNCH } from './audio';
+export { loadAllOverdrivePunch, LS_ALL_OD_PUNCH };
 import { Spring } from './spring';
 import { nextShot, shotCamera, type Shot } from './demo';
 import {
@@ -386,6 +387,8 @@ export interface HudState {
   directionalHeadSnap?: boolean;
   /** no slow-mo on normal attacks toggle (slow-mo exclusively reserved for Overdrive & KO) */
   noSlowMoNormal?: boolean;
+  /** all punch sounds use overdrive punch impact sound toggle */
+  allOverdrivePunch?: boolean;
   stats?: MatchStats; // the fight sheet shown on the result screen
   /** TEAM MATCH (2v2): the second robot on each side */
   team?: {
@@ -1560,6 +1563,7 @@ export class Game {
   private textureEnhance = loadTextureEnhance(); // whether enhanced PBR micro-textures are applied
   private bloomMode: BloomMode = loadBloomMode();
   private bloomPercent: number = loadBloomPercent();
+  allOverdrivePunch: boolean = loadAllOverdrivePunch();
   private smoothBloomStrength = 0.14;
   private smoothBloomRadius = 0.55;
   private enemyCache = new Map<number, Fighter>();
@@ -2064,6 +2068,29 @@ export class Game {
     this.sfx.servo();
     this.sfx.click();
     this.emitHud(true);
+  }
+
+  /** Re-mount Zeus 100% on any active robots (lobby hero, player, enemy, VS cards) using current adjustments & groups */
+  reloadZeus() {
+    if (this.menuHero?.ctx.style.isZeus100) {
+      mount100PercentZeus(this.menuHero);
+    }
+    if (this.player?.robot?.ctx.style.isZeus100) {
+      mount100PercentZeus(this.player.robot);
+    }
+    const z0 = this.enemyCache.get(0);
+    if (z0) mount100PercentZeus(z0.robot, '#22ff44');
+    const z3 = this.enemyCache.get(3);
+    if (z3) mount100PercentZeus(z3.robot, '#c070ff');
+    if (this.enemy && (this.enemy.robot.ctx.style.isZeus100 || this.oppIndex === 0 || this.oppIndex === 3)) {
+      mount100PercentZeus(this.enemy.robot, this.oppIndex === 3 ? '#c070ff' : '#22ff44');
+    }
+    if (this.vsFoe && (this.vsFoe.robot.ctx.style.isZeus100 || this.vs?.idx === 0 || this.vs?.idx === 3)) {
+      mount100PercentZeus(this.vsFoe.robot, this.vs?.idx === 3 ? '#c070ff' : '#22ff44');
+    }
+    if (this.vsFoe2 && (this.vsFoe2.robot.ctx.style.isZeus100 || this.vs?.idx2 === 0 || this.vs?.idx2 === 3)) {
+      mount100PercentZeus(this.vsFoe2.robot, this.vs?.idx2 === 3 ? '#c070ff' : '#22ff44');
+    }
   }
 
   /** Camera preset (see CAM_MODES). Applies instantly, in the menu, the pause screen or mid-fight. Remembered. */
@@ -2869,6 +2896,12 @@ export class Game {
   setSoundProfile(id: SfxProfile) {
     this.sfx.init();
     this.sfx.setProfile(id, true);
+  }
+
+  setAllOverdrivePunch(on: boolean) {
+    this.allOverdrivePunch = on;
+    this.sfx.setAllOverdrivePunch(on, true);
+    this.emitHud(true);
   }
 
   press(code: string) {
@@ -6895,9 +6928,15 @@ export class Game {
     if (big >= 0.45 || crit || launched) {
       this.fx.ring(d.pos.x, d.pos.y, aim === AIM_BODY ? 0xffa050 : 0xffdf90, 3.2 + big * 2.2, 0.32);
     }
-    this.sfx.hit(Math.min(1, big * 1.15));
-    this.sfx.crackle(0.25 + big * 0.55); // heavy steel armor crunch & electrical arc on every clean blow!
-    this.sfx.cheer(0.3 + big * 0.7);
+    if (this.allOverdrivePunch || isOD(m.id)) {
+      this.sfx.overdriveHit(Math.min(1.2, 0.7 + big * 0.7));
+      this.sfx.crackle(0.45 + big * 0.6);
+      this.sfx.cheer(0.35 + big * 0.7);
+    } else {
+      this.sfx.hit(Math.min(1, big * 1.15));
+      this.sfx.crackle(0.25 + big * 0.55); // heavy steel armor crunch & electrical arc on every clean blow!
+      this.sfx.cheer(0.3 + big * 0.7);
+    }
     // an Overdrive that connects gets the director's punch-in on the point of impact — unless this is the
     // one that takes the head off, in which case the long HEAD RIP shot takes over instead
     const willRip = (a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && !d.decapitated && this.phase === 'fight';
@@ -8521,6 +8560,7 @@ export class Game {
       pyroPlacement: this.arena.getPyroPlacement(),
       directionalHeadSnap: this.directionalHeadSnap,
       noSlowMoNormal: this.noSlowMoNormal,
+      allOverdrivePunch: this.allOverdrivePunch,
       team:
         this.teamMode && this.ally && this.enemy2 && this.def2
           ? {

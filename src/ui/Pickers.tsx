@@ -55,6 +55,56 @@ export function SfxPicker({ value, onPick }: { value: SfxProfile; onPick: (id: S
   );
 }
 
+export function OverdrivePunchPicker({ value, onToggle }: { value: boolean; onToggle: (on: boolean) => void }) {
+  return (
+    <div>
+      <SectionTitle
+        right={
+          <span className={`font-tech text-[8px] font-bold tracking-[0.2em] ${value ? 'text-amber-300' : 'text-white/45'}`}>
+            {value ? '⚡ OVERDRIVE AKTIF' : 'STANDAR'}
+          </span>
+        }
+      >
+        SEMUA SUARA PUKULAN PAKE OVERDRIVE
+      </SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => onToggle(false)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${!value ? 'tile-on' : ''}`}
+          style={cssVar('--c', '#ffd34a')}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-display text-[15px] tracking-wider" style={{ color: !value ? '#ffd34a' : '#ffffff' }}>
+              PROFIL NORMAL
+            </span>
+            <span className="font-tech text-[10px] text-white/50">{!value ? 'AKTIF' : ''}</span>
+          </div>
+          <div className="mt-0.5 text-[10px] leading-tight text-white/55">
+            Suara pukulan dinamis sesuai profil sound & kekuatan tinju
+          </div>
+        </button>
+        <button
+          onClick={() => onToggle(true)}
+          className={`tile cut-sm pointer-events-auto relative px-3 py-2 text-left ${value ? 'tile-on !border-orange-400 !bg-orange-500/15 shadow-[0_0_16px_rgba(255,100,20,0.35)]' : ''}`}
+          style={cssVar('--c', '#ff7a1a')}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-display text-[15px] tracking-wider text-orange-300 flex items-center gap-1">
+              <span>⚡</span> OVERDRIVE MAKSIMAL
+            </span>
+            <span className={`font-tech text-[10px] font-bold ${value ? 'text-amber-300 animate-pulse' : 'text-white/50'}`}>
+              {value ? 'AKTIF 🔥' : ''}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[10px] leading-tight text-amber-100/75">
+            Semua pukulan mengeluarkan suara ledakan Overdrive bertenaga dahsyat!
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function DirectionalHeadSnapPicker({ value, onPick }: { value: boolean; onPick: (on: boolean) => void }) {
   return (
     <div>

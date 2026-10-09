@@ -20,6 +20,15 @@ export const loadSfxProfile = (): SfxProfile => {
   return 'hydraulic';
 };
 
+export const LS_ALL_OD_PUNCH = 'steel-titans-all-od-punch-v1';
+export const loadAllOverdrivePunch = (): boolean => {
+  try {
+    return localStorage.getItem(LS_ALL_OD_PUNCH) === '1';
+  } catch {
+    return false;
+  }
+};
+
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 export class Sfx {
@@ -35,6 +44,7 @@ export class Sfx {
   private noiseBuf!: AudioBuffer;
   muted = false;
   profile: SfxProfile = loadSfxProfile();
+  allOverdrivePunch = loadAllOverdrivePunch();
   private readonly CROWD_BASE = 0.012;
   private musicOn = false;
   private nextT = 0;
@@ -159,7 +169,25 @@ export class Sfx {
     if (preview) this.preview();
   }
 
-  /** A short demo: medium hit → block → heavy hit. */
+  setAllOverdrivePunch(on: boolean, preview = true) {
+    this.allOverdrivePunch = on;
+    try {
+      localStorage.setItem(LS_ALL_OD_PUNCH, on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (preview && on) {
+      if (!this.ctx) this.init();
+      else void this.ctx.resume();
+      this.overdriveHit(1.0);
+    } else if (preview && !on) {
+      if (!this.ctx) this.init();
+      else void this.ctx.resume();
+      this.hit(0.7);
+    }
+  }
+
+  /** A short demo: medium hit → block → heavy hit (or overdrive hits if toggled). */
   preview() {
     if (!this.ctx) return;
     void this.ctx.resume();
@@ -264,7 +292,45 @@ export class Sfx {
   }
 
   // ------------------------------------------------------------ impacts
+  /** Catastrophic Overdrive punch impact: massive sub-bass cannon drop, high-voltage electrical arc crackle, supersonic knuckle snap, hydraulic recoil hiss, ringing titanium chimes */
+  overdriveHit(p = 1.0) {
+    const power = clamp01(Math.max(0.65, p));
+    const r = 0.94 + Math.random() * 0.12;
+    const pb = this.punchBus;
+
+    // 1. High-voltage electrical arc explosion (bright, crackling sparks)
+    this.crackle(1.2);
+
+    // 2. Supersonic knuckle-to-plate fracture snap
+    this.tone('triangle', (1850 + 450 * power) * r, 120, 0.026, 0.95 + 0.35 * power, 0, pb);
+    this.noise(0.035, 'bandpass', 3200 * r, 800, 1.05 + 0.35 * power, 0, 1.25, pb);
+
+    // 3. Devastating sub-bass cannon drop (pure chest-thumping sub-impact down to 18Hz)
+    this.tone('sine', (120 + 35 * power) * r, 20, 0.58 + 0.32 * power, 1.75 + 0.35 * power, 0, pb);
+    this.tone('sine', 58, 16, 0.72 + 0.25 * power, 1.35 * power, 0, pb);
+
+    // 4. Heavy armor plate dent & crushing impact body
+    this.noise(0.24 + 0.14 * power, 'lowpass', 1950, 110, 1.25, 0, 0.92, pb);
+    this.noise(0.12, 'bandpass', 820 * r, 320, 0.95, 0, 3.8, pb);
+
+    // 5. High-pressure hydraulic & pneumatic actuator pressure purge
+    this.noise(0.32 + 0.18 * power, 'bandpass', 4600, 1200, 0.75 * power, 0.012, 0.85);
+
+    // 6. Overdrive servo coil recoil groan & capacitor discharge
+    this.tone('sawtooth', 360 * r, 48, 0.26, 0.45 * power, 0.005, pb);
+
+    // 7. Resonant bell-like titanium chassis chime
+    this.modal([168 * r, 258 * r, 418 * r, 670 * r, 940 * r], 0.32 + 0.15 * power, 0.36 * power);
+
+    // 8. Low-end shockwave reverberation
+    this.noise(0.75 + 0.35 * power, 'lowpass', 420, 45, 0.65 * power, 0.02, 0.85, pb);
+  }
+
   hit(p: number) {
+    if (this.allOverdrivePunch) {
+      this.overdriveHit(p);
+      return;
+    }
     p = clamp01(p);
     const r = 0.92 + Math.random() * 0.16;
     const pb = this.punchBus;

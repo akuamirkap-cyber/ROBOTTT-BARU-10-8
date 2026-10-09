@@ -1431,7 +1431,7 @@ export class Robot {
           -s * (fwd * 0.32 + abd * 0.05) - slipRoll * 0.14 * dodgeFlow,
           s * (abd * 0.14 + fwd * 0.06) + slipRoll * 0.16 * dodgeFlow,
         );
-        this.caps[i].rotation.set(p.sx * 0.28, 0, s * p.sz * 0.3);
+        this.caps[i].rotation.set(p.sx * 0.38, 0, s * p.sz * 0.36);
       }
       const lagX = this.sShoulderLag[i].update(-leanA * 0.62, 4.2, 0.48, dt); // heavy arms trail the torso
       const swayA = Math.sin(t * 5.2 + i) * 0.025;
@@ -1548,5 +1548,20 @@ export class Robot {
     const gl = (0.62 + Math.min(2.2, a.glow) * 0.42 + Math.sin(t * 3) * 0.08) * (1 - eSpan * 0.85);
     for (const m of this.glowMats) m.emissiveIntensity = gl;
     for (const m of this.bodyMats) m.emissiveIntensity = a.flash * 0.42;
+
+    // Update Zeus group follower links if active (welded parts stay 100% matched to leader in real time)
+    const zl = this.root.userData.zeusLinks as Array<{ f: THREE.Mesh; l: THREE.Mesh; off: THREE.Matrix4 }> | undefined;
+    if (zl && zl.length > 0) {
+      this.root.updateMatrixWorld(true);
+      for (const lk of zl) {
+        if (!lk.f.parent || !lk.l) continue;
+        const M = lk.f.parent.matrixWorld.clone().invert().multiply(lk.l.matrixWorld).multiply(lk.off);
+        const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
+        M.decompose(pos, quat, scl);
+        lk.f.position.copy(pos);
+        lk.f.quaternion.copy(quat);
+        lk.f.scale.copy(scl);
+      }
+    }
   }
 }

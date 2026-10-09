@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from '../game/Game';
 import type { SfxProfile } from '../game/audio';
 import { Emblem, Key } from './Emblem';
-import { BloomPicker, BrightnessPicker, CamPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, SlowMoModePicker, TierLadder, TransitionPicker } from './Pickers';
+import { BloomPicker, BrightnessPicker, CamPicker, DirectionalHeadSnapPicker, FootworkPicker, GfxPicker, IqPicker, OverdrivePunchPicker, PyroPicker, ResetVisualsButton, RobotTexturePicker, SaturationPicker, SfxPicker, SlowMoModePicker, TierLadder, TransitionPicker } from './Pickers';
 import { TOURNEY_STAGES, modeOf, type Series } from '../game/progress';
 
 export function PauseMenu({
@@ -37,6 +37,8 @@ export function PauseMenu({
   onDirectionalHeadSnap,
   noSlowMoNormal,
   onNoSlowMoNormal,
+  allOverdrivePunch,
+  onAllOverdrivePunch,
   onShowZeus,
 }: {
   onResume: () => void;
@@ -71,6 +73,8 @@ export function PauseMenu({
   onDirectionalHeadSnap: (on: boolean) => void;
   noSlowMoNormal?: boolean;
   onNoSlowMoNormal?: (on: boolean) => void;
+  allOverdrivePunch?: boolean;
+  onAllOverdrivePunch?: (on: boolean) => void;
 }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
@@ -95,6 +99,11 @@ export function PauseMenu({
         <div className="mt-4">
           <SfxPicker value={sfx} onPick={onSfx} />
         </div>
+        {onAllOverdrivePunch && (
+          <div className="mt-4">
+            <OverdrivePunchPicker value={!!allOverdrivePunch} onToggle={onAllOverdrivePunch} />
+          </div>
+        )}
         <div className="mt-4">
           <FootworkPicker value={fw} onPick={onFw} />
         </div>

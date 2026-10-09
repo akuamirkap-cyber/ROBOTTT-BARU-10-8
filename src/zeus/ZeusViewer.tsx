@@ -9,6 +9,7 @@ type Api = {
   setAdj: (id: string, a: Adj, mirror: boolean) => void;
   setAdjRigid: (primaryId: string, a: Adj, otherIds: string[], mirror: boolean) => void;
   setLinks: (groups: Record<string, string[]>, follow: boolean) => void;
+  bakeLinks: () => void;
   setHidden: (ids: string[], mirror: boolean) => string[];
   mirrorOf: (id: string) => string | null;
   exportData: () => object;
@@ -192,7 +193,11 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
     apiRef.current?.setTheme(hex);
   };
 
-  const saveGroups = (g: Record<string, string[]>) => { setGroups(g); localStorage.setItem(GROUP_KEY, JSON.stringify(g)); };
+  const saveGroups = (g: Record<string, string[]>) => {
+    setGroups(g);
+    localStorage.setItem(GROUP_KEY, JSON.stringify(g));
+    apiRef.current?.bakeLinks();
+  };
   const applySel = (ids: string[]) => {
     selIdsRef.current = ids;
     setSelIds(ids);
@@ -244,13 +249,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
       const pid = selIds[selIds.length - 1];
       const cur = api.info(pid);
       if (!cur) return;
-      const inGroup = Object.values(groups).some((g) => g.includes(pid) && selIds.every((x) => g.includes(x)));
-      if (inGroup) {
-        // linked group: move leader only — followers are welded and follow automatically
-        api.setAdj(pid, fn(cur.adj), mirror);
-      } else {
-        api.setAdjRigid(pid, fn(cur.adj), selIds.slice(0, -1), mirror);
-      }
+      api.setAdjRigid(pid, fn(cur.adj), selIds.slice(0, -1), mirror);
       setSel(api.info(pid));
       return;
     }
@@ -263,6 +262,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
     setSel(api.info(last));
   };
   const doExport = () => {
+    apiRef.current?.bakeLinks();
     const data = { ...(apiRef.current?.exportData() || {}), groups, tema: theme, dihapus: hiddenIds };
     const txt = JSON.stringify(data, null, 2);
     navigator.clipboard?.writeText(txt).catch(() => {});
@@ -784,6 +784,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
       const o: Record<string, Adj> = {};
       adjMap.forEach((v, k) => (o[k] = v));
       localStorage.setItem(LS_KEY, JSON.stringify(o));
+      localStorage.setItem(GROUP_KEY, JSON.stringify(groupsRef.current));
     };
     const info = (id: string): SelInfo | null => {
       const m = partById.get(id);
@@ -864,6 +865,14 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
         done.add(id);
         if (mirror && m.userData.mirror) done.add(m.userData.mirror.userData.id);
       }
+      otherIds.forEach((id) => {
+        const m = partById.get(id);
+        if (m) {
+          relinkLater(m);
+          const o = m.userData.mirror as THREE.Mesh | undefined;
+          if (mirror && o) relinkLater(o);
+        }
+      });
     };
     // ================= PERMANENT LINKS (group followers welded to leader) =================
     type Link = { f: THREE.Mesh; l: THREE.Mesh; off: THREE.Matrix4 };
@@ -895,6 +904,10 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
       withRest(() => { lk.off = lk.l.matrixWorld.clone().invert().multiply(lk.f.matrixWorld); });
     };
     const bakeLinks = () => {
+      if (!links.length) {
+        save();
+        return;
+      }
       // convert current linked placement into followers' own adj values
       const results: [THREE.Mesh, Adj][] = [];
       withRest(() => {
@@ -905,11 +918,20 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
         }
       });
       links = [];
-      results.forEach(([m, a]) => { adjMap.set(m.userData.id, a); applyAdj(m, a); });
+      results.forEach(([m, a]) => {
+        adjMap.set(m.userData.id, a);
+        applyAdj(m, a);
+        const om = m.userData.mirror as THREE.Mesh | undefined;
+        if (om) {
+          adjMap.set(om.userData.id, a);
+          applyAdj(om, a);
+        }
+      });
       save();
     };
     const setLinks = (groups: Record<string, string[]>, follow: boolean) => {
       bakeLinks();
+      links = [];
       if (!follow) return;
       const isFollower = new Set<string>();
       Object.values(groups).forEach((ids) => ids.slice(0, -1).forEach((i) => isFollower.add(i)));
@@ -1023,6 +1045,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
       setAdj: (id, a, mirror) => setAdj(id, a, mirror),
       setAdjRigid,
       setLinks,
+      bakeLinks,
       mirrorOf: (id: string) => partById.get(id)?.userData.mirror?.userData.id ?? null,
       setHidden: (ids: string[], mirror: boolean) => {
         hidden.clear();
@@ -1143,6 +1166,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
     };
     addEventListener('resize', onResize);
     return () => {
+      apiRef.current?.bakeLinks();
       cancelAnimationFrame(raf);
       removeEventListener('resize', onResize);
       renderer.domElement.removeEventListener('pointerdown', onDown);
@@ -1162,6 +1186,7 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
         if (editRef.current) {
           toggleEdit();
         } else if (onBack) {
+          apiRef.current?.bakeLinks();
           onBack();
         }
         return;
@@ -1189,7 +1214,10 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
       {onBack && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40">
           <button
-            onClick={onBack}
+            onClick={() => {
+              apiRef.current?.bakeLinks();
+              onBack();
+            }}
             className="group flex items-center gap-2.5 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-950/95 via-slate-900/95 to-sky-950/95 border border-sky-400/80 text-sky-100 hover:text-white hover:border-sky-300 font-display text-sm tracking-wider shadow-[0_0_25px_rgba(56,189,248,0.45)] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
             title="Kembali ke Ring Tinju Steel Titans"
           >
