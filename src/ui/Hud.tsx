@@ -274,6 +274,7 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
             <Hint k="E">ippo</Hint>
           </div>
           <div>
+            <Hint k="Z">sombong zeus 😤</Hint>
             <Hint k="M N B">pound · sabuk · gulir</Hint>
             <Hint k="U I Y O">lambai · kabel · kincir · piston</Hint>
             <Hint k="1 2 3">servo · inti · bor</Hint>
@@ -358,8 +359,9 @@ export function TouchControls({ game }: { game: Game | null }) {
         <div className="absolute left-0 -top-[68px]"><TouchBtn game={game} code="Space" label="DODGE / BLOK" className="bg-emerald-500/50 text-[9px]" size="h-14 w-14" /></div>
         <div className="absolute left-[76px] -top-[68px]"><TouchBtn game={game} code="KeyR" label="OD" className="bg-amber-400/60" size="h-14 w-14" /></div>
         <div className="absolute left-[152px] -top-[68px]"><TouchBtn game={game} code="KeyE" label="IPPO" className="bg-cyan-400/50 text-[10px]" size="h-14 w-14" /></div>
-        <div className="absolute left-[20px] -top-[136px]"><TouchBtn game={game} code="KeyG" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
-        <div className="absolute left-[96px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>
+        <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyG" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
+        <div className="absolute left-[62px] -top-[136px]"><TouchBtn game={game} code="KeyZ" label="SOMBONG" className="bg-emerald-600/70 border-emerald-300 text-[8px] font-bold" size="h-12 w-12" /></div>
+        <div className="absolute left-[122px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>
       </div>
     </div>
   );

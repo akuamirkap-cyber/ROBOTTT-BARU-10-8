@@ -8,6 +8,7 @@ export { SAT_STEPS, DEFAULT_SAT };
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Robot, type Pose, type RobotStyle } from './robot';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from './build';
+import { mount100PercentZeus } from './zeusModel';
 import { FREESTYLE, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
 import { buildArena, type Arena, type PyroPlacement, loadPyroPlacement, savePyroPlacement } from './arena';
 export { type PyroPlacement, loadPyroPlacement, savePyroPlacement };
@@ -34,7 +35,7 @@ export { CAM_MODES, type CamMode } from './cammath';
 export { MOVES, MOVE_EXTRA, UNBLOCKABLE, TELL, sampleKeys, jabChainSpeed };
 
 // ------------------------------------------------------------------ data
-export type HeroPose = 'ready' | 'stand' | 'guard' | 'victory' | 'taunt' | 'vs' | 'menace';
+export type HeroPose = 'ready' | 'stand' | 'guard' | 'victory' | 'taunt' | 'vs' | 'menace' | 'sombong';
 
 export interface OpponentDef {
   name: string;
@@ -362,6 +363,7 @@ export interface HudState {
   helmetSkin?: number;
   gloveSkin?: number;
   armorSkin?: number;
+  isZeus?: boolean;
   /** the live frame rate of the last half-second window */
   fps?: number;
   /** the quality rung the picture is running on right now ('MAKSIMAL' … 'RINGAN') */
@@ -1888,6 +1890,9 @@ export class Game {
       cached.robot.head.visible = true;
     }
     this.enemy = cached;
+    if (idx === 3 || this.def.name === 'OMEGA ZEUS') {
+      mount100PercentZeus(this.enemy.robot, '#c070ff');
+    }
     // Ultra opponents burn crimson-red so you can tell at a glance that this is the hard version
     this.enemy.robot.setStyleGlow(this.ultra ? 0xff1a3a : this.def.style.glow);
     this.arena.setScreen(PLAYER_NAME, this.def.name, this.roundLabel(), '#4da3ff', this.ultra ? ULTRA_COLOR : this.def.color);
@@ -1964,6 +1969,28 @@ export class Game {
     return this.armorSkin;
   }
 
+  equipZeus(active = true) {
+    this.helmetSkin = active ? 1 : 0;
+    this.armorSkin = active ? 1 : 0;
+    this.gloveSkin = active ? 1 : 0;
+    try {
+      localStorage.setItem(LS_HELMET, String(this.helmetSkin));
+      localStorage.setItem(LS_ARMOR, String(this.armorSkin));
+      localStorage.setItem(LS_GLOVE, String(this.gloveSkin));
+    } catch {
+      /* ignore */
+    }
+    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, active);
+    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, active);
+    if (active) {
+      this.setHeroPose('sombong');
+    }
+    this.sfx.init();
+    this.sfx.servo();
+    this.sfx.click();
+    this.emitHud(true);
+  }
+
   setArmorSkin(id: number) {
     const v = Math.max(0, Math.min(ARMOR_SKINS.length - 1, Math.round(id)));
     this.armorSkin = v;
@@ -1972,9 +1999,10 @@ export class Game {
     } catch {
       /* ignore */
     }
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
+    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
     this.sfx.init();
     this.sfx.servo();
@@ -1990,9 +2018,10 @@ export class Game {
     } catch {
       /* ignore */
     }
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
+    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
     this.sfx.init();
     this.sfx.servo();
@@ -2008,9 +2037,10 @@ export class Game {
     } catch {
       /* ignore */
     }
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
+    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin);
+    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
     this.sfx.init();
     this.sfx.servo();
@@ -2932,6 +2962,7 @@ export class Game {
       case 'KeyI':
       case 'KeyY':
       case 'KeyO':
+      case 'KeyZ':
       case 'Digit1':
       case 'Digit2':
       case 'Digit3':
@@ -6947,6 +6978,20 @@ export class Game {
         dp = 0.14 + p * 0.03;
         break;
       }
+      case 'sombong': {
+        // ZEUS POSE SOMBONG (ARROGANT REAL STEEL POSE):
+        // Dada dibusungkan, dagu terangkat tinggi, tangan kiri di pinggang, tangan kanan melambai menantang
+        const beckon = Math.sin(t * 1.5) > 0.05;
+        const wave = Math.sin(t * 7.5) * 0.5 + 0.5;
+        a0 = { sx: 0.08, sy: -0.22, sz: 0.35, ex: -0.45 };
+        a1 = beckon
+          ? { sx: -1.25, sy: 0.12, sz: 0.18, ex: -1.35 - wave * 0.7 }
+          : { sx: 0.05, sy: 0.2, sz: 0.32, ex: -0.38 };
+        tw = Math.sin(t * 0.5) * 0.08 + mx * 0.06;
+        ln = -0.16 + my * 0.02; // dada dibusungkan bangga
+        dp = 0.02 + Math.sin(t * 1.5) * 0.015;
+        break;
+      }
       case 'stand':
       default: {
         const breath = Math.sin(t * 1.8) * 0.025;
@@ -6992,7 +7037,7 @@ export class Game {
       dashL: 0,
       idleBounce: staticPose ? 0 : undefined,
       lookX: mirror ? -poseMx : poseMx,
-      lookY: poseMy,
+      lookY: pose === 'sombong' ? -0.38 : poseMy,
     };
   }
 
@@ -8296,6 +8341,7 @@ export class Game {
       helmetSkin: this.helmetSkin,
       gloveSkin: this.gloveSkin,
       armorSkin: this.armorSkin,
+      isZeus: !!(this.player.robot.isZeus || (this.helmetSkin === 1 && this.armorSkin === 1)),
       fps: this.fps,
       gfx: this.tierCfg().name,
       gfxMode: this.qMode,

@@ -37,9 +37,11 @@ export function PauseMenu({
   onDirectionalHeadSnap,
   noSlowMoNormal,
   onNoSlowMoNormal,
+  onShowZeus,
 }: {
   onResume: () => void;
   onMenu: () => void;
+  onShowZeus?: () => void;
   sfx: SfxProfile;
   onSfx: (id: SfxProfile) => void;
   fw: number;
@@ -111,6 +113,14 @@ export function PauseMenu({
         <div className="mt-4">
           <TransitionPicker value={trans} onPick={onTrans} />
         </div>
+        {onShowZeus && (
+          <button
+            onClick={onShowZeus}
+            className="w-full cut mt-4 px-4 py-2.5 font-display text-lg tracking-[0.14em] border border-emerald-400/80 bg-gradient-to-r from-emerald-950 via-green-900 to-emerald-950 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(34,255,68,0.3)] flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>⚡ TAMPILKAN ZEUS (3D ASSET & EDITOR)</span>
+          </button>
+        )}
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button onClick={onResume} className="play-btn cut group relative overflow-hidden px-4 py-3 font-display text-2xl tracking-[0.15em]">
             <span className="relative z-10">LANJUT ▶</span>

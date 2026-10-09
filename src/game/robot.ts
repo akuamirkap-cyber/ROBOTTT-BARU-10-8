@@ -5,6 +5,7 @@ import { L1, L2, HIP_Y, UP } from './rig';
 import { fallStages, riseStages } from './poses';
 import { markReflect } from './layers';
 import { getArmourNormalMap, getArmourRoughnessMap, getCarbonFiberTexture, getSteelNormalMap } from './textures';
+import { mount100PercentZeus, unmount100PercentZeus } from './zeusModel';
 
 export interface Pose {
   sx: number; // shoulder pitch (negative = raise forward)
@@ -22,6 +23,7 @@ export interface RobotStyle {
   helmetSkin?: number;
   gloveSkin?: number;
   armorSkin?: number;
+  isZeus100?: boolean;
 }
 
 export interface AnimState {
@@ -247,8 +249,12 @@ export class Robot {
   private qd = new THREE.Quaternion();
   private qf = new THREE.Quaternion();
   private eu = new THREE.Euler();
-  private ctx!: Ctx;
+  ctx!: Ctx;
   private opt!: Opt;
+
+  get isZeus() {
+    return !!this.ctx.style.isZeus100;
+  }
 
   /** the base armour colour (used to tint the chips a blow knocks off the plating) */
   armorColor = 0x8e949c;
@@ -283,16 +289,27 @@ export class Robot {
     this.ctx = { main, sec, dark, steel, accent, glow, joint, rubber, visor, core, style };
     this.opt = atom ? ATOM_OPT : BRUTE_OPT;
     buildRobot(this, this.ctx, this.opt);
+    if (style.isZeus100 || (style.helmetSkin === 1 && style.armorSkin === 1)) {
+      mount100PercentZeus(this);
+    }
     this.addProbes();
     markReflect(this.root); // the glossy arena floors mirror him
   }
 
-  /** Dynamically swap the 3D helmet (0..9), boxing glove (0..9) and body armor (0..9) skins on this robot in real time */
-  setSkins(helmetSkin: number, gloveSkin: number, armorSkin = this.ctx.style.armorSkin ?? 0) {
+  /** Dynamically swap the 3D helmet, boxing glove and body armor skins on this robot in real time */
+  setSkins(helmetSkin: number, gloveSkin: number, armorSkin = this.ctx.style.armorSkin ?? 0, isZeus?: boolean) {
     this.ctx.style.helmetSkin = helmetSkin;
     this.ctx.style.gloveSkin = gloveSkin;
     this.ctx.style.armorSkin = armorSkin;
-    rebuildHelmetAndGloves(this, this.ctx, this.opt);
+    const forceZeus = isZeus !== undefined ? isZeus : (armorSkin === 1 || helmetSkin === 1 || this.ctx.style.isZeus100 === true);
+    if (forceZeus) {
+      this.ctx.style.isZeus100 = true;
+      mount100PercentZeus(this);
+    } else {
+      this.ctx.style.isZeus100 = false;
+      unmount100PercentZeus(this);
+      rebuildHelmetAndGloves(this, this.ctx, this.opt);
+    }
     this.setEnhancedTextures(this.hasEnhancedTextures);
     markReflect(this.root);
   }

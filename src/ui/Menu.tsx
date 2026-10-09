@@ -73,6 +73,7 @@ export interface MenuProps {
   onDirectionalHeadSnap?: (on: boolean) => void;
   noSlowMoNormal?: boolean;
   onNoSlowMoNormal?: (on: boolean) => void;
+  onShowZeus?: () => void;
 }
 
 const act = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => {
@@ -312,6 +313,7 @@ const CONTROLS: { title: string; rows: [string[], string][] }[] = [
   {
     title: 'TEKNIK JUARA & KAMERA',
     rows: [
+      [['Z'], 'POSE SOMBONG ZEUS 😤 — busungkan dada, dagu mendongak, panggil lawan bertarung (isi meter +25%)!'],
       [['M', '/', 'N'], 'Taunt provokasi: pound dada 3× cepat & sombong / angkat sabuk (mengisi meter Overdrive)'],
       [['4'], 'ADU TINJU — adu kedua sarung tinju di tengah dada 3× dengan percikan api, lalu dagu terangkat'],
       [['B', 'U', 'I', 'Y', 'O', '1', '2', '3'], 'Buku freestyle lain: gulir bahu, lambaian, pamer kabel, kincir, gas piston, cek servo, inti nyala, bor tinju'],
@@ -367,6 +369,7 @@ export function Menu({
   onDirectionalHeadSnap,
   noSlowMoNormal = false,
   onNoSlowMoNormal,
+  onShowZeus,
 }: MenuProps) {
   const [tab, setTab] = useState<MenuTab>('lobby');
   const [showProfile, setShowProfile] = useState(false);
@@ -556,6 +559,16 @@ export function Menu({
           </button>
 
           <div className="pointer-events-auto mw-icons">
+            {onShowZeus && (
+              <button
+                onClick={act(onShowZeus)}
+                className="mw-ico !w-auto !px-3.5 !bg-gradient-to-r !from-emerald-950 !via-green-900 !to-emerald-950 border !border-emerald-400 text-emerald-300 hover:text-white hover:border-emerald-300 shadow-[0_0_16px_rgba(34,255,68,0.4)] flex items-center gap-1.5 font-display text-xs tracking-wider cursor-pointer"
+                title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor - halo-simple)"
+              >
+                <span className="text-emerald-400 text-sm font-bold">⚡</span>
+                <span className="font-black text-sm">TAMPILKAN ZEUS</span>
+              </button>
+            )}
             <div className="mw-ico mw-ico-txt" title="Poin liga WRC">
               <span className="mw-ico-k">WRC</span>
               <span className="mw-ico-v">{wrcPoints(profile).toLocaleString('id-ID')}</span>
@@ -632,10 +645,30 @@ export function Menu({
               </button>
             );
           })}
+          {onShowZeus && (
+            <button
+              onClick={act(onShowZeus)}
+              className="aaa-tab font-display border !border-emerald-400/80 !bg-emerald-950/80 text-emerald-300 hover:text-white hover:!bg-emerald-900 shadow-[0_0_15px_rgba(34,255,68,0.35)] flex items-center gap-1.5 px-3 cursor-pointer"
+              title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor - halo-simple)"
+            >
+              <span className="text-emerald-400">⚡</span>
+              <span className="font-black">TAMPILKAN ZEUS</span>
+            </button>
+          )}
         </nav>
 
         {/* Zone 3: League Points, Camera Toggle, Difficulty & Integrated Sound Button */}
         <div className="pointer-events-auto flex items-center gap-2">
+          {onShowZeus && (
+            <button
+              onClick={act(onShowZeus)}
+              className="aaa-pill border-emerald-400/80 bg-emerald-950/80 text-emerald-300 hover:text-white hover:bg-emerald-900 shadow-[0_0_15px_rgba(34,255,68,0.3)] font-display tracking-wider cursor-pointer hidden lg:flex"
+              title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor)"
+            >
+              <span className="text-emerald-400 font-bold">⚡</span>
+              <span className="font-black">ZEUS 3D</span>
+            </button>
+          )}
           {/* WRC League Points */}
           <div className="aaa-pill aaa-pill-gold hidden xl:flex">
             <span className="aaa-pill-k">WRC</span>
@@ -706,6 +739,15 @@ export function Menu({
             {t === 'arena' ? 'ARENA' : t === 'titan' ? 'GARASI' : t === 'controls' ? 'JURUS' : 'OPSI'}
           </button>
         ))}
+        {onShowZeus && (
+          <button
+            onClick={act(onShowZeus)}
+            className="aaa-tab font-display text-center border !border-emerald-400/80 !bg-emerald-950/80 text-emerald-300 font-black"
+            title="Tampilkan Zeus 3D"
+          >
+            ⚡ ZEUS
+          </button>
+        )}
       </div>
       )}
 
@@ -742,6 +784,18 @@ export function Menu({
               );
             })}
             <div className="mw-sec font-display">BARAK</div>
+            {onShowZeus && (
+              <button
+                className="mw-item font-display !text-emerald-300 border-l-2 !border-emerald-400 hover:!text-emerald-100 hover:!bg-emerald-950/60 transition-all cursor-pointer"
+                onClick={act(onShowZeus)}
+                title="Buka Zeus Real Steel 3D Asset & Editor (halo-simple.zip)"
+              >
+                <span className="mw-item-t flex items-center gap-2">
+                  <span>⚡ TAMPILKAN ZEUS</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-200 border border-emerald-400/30 font-mono">3D ASSET</span>
+                </span>
+              </button>
+            )}
             {[
               { id: 'profile', label: 'PROFIL PILOT' },
               { id: 'arena', label: 'ROSTER LAWAN' },
@@ -1121,6 +1175,49 @@ export function Menu({
               </button>
             </div>
 
+            {/* Quick Equip Zeus Real Steel Bundle */}
+            <div className="rounded-xl border border-emerald-400/80 bg-gradient-to-r from-emerald-950/90 via-slate-900/90 to-green-950/90 p-3 shadow-[0_0_20px_rgba(34,255,68,0.25)]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 text-base font-black">⚡</span>
+                    <span className="font-display text-lg tracking-wider text-white">SET ROBOT ZEUS (100% REAL STEEL ASSET)</span>
+                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[9px] text-emerald-300 border border-emerald-400/40">100% ASLI</span>
+                  </div>
+                  <p className="text-[10px] font-tech text-emerald-200/80 mt-0.5">
+                    100% Part Asli Zeus dari Ujung Kepala Sampai Ujung Kaki (Helm, Kristal Dada, Bahu, Lengan Palu, Paha, Betis &amp; Sepatu) + Pose Sombong
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={act(() => {
+                      game?.equipZeus(true);
+                      pickHelmet(1);
+                      pickArmor(1);
+                      pickGlove(1);
+                      setPose('sombong');
+                    })}
+                    className="cut-sm px-3.5 py-2 font-display text-xs tracking-wider font-black bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_15px_rgba(34,255,68,0.5)] active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                    title="Pasang 100% Part Zeus Dari Ujung Kepala Sampai Ujung Kaki & Pose Sombong"
+                  >
+                    ⚡ PASANG ZEUS (100% ASSET)
+                  </button>
+                  <button
+                    onClick={act(() => {
+                      pickHelmet(10);
+                      pickArmor(10);
+                      pickGlove(10);
+                      setPose('sombong');
+                    })}
+                    className="cut-sm px-3 py-2 font-display text-xs tracking-wider font-bold bg-amber-500/25 border border-amber-400/60 text-amber-200 hover:bg-amber-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                    title="Pasang Set Zeus Thunderlord (Divine Lightning)"
+                  >
+                    ⚡ ZEUS THUNDER
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Category Sub-Tabs: 10 HELM SANGAR / 10 SARUNG TINJU / 10 ARMOR BADAN */}
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -1236,6 +1333,7 @@ export function Menu({
                         {item.rarity}
                       </span>
                       <span className="font-tech text-[7.5px] font-bold text-white/45">
+                        {item.id === 1 && <span className="mr-1 rounded bg-emerald-400/25 border border-emerald-400/60 px-1 text-[6.5px] text-emerald-200">👑 100% ZEUS</span>}
                         {item.id >= 10 && <span className="mr-1 animate-pulse rounded bg-amber-400/20 px-1 text-[6.5px] text-amber-200">✦ BARU</span>}
                         #{String(item.id + 1).padStart(2, '0')}
                       </span>
@@ -1280,6 +1378,7 @@ export function Menu({
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {[
+                  { id: 'sombong', label: '😤 SOMBONG' },
                   { id: 'ready', label: 'STARE-DOWN' },
                   { id: 'vs', label: 'CALL-OUT' },
                   { id: 'menace', label: 'PREDATOR' },
@@ -1293,7 +1392,9 @@ export function Menu({
                     onClick={act(() => setPose(p.id as any))}
                     className={`cut-sm py-1.5 font-tech text-[8.5px] font-bold tracking-wider transition ${
                       heroPose === p.id
-                        ? 'border border-sky-400 bg-sky-500/30 text-white shadow-[0_0_12px_rgba(56,189,248,0.3)]'
+                        ? p.id === 'sombong'
+                          ? 'border border-emerald-400 bg-emerald-500/40 text-emerald-100 shadow-[0_0_14px_rgba(34,255,68,0.45)]'
+                          : 'border border-sky-400 bg-sky-500/30 text-white shadow-[0_0_12px_rgba(56,189,248,0.3)]'
                         : 'border border-white/10 bg-white/5 text-white/60 hover:text-white'
                     }`}
                   >

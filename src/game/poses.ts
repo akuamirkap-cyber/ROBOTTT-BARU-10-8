@@ -231,6 +231,22 @@ export const FREESTYLE: Freestyle[] = [
       { p: 0.8, s: 'chin' },
     ],
   },
+  {
+    // 11 — Z: POSE SOMBONG ZEUS (The Real Steel Arrogant Taunt)
+    id: 11,
+    key: 'KeyZ',
+    name: 'pose sombong zeus',
+    tag: 'SOMBONG ZEUS!',
+    say: 'Come at me!',
+    dur: 2.2,
+    meter: 25,
+    glow: 2.8,
+    cues: [
+      { p: 0.22, s: 'roll' },
+      { p: 0.45, s: 'beckon' },
+      { p: 0.75, s: 'chin' },
+    ],
+  },
 ];
 
 export const freestyleOf = (style: number): Freestyle => FREESTYLE[clamp(Math.round(style), 0, FREESTYLE.length - 1)];
@@ -454,6 +470,20 @@ export function freestylePose(style: number, u: number, t: number): Beat {
       b.tw = Math.sin(uc * Math.PI * 6) * 0.05;
       b.rl = Math.sin(uc * Math.PI * 9) * 0.03 * (1 - chin);
       b.kk = 52;
+      break;
+    }
+    // ------------------------------------------------------------------ 11: Zeus Pose Sombong
+    case 11: {
+      const beckon = S(uc, 0.12, 0.35) * (1 - S(uc, 0.82, 0.96));
+      const wave = Math.sin(uc * Math.PI * 8) * 0.5 + 0.5;
+      const target0 = P(0.08, -0.22, 0.35, -0.45);
+      const target1 = P(-1.25, 0.12, 0.18, -1.35 - wave * 0.7);
+      b.a0 = lerpPose(GUARD, target0, S(uc, 0.05, 0.2));
+      b.a1 = lerpPose(GUARD, target1, beckon);
+      b.ln = lerp(0.08, -0.16, beckon);
+      b.dp = lerp(0.12, 0.02, beckon);
+      b.tw = Math.sin(uc * Math.PI * 2) * 0.08;
+      b.kk = 42;
       break;
     }
   }

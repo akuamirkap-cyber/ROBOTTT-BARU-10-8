@@ -1,0 +1,6 @@
+{
+  "name": "Halo Simple",
+  "description": "Zeus 3D - Real Steel 3D Asset & Editor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

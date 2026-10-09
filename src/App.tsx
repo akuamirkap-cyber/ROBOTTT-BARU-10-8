@@ -8,6 +8,7 @@ import { applyOutcome, loadProfile, makeSeries, saveProfile, seriesAfterBout, se
 import { Matchmaking } from './ui/Matchmaking';
 import { Bracket } from './ui/Bracket';
 import { usePortrait } from './ui/Profile';
+import ZeusViewer from './zeus/ZeusViewer';
 
 const LS_KEY = 'steel-titans-unlocked';
 
@@ -193,6 +194,19 @@ export default function App() {
   // the pre-match flow: TOURNAMENT shows the bracket first, RANK / TEAM / TOURNAMENT all go through matchmaking
   const [stage, setStage] = useState<null | 'bracket' | 'matchmaking'>(null);
   const portrait = usePortrait(game, hud?.helmetSkin ?? 0, hud?.gloveSkin ?? 0, hud?.armorSkin ?? 0);
+  const [showZeus, setShowZeus] = useState(false);
+
+  const openZeus = () => {
+    gameRef.current?.setMuted(true);
+    setShowZeus(true);
+  };
+
+  const closeZeus = () => {
+    setShowZeus(false);
+    if (!muted) {
+      gameRef.current?.setMuted(false);
+    }
+  };
 
   /** drop the bell: the current bout of a series goes into the ring */
   const launch = (s: Series) => {
@@ -321,6 +335,7 @@ export default function App() {
           onDirectionalHeadSnap={pickSnap}
           noSlowMoNormal={noSlowMoNormalNow}
           onNoSlowMoNormal={pickNoSlowMoNormal}
+          onShowZeus={openZeus}
           game={game}
           hud={hud}
         />
@@ -438,6 +453,7 @@ export default function App() {
           onDirectionalHeadSnap={pickSnap}
           noSlowMoNormal={noSlowMoNormalNow}
           onNoSlowMoNormal={pickNoSlowMoNormal}
+          onShowZeus={openZeus}
           onResume={() => game?.togglePause()}
           onMenu={() => {
             game?.togglePause();
@@ -546,6 +562,12 @@ export default function App() {
             </>
           )}
           {trans.id === 'cut' && <div className="tr-cut" />}
+        </div>
+      )}
+
+      {showZeus && (
+        <div className="fixed inset-0 z-50">
+          <ZeusViewer onBack={closeZeus} />
         </div>
       )}
     </div>

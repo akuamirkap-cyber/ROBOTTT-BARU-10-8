@@ -37,7 +37,7 @@ export interface SkinMeta {
 
 export const HELMET_SKINS: SkinMeta[] = [
   { id: 0, name: 'ATOM PRIME', sub: 'G2 Sparring Mesh & Radiator Crown', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
-  { id: 1, name: 'ZEUS SOVEREIGN', sub: 'WRB King Monolith & Jaw Pistons', rarity: 'MYTHIC', color: '#5effb0', accent: '#1a2430' },
+  { id: 1, name: 'ZEUS REAL STEEL 100%', sub: 'Model 3D Asli Zeus Dari Ujung Kepala Sampai Ujung Kaki', rarity: 'DIVINE', color: '#22ff44', accent: '#121314' },
   { id: 2, name: 'NOISY BOY SHOGUN', sub: 'Samurai Kabuto & Oni Fanged Mask', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#ffb703' },
   { id: 3, name: 'MIDAS GOLDHAWK', sub: '24K Gold Mohawk & Fang Visor', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#9e2a2b' },
   { id: 4, name: 'TWIN CITIES HYDRA', sub: 'Tri-Optic Cyclops & Twin Turbos', rarity: 'LEGENDARY', color: '#ff5a36', accent: '#3a4252' },
@@ -52,7 +52,7 @@ export const HELMET_SKINS: SkinMeta[] = [
 
 export const ARMOR_SKINS: SkinMeta[] = [
   { id: 0, name: 'G2 TITANIUM APEX', sub: 'Standard Carbon-Titanium & Arc Core', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1540a8' },
-  { id: 1, name: 'ZEUS MONOLITH MK-X', sub: 'Obsidian Juggernaut & Nitro Pistons', rarity: 'MYTHIC', color: '#5effb0', accent: '#1e293b' },
+  { id: 1, name: 'ZEUS OBSIDIAN 100%', sub: 'Pelat Dada V-Shape & Inti Kristal Zamrud Asli Zeus', rarity: 'DIVINE', color: '#22ff44', accent: '#121314' },
   { id: 2, name: 'NOISY BOY DAIMYO', sub: 'Samurai Do-Maru & Neon Kanji Matrix', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#ffb703' },
   { id: 3, name: 'MIDAS 24K IMPERIAL', sub: 'Solid 24K Gold Cuirass & Spiked Caps', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#991b1b' },
   { id: 4, name: 'TWIN CITIES TURBO', sub: 'Dual Chest Reactors & Quad Jet-Stacks', rarity: 'LEGENDARY', color: '#ff5a36', accent: '#b91c1c' },
@@ -67,7 +67,7 @@ export const ARMOR_SKINS: SkinMeta[] = [
 
 export const GLOVE_SKINS: SkinMeta[] = [
   { id: 0, name: 'G2 TITANIUM PRO', sub: 'WRB Heavy Titanium & Arc Cuff', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
-  { id: 1, name: 'ZEUS NITRO PISTON', sub: 'Twin Hydraulic Rams & Emerald Vents', rarity: 'MYTHIC', color: '#5effb0', accent: '#2b3440' },
+  { id: 1, name: 'ZEUS HAMMER FIST 100%', sub: 'Tangan Palu & Ventilasi Sirip 5-Lubang Asli Zeus', rarity: 'DIVINE', color: '#22ff44', accent: '#50555a' },
   { id: 2, name: 'NOISY BOY KANJI', sub: 'Neon LED Matrix & Golden Shogun Studs', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#6b1d3f' },
   { id: 3, name: 'MIDAS 24K GOLD', sub: '24K Gold Spiked Cestus & Ruby Guard', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#b91c1c' },
   { id: 4, name: 'METRO SLEDGEHAMMER', sub: 'Octagonal Siege Anvil & Side Weights', rarity: 'EPIC', color: '#ff9f1c', accent: '#475569' },
