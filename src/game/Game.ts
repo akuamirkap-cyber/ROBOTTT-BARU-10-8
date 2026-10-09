@@ -234,7 +234,7 @@ export const loadGloveSkin = (): number => {
 };
 
 export const OPPONENTS: OpponentDef[] = [
-  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 95, speed: 3.3, dmg: 0.88, react: 0.68, dodge: 0.52, punish: 0.72, adapt: 0.95, aggro: 0.74, rest: 0.68, tscale: 1.16, scale: 1.0, combo: 3, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
+  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.25, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
   { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.08, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
@@ -1581,9 +1581,7 @@ export class Game {
   // to the LEFT edge and stacked into lanes, so the numbers never cover the two fighters again.
   private popLanes: number[] = [0, 0, 0, 0, 0];
   private flashEl: HTMLDivElement;
-  private warnEl: HTMLDivElement; // God-of-War-style attack indicator (a ring that shrinks onto a button prompt)
-  private warnRing: HTMLElement;
-  private warnRing2: HTMLElement;
+  private warnEl: HTMLDivElement; // attack indicator (clean top-left text prompt)
   private warnTag: HTMLElement;
   private warnSeq = -1;
   private warnTotal = 1;
@@ -1591,6 +1589,7 @@ export class Game {
   private warnKind = '';
   private ro: ResizeObserver;
   private meterReadyShown = false;
+  private ripVictim: Fighter | null = null;
   private lastTap: Record<string, number> = {};
   private aimTmp = new THREE.Vector3(); // scratch: the point of impact
   private eyeTmp = new THREE.Vector3(); // scratch: one eye at a time
@@ -1801,17 +1800,17 @@ export class Game {
     this.flashEl.className = 'fx-flash';
     container.appendChild(this.flashEl);
 
-    // attack indicator: [ shrinking ring ] around a [ key / button prompt ] with a tag under it
+    // attack indicator: clean non-intrusive top-left text prompt
     const touchUi = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     this.warnEl = document.createElement('div');
     this.warnEl.className = 'warn warn-yellow';
-    this.warnEl.innerHTML = `<div class="warn-ring"></div><div class="warn-ring warn-ring2"></div><div class="warn-key"><span${touchUi ? '' : ' class="kw"'}>${touchUi ? '◎' : 'SPACE'}</span></div><div class="warn-tag">DODGE!</div>`;
+    this.warnEl.innerHTML = `<div class="warn-text">⚡ DODGE [${touchUi ? '◎' : 'SPACE'}]</div>`;
     container.appendChild(this.warnEl);
-    this.warnRing = this.warnEl.children[0] as HTMLElement;
-    this.warnRing2 = this.warnEl.children[1] as HTMLElement;
-    this.warnTag = this.warnEl.children[3] as HTMLElement;
+    this.warnTag = this.warnEl.children[0] as HTMLElement;
 
-    this.player = this.makeFighter(true, { ...PLAYER_STYLE, helmetSkin: this.helmetSkin, gloveSkin: this.gloveSkin, armorSkin: this.armorSkin }, 1, hpThick(PLAYER_HP_BASE), 1, 1);
+    const initIsZeus = this.helmetSkin === 1 && this.armorSkin === 1;
+    const initPlayerHp = initIsZeus ? hpThick(Math.round(PLAYER_HP_BASE * 1.6)) : hpThick(PLAYER_HP_BASE);
+    this.player = this.makeFighter(true, { ...PLAYER_STYLE, helmetSkin: this.helmetSkin, gloveSkin: this.gloveSkin, armorSkin: this.armorSkin }, 1, initPlayerHp, 1, 1);
     this.prepareEnemy(0);
     this.toMenu();
 
@@ -1839,22 +1838,22 @@ export class Game {
     robot.onStep = (_foot, spd, wx, wz) => {
       const now = performance.now();
       const v = new THREE.Vector3(wx, 0.1, wz);
+      const isZeusFighter = f.robot.isZeus;
       const light = Math.min(1, 0.35 + spd * 0.12);
       if (now - lastStepSfx > 110) {
         lastStepSfx = now;
-        this.sfx.step(light * Math.min(1.7, 0.7 * scale + 0.25));
+        this.sfx.step(light * Math.min(1.7, 0.7 * scale + (isZeusFighter ? 0.38 : 0.25)));
       }
       v.y = f.y + 0.1;
+      // BEKAS PIJAKAN KAKI: Tidak ada ripple efek cincin tanah (fx.ring dihilangkan), hanya partikel debu & percikan halus
       if (spd > 5.5 && f.y < 0.05) {
-        this.fx.ring(wx, wz, 0x7d8cab, 0.9 * scale + spd * 0.08, 0.28, f.y + 0.06);
         this.fx.spark(v, 2 + Math.floor(spd * 0.7), 1.4 + spd * 0.15, 0x8a8a99, undefined, 1.1, 0.3, 2);
       } else if (spd > 2.0) {
         this.fx.spark(v, 1 + Math.floor(spd * 0.4), 1.0 + spd * 0.1, 0x8a8a99, undefined, 0.9, 0.25, 1);
       }
-      // TONNAGE: a striding / sprinting machine makes the ring itself answer — the canvas gives a hair under each
-      // footfall and the ropes shiver (a fraction of the landing slam), and a full sprint thumps through the camera
+      // TONNAGE: a striding / sprinting machine makes the ring itself answer
       if (spd > 3.5 && f.y < 0.05 && this.phase !== 'walk' && this.phase !== 'menu') {
-        this.arena.canvasSlam(wx, wz, Math.min(0.42, 0.08 + spd * 0.03));
+        this.arena.canvasSlam(wx, wz, Math.min(0.48, (isZeusFighter ? 0.14 : 0.08) + spd * 0.03));
       }
       if (spd > 6.5 && f.y < 0.05 && (this.phase === 'fight' || this.phase === 'walk')) {
         this.camImpVel.y -= 0.14 * Math.min(1, spd / 10) * Math.min(1.3, scale);
@@ -1901,9 +1900,20 @@ export class Game {
     this.arena.rimRed.color.setHex(this.ultra ? 0xff1a3a : this.def.style.glow);
   }
 
-  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE) */
+  public getPlayerMaxHp(): number {
+    const isZeus = !!(this.player?.robot?.isZeus || (this.helmetSkin === 1 && this.armorSkin === 1));
+    const base = isZeus ? Math.round(PLAYER_HP_BASE * 1.6) : PLAYER_HP_BASE;
+    return hpThick(base);
+  }
+
+  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE), with Zeus +60% thicker HP and 2x IQ */
   private makeDef(idx: number) {
-    const d = smartDef(this.ultra ? ultraDef(OPPONENTS[idx]) : OPPONENTS[idx], this.iq);
+    const raw = this.ultra ? ultraDef(OPPONENTS[idx]) : OPPONENTS[idx];
+    const isZeusOpp = raw.name.includes('ZEUS') || !!raw.style.isZeus100;
+    const tunedHp = isZeusOpp ? Math.round(raw.hp * 1.6) : raw.hp;
+    // Khusus Zeus: 2x lebih cerdas (IQ efektif digandakan 2×)
+    const effectiveIq = isZeusOpp ? this.iq * 2 : this.iq;
+    const d = smartDef({ ...raw, hp: tunedHp }, effectiveIq);
     return { ...d, hp: hpThick(d.hp) };
   }
 
@@ -1984,6 +1994,8 @@ export class Game {
     }
     this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, active);
     this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, active);
+    this.player.maxHp = this.getPlayerMaxHp();
+    this.player.hp = this.player.maxHp;
     if (active) {
       this.setHeroPose('sombong');
     }
@@ -2005,6 +2017,8 @@ export class Game {
     this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     for (const l of this.menuHero.eyeLights) l.removeFromParent();
     this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
+    this.player.maxHp = this.getPlayerMaxHp();
+    this.player.hp = Math.min(this.player.hp, this.player.maxHp);
     this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
     this.sfx.init();
     this.sfx.servo();
@@ -2024,6 +2038,8 @@ export class Game {
     this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
     for (const l of this.menuHero.eyeLights) l.removeFromParent();
     this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
+    this.player.maxHp = this.getPlayerMaxHp();
+    this.player.hp = Math.min(this.player.hp, this.player.maxHp);
     this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
     this.sfx.init();
     this.sfx.servo();
@@ -2937,7 +2953,6 @@ export class Game {
         this.toggleRage();
         break;
       case 'KeyH':
-      case 'KeyZ':
         this.tryAttack(p, 'jab');
         break;
       case 'KeyJ':
@@ -2994,7 +3009,6 @@ export class Game {
         this.toggleDirectionalHeadSnap();
         break;
       case 'Digit9':
-      case 'KeyO':
         this.toggleNoSlowMoNormal();
         break;
     }
@@ -3009,6 +3023,8 @@ export class Game {
     }
     const p = this.player;
     const e = this.enemy;
+    p.maxHp = this.getPlayerMaxHp();
+    p.hp = p.maxHp;
     if (this.teamMode && this.ally && this.enemy2) {
       if (this.swapped) this.swapEnemies(); // every round opens with the original pairs
       p.reset(-3.4, 6.2, Math.PI);
@@ -3032,6 +3048,7 @@ export class Game {
     this.combo = 0;
     this.stats = freshStats();
     this.decap.clear(); // any head torn off last round is bolted back on
+    this.ripVictim = null;
     this.cine = null; // and the director hands the camera back to the operator
     this.meterReadyShown = false;
     this.ai = this.makeAi();
@@ -3884,22 +3901,17 @@ export class Game {
     const ok = p.dodgeFor === e.moveSeq;
     const red = UNBLOCKABLE.includes(m.id);
     const kind = ok ? 'warn-ok' : red ? 'warn-red' : 'warn-yellow';
+    const touchUi = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    const keyName = touchUi ? '◎' : 'SPACE';
     if (!this.warnOn || this.warnKind !== kind) {
       this.warnOn = true;
       this.warnKind = kind;
       this.warnEl.className = `warn ${kind}`;
       this.warnEl.style.display = 'block';
-      this.warnTag.textContent = ok ? 'AMAN!' : red ? 'TAK BISA DIBLOK — DODGE!' : 'DODGE!';
+      this.warnTag.textContent = ok ? '✔ AMAN!' : red ? `⚠ TAK BISA DIBLOK — DODGE [${keyName}]!` : `⚡ DODGE [${keyName}]!`;
     }
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
-    this.warnEl.style.transform = `translate(${((v.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-v.y * 0.5 + 0.5) * h).toFixed(1)}px)`;
     const u = Math.max(0, Math.min(1, remain / this.warnTotal)); // 1 → 0 as the strike approaches
-    const s = 0.62 + u * 2.0;
-    this.warnRing.style.transform = `scale(${s.toFixed(3)})`;
-    this.warnRing.style.opacity = String(0.3 + (1 - u) * 0.7);
-    this.warnRing2.style.transform = `scale(${(s * 0.78).toFixed(3)})`;
-    this.warnRing2.style.opacity = String(0.2 + (1 - u) * 0.5);
+    this.warnTag.style.opacity = String(0.85 + (1 - u) * 0.15);
   }
 
   private simulate(dt: number) {
@@ -4050,7 +4062,9 @@ export class Game {
       p.ippo = ippoOn;
       if (ippoOn) p.blocking = true;
       const wantRun = !p.blocking && moving && !this.sprintLock && (shift || (this.runLatch && holdW && fwd > 0));
-      const rageSpd = p.rage ? 1.15 : 1;
+      const isZeusPlayer = p.robot.isZeus;
+      const zeusSpeedMul = isZeusPlayer ? 0.90 : 1.0; // khusus zeus: gerakan 10% lebih pelan
+      const rageSpd = (p.rage ? 1.15 : 1) * zeusSpeedMul;
       const walkMul = 0.88 + 0.16 * this.fwMul; // calibrated pro-boxer step speed (1.04× at 1×, 1.36× at 3× — fast, grounded, never cartoony)
       const runMul = 0.85 + 0.25 * this.fwMul; // fast ring sprint multiplier when holding Shift
       if (ippoOn) {
@@ -4075,7 +4089,9 @@ export class Game {
         if (p.wish.length() > lim) p.wish.setLength(lim);
       }
     } else if (p.state === 'attack') {
-      const rageSpd = p.rage ? 1.15 : 1;
+      const isZeusPlayer = p.robot.isZeus;
+      const zeusSpeedMul = isZeusPlayer ? 0.90 : 1.0;
+      const rageSpd = (p.rage ? 1.15 : 1) * zeusSpeedMul;
       if (p.runStrike) {
         p.wish.addScaledVector(f, 3.4 * rageSpd); // a running punch keeps its forward momentum
       } else {
@@ -4904,9 +4920,13 @@ export class Game {
     f.ippoStrike = f.isPlayer && f.rollCharge > 0.25 && !f.runStrike && !isOD(id) && id !== 'grab';
     // the AI picks a target intelligently: digs into the body to shred stamina when you block/peek-a-boo, hunts the head when you're open
     if (!f.isPlayer) {
-      const tgt = this.foeOf(f);
-      const wantBody = tgt.blocking || tgt.ippo || (tgt.stam < 42 && id !== 'upper');
-      f.aim = Math.random() < (wantBody ? 0.72 : 0.28) ? AIM_BODY : AIM_HEAD;
+      if (isOD(id)) {
+        f.aim = AIM_HEAD; // Overdrive selalu mengincar kepala untuk Head Rip!
+      } else {
+        const tgt = this.foeOf(f);
+        const wantBody = tgt.blocking || tgt.ippo || (tgt.stam < 42 && id !== 'upper');
+        f.aim = Math.random() < (wantBody ? 0.72 : 0.28) ? AIM_BODY : AIM_HEAD;
+      }
     } else if (f.aimMode === AIM_MIX && id !== 'grab' && id !== 'slam') {
       f.aim = this.pickMixAim(f, id);
     }
@@ -5145,13 +5165,14 @@ export class Game {
     const def = this.def;
     ai.habit[m.id] = Math.min(8, ai.habit[m.id] + 1);
     ai.scout.atk += 1; // every punch you throw goes into the dossier
-    const iq = Math.max(2, this.iq);
+    const isZeusAI = e.robot.isZeus;
+    const iq = Math.max(2, isZeusAI ? this.iq * 2 : this.iq);
     const sq = Math.sqrt(iq);
     if (e.dodgeT > 0 || ai.reactT >= 0) return;
     if (e.state !== 'idle') {
       // Genius AI bails out of its own wind-up or post-impact recovery to slip/block your counter-attack!
       const bail = e.state === 'attack' && !!e.move && (e.tellT > 0 || e.impacted) && !isOD(e.move.id);
-      if (!bail || Math.random() > Math.min(0.96, 0.55 + iq * 0.06)) return;
+      if (!bail || Math.random() > Math.min(0.98, (isZeusAI ? 0.85 : 0.55) + iq * 0.06)) return;
       e.state = 'idle';
       e.move = null;
       e.tellT = 0;
@@ -5163,25 +5184,25 @@ export class Game {
     const foe = this.foeOf(e);
     const d = foe.pos.distanceTo(e.pos);
     if (d > (m.reach + m.step * 0.5) * foe.scale + 3.2) return; // reads lunges and dash-ins from afar
-    // defending several times in a row tires the reflexes slightly, but a genius AI stays sharp
-    const fatigue = Math.max(0.48, 1 - ai.defStreak * (0.09 / sq));
+    // defending several times in a row tires the reflexes slightly, but a genius AI stays sharp (Zeus never fatigues)
+    const fatigue = isZeusAI ? 1 : Math.max(0.48, 1 - ai.defStreak * (0.09 / sq));
     const hab = 1 + Math.min(0.85, (ai.habit[m.id] - 1) * 0.16 * def.adapt);
-    const cap = iq >= 10 ? 0.992 : iq >= 3 ? 0.975 : this.ultra ? 0.96 : 0.93;
-    const p = Math.min(cap, def.react * hab * fatigue);
+    const cap = isZeusAI ? 0.995 : iq >= 10 ? 0.992 : iq >= 3 ? 0.975 : this.ultra ? 0.96 : 0.93;
+    const p = Math.min(cap, (isZeusAI ? Math.max(0.96, def.react) : def.react) * hab * fatigue);
     if (Math.random() > p) return;
-    const act = defenceAgainst(m.id, def.dodge);
+    const act = defenceAgainst(m.id, isZeusAI ? Math.max(0.86, def.dodge) : def.dodge);
     ai.reactAct = act;
     // razor-sharp reaction time so jabs, hooks, and counters are cleanly slipped or parried
-    const rt = 0.04 + Math.random() * 0.07 + (1 - def.react) * 0.09;
-    ai.reactT = Math.max(0.02, rt / Math.pow(iq, 0.75));
+    const rt = (isZeusAI ? 0.02 : 0.04) + Math.random() * (isZeusAI ? 0.03 : 0.07) + (1 - def.react) * 0.09;
+    ai.reactT = Math.max(isZeusAI ? 0.015 : 0.02, rt / Math.pow(iq, 0.75));
   }
 
   private pickAiMove(e: Fighter, chain: MoveId | null, dist: number): MoveId {
     const ai = this.ai;
     const pl = this.foeOf(e);
-    if (this.def.slam && e.meter >= 100 && ai.combo <= 1) {
-      // Overdrive finisher: unleash when the player is staggered, mid-attack, cornered, blocking with low stamina, or held long enough
-      if (this.strat) {
+    if (this.def.slam && e.meter >= 100 && (e.robot.isZeus || ai.combo <= 1)) {
+      // Overdrive finisher: Zeus immediately unleashes Overdrive to decapitate the player!
+      if (this.strat && !e.robot.isZeus) {
         const cornered = Math.hypot(pl.pos.x, pl.pos.y) > RING - 4.0;
         const open = pl.state === 'stagger' || pl.state === 'air' || pl.tauntT > 0 || (pl.state === 'attack' && !pl.impacted);
         const kill = pl.hp / pl.maxHp < 0.38 || pl.stam < 32;
@@ -5192,10 +5213,9 @@ export class Game {
       e.meter = 0;
       ai.holdOD = 0;
       const odRoll = Math.random();
-      if (odRoll < 0.4) return 'windmill';
-      // the launcher only comes out when he is inside his own reach for it — thrown from range it wastes the meter
-      if (odRoll < 0.62 && dist <= 4.3 * e.scale) return 'skyhook';
-      return dist > 4.0 * e.scale || odRoll < 0.8 ? 'bolt' : 'slam';
+      if (odRoll < 0.35) return 'windmill';
+      if (odRoll < 0.65 && dist <= 4.3 * e.scale) return 'skyhook';
+      return dist > 4.0 * e.scale || odRoll < 0.85 ? 'bolt' : 'slam';
     }
     if (chain) {
       // Mid-combo genius adaptation: if the player is blocking the combo, mix in a throw (grab), uppercut, or counter straight!
@@ -5294,9 +5314,14 @@ export class Game {
       ai.holdOD += dt;
     }
 
+    if (e.robot.isZeus && this.phase === 'fight') {
+      // Zeus mengisi meter Overdrive secara berkala untuk memenggal kepala lawan!
+      e.meter = Math.min(100, e.meter + dt * 10);
+    }
+
     // switch between pressure and counter-hunting phases (heavily favors active engagement)
     if (ai.moodT <= 0) {
-      ai.pressure = Math.random() < 0.48 + def.aggro * 0.48;
+      ai.pressure = e.robot.isZeus || Math.random() < 0.48 + def.aggro * 0.48;
       ai.moodT = 2.4 + Math.random() * 2.8;
     }
 
@@ -5315,7 +5340,7 @@ export class Game {
       if (e.hitConfirmed || (dist <= 4.3 * e.scale && Math.random() < 0.65)) {
         this.startMove(e, this.pickAiMove(e, e.move.id, dist), true); // seamless combo flow
         ai.combo--;
-        if (ai.combo <= 0) ai.cool = def.rest * (ai.pressure ? 0.38 : 0.65) * (0.6 + Math.random() * 0.6);
+        if (ai.combo <= 0) ai.cool = (e.robot.isZeus ? 0.08 : def.rest * (ai.pressure ? 0.38 : 0.65)) * (0.6 + Math.random() * 0.6);
         return;
       }
     }
@@ -5374,6 +5399,11 @@ export class Game {
 
         if (act === 'block') {
           ai.blockT = 0.34 + Math.random() * 0.22;
+          if (e.robot.isZeus) {
+            ai.punishT = 0.9;
+            ai.queued = dist > 3.6 * e.scale ? 'counter' : 'hook';
+            ai.queuedT = 0.85;
+          }
         } else if (act === 'side') {
           if (this.startDodge(e, side, 'side')) {
             if (p.state === 'attack' && p.move) {
@@ -5425,7 +5455,8 @@ export class Game {
     }
     e.blocking = ai.blockT > 0 && e.stam > 0;
 
-    const sp = def.speed * 1.25 * (e.blocking ? 0.48 : 1) * (e.rage ? 1.18 : 1);
+    const isZeusAI = e.robot.isZeus;
+    const sp = def.speed * 1.25 * (e.blocking ? 0.48 : 1) * (e.rage ? 1.18 : 1) * (isZeusAI ? 0.90 : 1);
 
     // ---- QUEUED FOLLOW-UP (Dash-in / Slip Punish) ----
     if (ai.queued && ai.queuedT > 0 && !e.blocking && !pDown) {
@@ -5472,7 +5503,9 @@ export class Game {
       e.wish.addScaledVector(toC.clone().normalize(), sp * 0.85 * k);
     }
     // Aggressive gap-closing dash: if the player tries to run away, dash in and intercept!
-    if (dist > 5.2 * e.scale && !pDown && e.dodgeCd <= 0 && Math.random() < dt * (ai.pressure ? 2.6 : 1.4)) {
+    const zRush = e.robot.isZeus ? 4.8 : 2.6;
+    const minRushDist = (e.robot.isZeus ? 4.2 : 5.2) * e.scale;
+    if (dist > minRushDist && !pDown && e.dodgeCd <= 0 && Math.random() < dt * (ai.pressure ? zRush : 1.4)) {
       if (this.startDodge(e, f.clone(), 'fwd')) {
         ai.queued = Math.random() < 0.55 ? 'counter' : 'cross';
         ai.queuedT = 0.75;
@@ -5565,7 +5598,7 @@ export class Game {
       this.startMove(e, id);
       ai.combo--;
       const rest = def.rest * (ai.pressure ? 0.38 : 0.72);
-      ai.cool = ai.combo > 0 ? 0.03 + Math.random() * 0.06 : Math.max(0.18, rest * (0.55 + Math.random() * 0.6));
+      ai.cool = ai.combo > 0 ? 0.03 + Math.random() * 0.06 : (e.robot.isZeus ? 0.08 + Math.random() * 0.06 : Math.max(0.18, rest * (0.55 + Math.random() * 0.6)));
       // After finishing its combo, the AI either weaves/slips out at an angle OR raises a tight high guard!
       if (ai.combo <= 0) {
         if (e.dodgeCd <= 0 && Math.random() < 0.42) {
@@ -5898,6 +5931,10 @@ export class Game {
       if (f.state === 'attack') acc = f.runStrike ? 7 : 14; // a running punch carries its momentum
       if (f.isPlayer && f.state !== 'attack') acc *= fwGrip;
       if (moving && f.vel.x * f.wish.x + f.vel.y * f.wish.y < 0) acc *= 1.35; // crisp pivot when reversing direction
+      if (f.robot.isZeus) {
+        // Gerakan Zeus 40% lebih berat (bobot inersia raksasa baja 1.4× lebih mantap, tetap responsif & nyaman)
+        acc *= 0.714;
+      }
       const maxStep = acc * dt;
       if (dl <= maxStep) f.vel.copy(f.wish);
       else f.vel.addScaledVector(new THREE.Vector2(dx / dl, dy / dl), maxStep);
@@ -6444,6 +6481,9 @@ export class Game {
     }
 
     let dmg = m.dmg * a.dmgMul;
+    if (a.robot.isZeus) {
+      dmg *= 1.25; // Kerusakan Zeus +25% lebih besar, menguras HP musuh lebih cepat
+    }
     let label = '';
     if (a.runStrike) {
       dmg *= 1.45;
@@ -6509,7 +6549,7 @@ export class Game {
       // body shots against a guard eat the guard: the chip drain is multiplied when you are aiming at the body
       d.stam = Math.max(0, d.stam - dmg * 1.25 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1) * (d.isPlayer ? 1 : 1 / Math.pow(this.iq, 0.35)));
       // Boxing guard pushback: even blocked punches drive the defender backward across the ring while the attacker presses in!
-      d.kb.addScaledVector(away, m.knock * 0.88 * (a.rage ? 1.32 : 1));
+      d.kb.addScaledVector(away, m.knock * 0.88 * (a.rage ? 1.32 : 1) * (d.robot.isZeus ? 0.833 : 1));
       if (dist > 2.9 * avg) a.kb.addScaledVector(away, m.knock * 0.34);
       this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 4, 3.8, 0xb8c4d8, new THREE.Vector3(-away.x, 0.2, -away.y), 1.1, 0.4, 4);
       this.fx.spark(hitPos, 12 + Math.floor(m.power * 10), 10 + m.power * 4, 0xffd27a, dirAD, 1, 0.55); // steel on steel: a shower of sparks
@@ -6599,9 +6639,12 @@ export class Game {
     const armored = d.state === 'attack' && !!d.move && isOD(d.move.id) && !(a.isPlayer && (m.id === 'counter' || isOD(m.id)));
     // the target is what the punch does to him: the body tears down stamina and stability
     if (AIM_DRAIN[aim] > 0) d.stam = Math.max(0, d.stam - dmg * AIM_DRAIN[aim]);
+    const isZeusDef = d.robot.isZeus;
+    const isHJ = m.id === 'jab' || m.id === 'hook';
     // drain stability; it only breaks after a sustained flurry of clean hits
     if (!wasAir && !armored) {
-      d.poise -= poiseCost(big) * AIM_POISE[aim] * (crit ? 1.6 : 1) * (epicComeback ? 1.45 : 1); // a counter-hit or comeback rocks much harder
+      const pCost = poiseCost(big) * AIM_POISE[aim] * (crit ? 1.6 : 1) * (epicComeback ? 1.45 : 1); // a counter-hit or comeback rocks much harder
+      d.poise -= (isZeusDef && isHJ ? pCost * 0.25 : pCost); // Zeus kokoh terhadap jab/hook biasa
       d.poiseT = POISE_DELAY;
     }
     // ---- WHEN DOES HE GO DOWN? Only when it is earned. A robot that falls over from every uppercut or every running
@@ -6625,58 +6668,74 @@ export class Game {
     const ippoLaunch = a.ippoStrike && a.strikeCharge > 0.85 && m.id !== 'jab' && (softened || big >= 0.6);
     let launched = false;
     if (wasAir) {
-      d.juggle++;
-      if (d.juggle >= 5 || isOD(m.id)) {
-        d.vy = -17;
-        label = 'SPIKE!'; // (no slow-mo: the body is in the air — the fall plays in real time)
+      if (isZeusDef && isHJ) {
+        // Zeus tidak bisa dijuggling oleh pukulan ringan H/J — bobot 20% lebih berat membuatnya langsung menjejak tanah
+        d.vy = Math.min(d.vy, -12);
       } else {
-        const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : 10) * (d.juggle >= 3 ? 0.75 : 1);
-        d.vy = pop;
-        d.kb.addScaledVector(away, 2.5 + big * 2);
-        label = label || `JUGGLE x${d.juggle}`;
+        d.juggle++;
+        if (d.juggle >= 5 || isOD(m.id)) {
+          d.vy = -17;
+          label = 'SPIKE!'; // (no slow-mo: the body is in the air — the fall plays in real time)
+        } else {
+          const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : 10) * (d.juggle >= 3 ? 0.75 : 1);
+          d.vy = pop;
+          d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? 0.833 : 1));
+          label = label || `JUGGLE x${d.juggle}`;
+        }
       }
     // A LAUNCH (= being knocked down) now needs a real reason: a designated launcher, a fully committed special,
     // or a flurry that has emptied your stability. Ordinary jabs / crosses / hooks — even on a counter-hit — no
     // longer sweep you off your feet; they stagger you instead.
     } else if (!armored && (launcher || broken || runLaunch || ippoLaunch)) {
-      launched = true;
-      d.state = 'air';
-      d.move = null;
-      d.queued = null;
-      d.dodgeT = 0;
-      d.juggle = 0;
-      d.bounced = false;
-      // THE LAUNCH IS THE PUNCH. He is flung along the line the fist actually travelled — a straight drives him
-      // back down its line, low and far; a hook throws him ACROSS and spins him; an uppercut lifts him — with a
-      // speed that comes from the move's knock, its power, a running start, rage and a counter-hit. Then the
-      // simulation (gravity, the lay-over with the travel, the ropes catching, the two-stage landing) does the rest.
-      const fwdA = new THREE.Vector2(Math.sin(a.yaw), Math.cos(a.yaw));
-      const leftA = new THREE.Vector2(Math.cos(a.yaw), -Math.sin(a.yaw));
-      const pd = new THREE.Vector2();
-      if (m.kind === 'side') pd.copy(leftA).multiplyScalar(m.arm === 0 ? -0.85 : 0.85).addScaledVector(fwdA, 0.5);
-      else if (m.kind === 'up') pd.copy(fwdA).multiplyScalar(0.7);
-      else pd.copy(fwdA);
-      if (pd.lengthSq() < 1e-4) pd.copy(away);
-      pd.normalize();
-      const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
-      const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
-      const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5);
-      // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
-      // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
-      const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
-      d.vy = vert;
-      d.kb.copy(dir).multiplyScalar(horiz);
-      // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
-      d.airSpin = m.kind === 'side' ? (m.arm === 0 ? -1 : 1) * (1.8 + big * 1.6) : (Math.random() - 0.5) * 0.5;
-      // the limbs are thrown the way he is going (ragdoll kick side = the side the blow came across to)
-      const sideL = dir.x * Math.cos(d.yaw) - dir.y * Math.sin(d.yaw); // + = driven to his left
-      this.ragdollKick(d, 0.55 + big * 0.45, Math.abs(sideL) > 0.25 ? (sideL > 0 ? 1 : -1) : 1);
-      label = m.id === 'grab' ? 'THROW!' : m.id === 'windmill' ? 'FREESTYLE SMASH!' : m.id === 'skyhook' ? 'SKYHOOK!' : broken && !launcher ? 'KNOCKDOWN!' : label || 'LAUNCH!';
+      if (isZeusDef && isHJ) {
+        // ZEUS LEBIH KEBAL TERBANG DAN JATUH KALO CUMA DIPENCET H/J:
+        // Berdiri tegak tak tergoyahkan, tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
+        d.state = 'stagger';
+        d.move = null;
+        d.queued = null;
+        d.dodgeT = 0;
+        d.stunT = Math.min(0.24, d.stunT);
+        this.popup(new THREE.Vector3(d.pos.x, 7.0 * d.scale, d.pos.y), 'KEBAL TITAN!', 'pop-block');
+      } else {
+        launched = true;
+        d.state = 'air';
+        d.move = null;
+        d.queued = null;
+        d.dodgeT = 0;
+        d.juggle = 0;
+        d.bounced = false;
+        // THE LAUNCH IS THE PUNCH. He is flung along the line the fist actually travelled — a straight drives him
+        // back down its line, low and far; a hook throws him ACROSS and spins him; an uppercut lifts him — with a
+        // speed that comes from the move's knock, its power, a running start, rage and a counter-hit. Then the
+        // simulation (gravity, the lay-over with the travel, the ropes catching, the two-stage landing) does the rest.
+        const fwdA = new THREE.Vector2(Math.sin(a.yaw), Math.cos(a.yaw));
+        const leftA = new THREE.Vector2(Math.cos(a.yaw), -Math.sin(a.yaw));
+        const pd = new THREE.Vector2();
+        if (m.kind === 'side') pd.copy(leftA).multiplyScalar(m.arm === 0 ? -0.85 : 0.85).addScaledVector(fwdA, 0.5);
+        else if (m.kind === 'up') pd.copy(fwdA).multiplyScalar(0.7);
+        else pd.copy(fwdA);
+        if (pd.lengthSq() < 1e-4) pd.copy(away);
+        pd.normalize();
+        const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
+        const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
+        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5);
+        // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
+        // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
+        const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
+        d.vy = vert;
+        d.kb.copy(dir).multiplyScalar(horiz);
+        // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
+        d.airSpin = m.kind === 'side' ? (m.arm === 0 ? -1 : 1) * (1.8 + big * 1.6) : (Math.random() - 0.5) * 0.5;
+        // the limbs are thrown the way he is going (ragdoll kick side = the side the blow came across to)
+        const sideL = dir.x * Math.cos(d.yaw) - dir.y * Math.sin(d.yaw); // + = driven to his left
+        this.ragdollKick(d, 0.55 + big * 0.45, Math.abs(sideL) > 0.25 ? (sideL > 0 ? 1 : -1) : 1);
+        label = m.id === 'grab' ? 'THROW!' : m.id === 'windmill' ? 'FREESTYLE SMASH!' : m.id === 'skyhook' ? 'SKYHOOK!' : broken && !launcher ? 'KNOCKDOWN!' : label || 'LAUNCH!';
+      }
     } else if (!armored) {
       // BOXING HIT PUSHBACK & RING DOMINANCE:
       // Each landed strike noticeably drives the defender backward across the canvas while the attacker steps in to press the advantage!
       const heavyNoDrop = (m.id === 'upper' || (a.runStrike && m.id === 'cross') || brokenRaw) ? 1.35 : 1; // kept on his feet, but driven back hard — often into the ropes
-      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop;
+      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * (isZeusDef ? 0.833 : 1);
       d.kb.addScaledVector(away, m.knock * pushMul);
       if (dist > 2.85 * avg) {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));
@@ -6783,10 +6842,10 @@ export class Game {
     this.sfx.hit(Math.min(1, big * 1.15));
     this.sfx.crackle(0.25 + big * 0.55); // heavy steel armor crunch & electrical arc on every clean blow!
     this.sfx.cheer(0.3 + big * 0.7);
-    // a player Overdrive that connects gets the director's punch-in on the point of impact — unless this is the
-    // one that takes his head off, in which case the long HEAD RIP shot takes over instead
-    const willRip = a.isPlayer && aim === AIM_HEAD && !d.decapitated && this.phase === 'fight';
-    if (a.isPlayer && isOD(m.id) && !willRip) this.startCine('hit', hitPos, m.id === 'bolt' || m.id === 'skyhook' ? toA : undefined);
+    // an Overdrive that connects gets the director's punch-in on the point of impact — unless this is the
+    // one that takes the head off, in which case the long HEAD RIP shot takes over instead
+    const willRip = (a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && !d.decapitated && this.phase === 'fight';
+    if ((a.isPlayer || a.robot.isZeus) && isOD(m.id) && !willRip) this.startCine('hit', hitPos, m.id === 'bolt' || m.id === 'skyhook' ? toA : undefined);
     if (this.phase !== 'menu') {
       if (d.isPlayer) {
         this.flashAmt = Math.min(0.75, 0.22 + big * 0.35);
@@ -6823,7 +6882,8 @@ export class Game {
     // An Overdrive that lands on a HEAD target does not just hurt: it tears the opponent's head clean off. The
     // helmet is launched away with the momentum of the blow and the neck is left as a stump with torn, sparking
     // cables hanging out of it. It is a finisher, so it ends the round on the spot.
-    if (a.isPlayer && aim === AIM_HEAD && isOD(m.id) && this.phase === 'fight' && !d.decapitated) {
+    if ((a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && isOD(m.id) && this.phase === 'fight' && !d.decapitated) {
+      this.ripVictim = d;
       d.decapitated = true;
       d.hp = 0;
       d.poise = 0;
@@ -7807,9 +7867,10 @@ export class Game {
       const neck = new THREE.Vector3();
       const head = new THREE.Vector3();
       const chest = new THREE.Vector3();
-      e.robot.neck.getWorldPosition(neck);
-      e.robot.chest.getWorldPosition(chest);
-      const fly = this.decap.headObj(e.robot);
+      const victim = this.ripVictim ?? (this.decap.isOff(this.player.robot) ? this.player : e);
+      victim.robot.neck.getWorldPosition(neck);
+      victim.robot.chest.getWorldPosition(chest);
+      const fly = this.decap.headObj(victim.robot);
       if (fly) fly.getWorldPosition(head);
       else head.copy(neck);
       const blow = new THREE.Vector3(this.cineDir.x, 0, this.cineDir.y);
@@ -8122,11 +8183,12 @@ export class Game {
         this.spillPts.push(fgt.pos.x, Math.max(0.08, fgt.y), fgt.pos.y);
         this.spillPads.push(0.68 * sc);
       }
-      const fly = this.decap.isOff(e.robot) ? this.decap.headObj(e.robot) : null;
+      const decapFgt = this.fighters().find((f) => this.decap.isOff(f.robot));
+      const fly = decapFgt ? this.decap.headObj(decapFgt.robot) : null;
       if (fly) {
         this.spillD.setFromMatrixPosition(fly.matrixWorld);
         this.spillPts.push(this.spillD.x, this.spillD.y, this.spillD.z);
-        this.spillPads.push(0.95 * e.scale);
+        this.spillPads.push(0.95 * (decapFgt?.scale ?? 1));
       }
       const dt0 = tp.distanceTo(tl);
       if (dt0 > 0.8) {

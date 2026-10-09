@@ -539,78 +539,46 @@ body,
 }
 .touch-btn:active { transform: scale(0.92); filter: brightness(1.4); }
 
-/* ====================================================================== attack indicator (God of War style) */
+/* ====================================================================== attack indicator (Space Dodge Warning) - Top-Left Text Only */
 .warn {
   --w: #ffd34a;
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
+  left: 12px;
+  top: 172px;
   display: none;
   pointer-events: none;
-  z-index: 15;
-  will-change: transform;
+  z-index: 25;
+}
+@media (min-width: 640px) {
+  .warn {
+    left: 24px;
+    top: 196px;
+  }
 }
 .warn-yellow { --w: #ffd34a; }
 .warn-red { --w: #ff3b3b; }
 .warn-ok { --w: #4dffb0; }
-.warn-ring {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 150px;
-  height: 150px;
-  margin: -75px 0 0 -75px;
-  border-radius: 50%;
-  border: 5px solid var(--w);
-  box-shadow: 0 0 24px var(--w), inset 0 0 24px var(--w);
-  transform: scale(2.6);
-  opacity: 0;
-}
-.warn-ring2 {
-  border-width: 2px;
-  box-shadow: 0 0 12px var(--w);
-}
-.warn-key {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 66px;
-  height: 66px;
-  margin: -33px 0 0 -33px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 50% 35%, rgba(34, 40, 62, 0.96), rgba(6, 8, 16, 0.96));
-  border: 3px solid var(--w);
+.warn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font: 700 11px/1.4 var(--font-tech);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: #fff;
-  font: 800 34px/1 var(--font-display);
-  text-shadow: 0 0 14px var(--w), 0 2px 0 rgba(0, 0, 0, 0.7);
-  box-shadow: 0 0 22px var(--w), inset 0 0 14px rgba(255, 255, 255, 0.12);
-  animation: warnPulse 0.26s ease-in-out infinite alternate;
-}
-.warn-key .kw {
-  font-size: 15px;
-  letter-spacing: 0.06em;
-}
-.warn-tag {
-  position: absolute;
-  left: 50%;
-  top: 48px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 2px 10px;
-  font: 900 12px/1.4 Orbitron, "Arial Black", sans-serif;
-  letter-spacing: 0.22em;
-  color: var(--w);
-  background: rgba(4, 6, 14, 0.8);
+  background: rgba(6, 10, 22, 0.82);
   border: 1px solid var(--w);
-  text-shadow: 0 0 10px var(--w);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 0 10px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 8px var(--w);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: warnFadeIn 0.18s ease-out;
 }
-@keyframes warnPulse {
-  from { transform: scale(0.94); }
-  to { transform: scale(1.08); }
+@keyframes warnFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ===================================================================

@@ -253,7 +253,7 @@ export class Robot {
   private opt!: Opt;
 
   get isZeus() {
-    return !!this.ctx.style.isZeus100;
+    return !!(this.ctx?.style?.isZeus100 || (this.ctx?.style?.helmetSkin === 1 && this.ctx?.style?.armorSkin === 1));
   }
 
   /** the base armour colour (used to tint the chips a blow knocks off the plating) */
