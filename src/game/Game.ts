@@ -458,7 +458,6 @@ const BLOCK: Pose = { sx: -1.0, sy: -0.75, sz: 0, ex: -2.2 };
 const STAGGER: Pose = { sx: -0.42, sy: -0.34, sz: 0.34, ex: -1.15 };
 const LIMP: Pose = { sx: 0.1, sy: 0, sz: 0.35, ex: -0.25 };
 const TAUNT: Pose = { sx: -0.3, sy: -0.1, sz: 1.3, ex: -2.3 };
-const VICTORY: Pose = { sx: -3.0, sy: 0, sz: 0.5, ex: -0.3 };
 
 const k = (t: number, p: Pose, twist = 0, lean = 0.08, lunge = 0, dip = 0.12, e: Ease = 'io'): Key => ({ t, p, twist, lean, lunge, dip, e });
 
@@ -1082,6 +1081,8 @@ class Fighter {
   animT = Math.random() * 10;
   glowBoost = 0;
   mode: 'normal' | 'taunt' | 'victory' = 'normal';
+  victoryT = 0; // time spent in victory walk / celebration
+  victoryChestCue = -1; // tracking chest pound cues
   tauntT = 0; // FREESTYLE: time left of the show-off
   tauntDur = 0;
   tauntStyle = 0; // index into the freestyle book (poses.ts) — M N B U I Y O pick one each
@@ -1195,6 +1196,8 @@ class Fighter {
     this.tauntT = 0;
     this.tauntDur = 0;
     this.tauntStyle = 0;
+    this.victoryT = 0;
+    this.victoryChestCue = -1;
     this.swagger = 0;
     this.headYaw = 0;
     this.pkPre = 0;
@@ -3041,7 +3044,10 @@ export class Game {
       f.mode = 'taunt';
       f.robot.root.visible = true;
       f.robot.head.visible = true;
-      for (const tr of f.trails) tr.mesh.visible = true;
+      for (const tr of f.trails) {
+        tr.clear();
+        tr.mesh.visible = true;
+      }
     }
     this.roundTime = ROUND_TIME;
     this.timeUp = false;
@@ -3241,10 +3247,9 @@ export class Game {
         if (f.state !== 'air') {
           f.state = 'air';
           f.tauntT = 0;
-          // the push-off: the wedge takes the whole weight — sparks off the lip, a dust ring, a thud and a shake
+          // the push-off: the wedge takes the whole weight — sparks off the lip, a dust puff, a thud and a shake
           this.fx.spark(new THREE.Vector3(f.pos.x, f.y + 0.1, f.pos.y), 34, 9, 0xffd27a, new THREE.Vector3(-w.inward.x, 0.6, -w.inward.y), 0.5, 1.2, 12);
           this.fx.spark(new THREE.Vector3(f.pos.x, f.y + 0.1, f.pos.y), 22, 5, 0x9a9aa8, undefined, 1.2, 0.5, 4);
-          this.fx.ring(f.pos.x, f.pos.y, 0xaeb6c8, 2.4, 0.32, f.y + 0.06);
           this.sfx.step(2.0);
           this.sfx.servo();
           this.sfx.whoosh(1);
@@ -3281,7 +3286,6 @@ export class Game {
         for (const sgn of [-1, 1]) {
           const bx = f.pos.x + cy * sgn * 0.78 * f.scale;
           const bz = f.pos.y - sy * sgn * 0.78 * f.scale;
-          this.fx.ring(bx, bz, 0xd8dce8, 1.9, 0.3, 0.07);
           this.fx.spark(new THREE.Vector3(bx, 0.15, bz), 30, 7, 0xb8bccb, undefined, 1.3, 0.6, 5);
           this.fx.spark(new THREE.Vector3(bx, 0.2, bz), 16, 10, 0xffc070, new THREE.Vector3(0, 0.7, 0), 0.6, 0.5, 12);
         }
@@ -3289,12 +3293,10 @@ export class Game {
         for (const sgn of [-1, 1]) {
           const fx0 = f.pos.x + sy * 1.0 * f.scale + cy * sgn * 1.05 * f.scale;
           const fz0 = f.pos.y + cy * 1.0 * f.scale - sy * sgn * 1.05 * f.scale;
-          this.fx.ring(fx0, fz0, 0xffd9a0, 1.4, 0.28, 0.07);
           this.fx.spark(new THREE.Vector3(fx0, 0.25, fz0), 26, 11, 0xffb060, new THREE.Vector3(0, 0.8, 0), 0.8, 0.5, 14);
           this.fx.spark(new THREE.Vector3(fx0, 0.2, fz0), 14, 6, 0xffffff, undefined, 1.1, 0.35, 6);
         }
         this.fx.impactWave(new THREE.Vector3(f.pos.x, 0.35, f.pos.y), new THREE.Vector3(0, 1, 0), 0xdfe6ff, 5.2, 0.3);
-        this.fx.ring(f.pos.x, f.pos.y, 0xc8d0e0, 3.6, 0.45, 0.07);
         this.fx.spark(new THREE.Vector3(f.pos.x, 0.3, f.pos.y), 70, 8, 0x9ea3b4, undefined, 1.6, 0.9, 4); // the dust cloud
         this.sfx.hit(1.0);
         this.sfx.step(2.2);
@@ -3381,6 +3383,8 @@ export class Game {
     this.phaseT = 0;
     for (const f of this.fighters()) {
       f.mode = 'normal';
+      f.victoryT = 0;
+      f.victoryChestCue = -1;
       f.tauntT = 0;
       f.glowBoost = 0;
     }
@@ -3408,11 +3412,20 @@ export class Game {
     const youWon = winner.team === 0;
     this.wins[idx]++;
     winner.mode = 'victory';
-    winner.glowBoost = 1.5;
+    winner.victoryT = 0;
+    winner.victoryChestCue = -1;
+    winner.state = 'idle';
+    winner.move = null;
+    winner.tellT = 0;
+    winner.glowBoost = 2.4;
     const mate = this.mateOf(winner);
     if (mate && mate.state !== 'ko') {
       mate.mode = 'victory';
-      mate.glowBoost = 1.5;
+      mate.victoryT = 0;
+      mate.victoryChestCue = -1;
+      mate.state = 'idle';
+      mate.move = null;
+      mate.glowBoost = 2.0;
     }
     const who = this.teamMode ? (youWon ? 'Tim kamu' : 'Tim lawan') : youWon ? 'Kamu' : this.def.name;
     if (how === 'ko') {
@@ -3437,6 +3450,23 @@ export class Game {
       this.phaseT = 0;
       this.result = this.wins[0] >= 2 ? 'win' : 'lose';
       this.banner = null;
+      const winner = this.result === 'win' ? this.player : this.enemy;
+      winner.mode = 'victory';
+      winner.victoryT = 0;
+      winner.victoryChestCue = -1;
+      winner.state = 'idle';
+      winner.move = null;
+      winner.tellT = 0;
+      winner.glowBoost = 2.5;
+      const mate = this.mateOf(winner);
+      if (mate && mate.state !== 'ko') {
+        mate.mode = 'victory';
+        mate.victoryT = 0;
+        mate.victoryChestCue = -1;
+        mate.state = 'idle';
+        mate.move = null;
+        mate.glowBoost = 2.0;
+      }
       // the final result: a long, thunderous ovation for a win; a sympathetic, shorter one for a loss
       this.lastRoar = 0;
       this.crowdRoar(this.result === 'win' ? 1 : 0.55, this.result === 'win' ? 5.5 : 3.2);
@@ -3805,7 +3835,7 @@ export class Game {
         // hit feedback), so the flight, the landing and the collapse are one continuous simulation at 1×; and if a
         // slow-mo from something else is still winding down, it eases out gently instead of snapping while a body
         // is still settling on the canvas.
-        const inFight = this.phase === 'fight' || this.phase === 'ko';
+        const inFight = this.phase === 'fight' || this.phase === 'ko' || this.phase === 'matchEnd';
         const settling = inFight && this.fighters().some((f) => f.state === 'air' || ((f.state === 'ko' || f.state === 'down') && f.fallS.x < 0.97));
         this.timeScale += (1 - this.timeScale) * (1 - Math.exp(-(settling ? 5 : 16) * raw));
       }
@@ -4008,16 +4038,32 @@ export class Game {
       }
       case 'ko':
         for (const f of this.fighters()) {
-          f.wish.set(0, 0);
+          if (f.mode === 'victory' && f.state !== 'ko' && f.state !== 'down') {
+            this.updateVictoryWalk(f, dt);
+          } else {
+            f.wish.set(0, 0);
+          }
           f.blocking = false;
         }
         this.player.ippo = false;
         this.player.queued = null;
         for (const f of this.fighters()) this.updateFighter(f, this.foeOf(f), dt);
         this.separate();
-        if (this.phaseT > (this.timeUp ? 3.2 : 4.2)) this.afterRound();
+        if (this.phaseT > (this.timeUp ? 3.6 : 4.8)) this.afterRound();
         break;
       case 'matchEnd':
+        for (const f of this.fighters()) {
+          if (f.mode === 'victory' && f.state !== 'ko' && f.state !== 'down') {
+            this.updateVictoryWalk(f, dt);
+          } else {
+            f.wish.set(0, 0);
+          }
+          f.blocking = false;
+        }
+        this.player.ippo = false;
+        this.player.queued = null;
+        for (const f of this.fighters()) this.updateFighter(f, this.foeOf(f), dt);
+        this.separate();
         break;
     }
   }
@@ -4275,11 +4321,10 @@ export class Game {
         this.tauntClash(f);
         break;
       case 'chin': {
-        // the cocky chin-up that ends the show: a servo bark, the eyes flare, a dust ring off the boots
+        // the cocky chin-up that ends the show: a servo bark, the eyes flare, dust off the boots
         this.sfx.servo();
         this.sfx.pyro(0.22);
         f.glowBoost = Math.max(f.glowBoost, 3.4);
-        this.fx.ring(f.pos.x, f.pos.y, 0xffe0a0, 3.0, 0.3, 0.05);
         this.fx.spark(at(0, 0.25, 0), 10, 3.6, 0x9aa8c0, undefined, 1.0, 0.4, 5);
         if (f.isPlayer) this.fovKick = -1.5;
         break;
@@ -4306,18 +4351,16 @@ export class Game {
         for (const sx of [1, -1]) {
           const p = at(sx * 1.15, 4.7, -0.1);
           this.fx.spark(p, 10, 4.5, 0x8fd0ff, new THREE.Vector3(0, 0.2, 0), 0.6, 0.4, 10);
-          this.fx.ring(p.x, p.z, 0x8fd0ff, 1.5, 0.3, 0.05);
         }
         if (f.isPlayer) this.fovKick = -2;
         break;
       }
       case 'clap': {
-        // the windmill ends in a metal clap: a hard crack, a shock ring and a kick through the camera
+        // the windmill ends in a metal clap: a hard crack and a kick through the camera
         this.sfx.hit(0.5);
         this.sfx.crackle(0.8);
         f.glowBoost = Math.max(f.glowBoost, 3.4);
         this.fx.spark(at(0, 4.6, 0.7), 22, 7, 0xffd27a, new THREE.Vector3(0, 0.3, 0.4), 1.1, 0.5, 12);
-        this.fx.ring(f.pos.x, f.pos.y, 0xffe0a0, 4.6, 0.5, 0.09);
         if (f.isPlayer) {
           this.trauma = Math.min(1, this.trauma + 0.3);
           this.camBump = Math.max(this.camBump, 0.22);
@@ -4348,7 +4391,6 @@ export class Game {
         this.sfx.crackle(0.65);
         f.glowBoost = Math.max(f.glowBoost, 3.2);
         this.fx.spark(at(0, 3.6, 0.35), 12, 4.5, 0x8fd0ff, new THREE.Vector3(0, 0.2, 0.8), 0.7, 0.4, 8);
-        this.fx.ring(f.pos.x, f.pos.y, 0x9fe0ff, 2.2, 0.35, 0.05);
         if (f.isPlayer) this.trauma = Math.min(1, this.trauma + 0.06);
         break;
       }
@@ -4365,7 +4407,6 @@ export class Game {
         this.sfx.hit(0.4);
         this.sfx.cheer(1);
         this.sfx.pyro(0.5);
-        this.fx.ring(f.pos.x, f.pos.y, 0xffb45a, 5.4, 0.55, 0.09);
         this.fx.spark(at(0, 0.3, 0), 18, 4.5, 0x9aa8c0, undefined, 1.2, 0.5, 7);
         this.crowdRoar(0.8, 2.2);
         break;
@@ -4373,7 +4414,7 @@ export class Game {
     }
   }
 
-  /** the moment both arms lock overhead in the Zeus taunt: a shockwave, sparks off the fists, lights flare */
+  /** the moment both arms lock overhead in the Zeus taunt: sparks off the fists, lights flare */
   private tauntRaise(f: Fighter) {
     this.sfx.hit(0.45);
     this.sfx.pyro(0.55);
@@ -4384,7 +4425,6 @@ export class Game {
     for (const s of [1, -1]) {
       this.fx.spark(new THREE.Vector3(f.pos.x + s * 1.1 * f.scale, 8.4 * f.scale, f.pos.y), 16, 7, 0xffd27a, up, 0.5, 0.8, 11);
     }
-    this.fx.ring(f.pos.x, f.pos.y, 0xffe0a0, 7, 0.6, 0.08);
     this.fx.spark(new THREE.Vector3(f.pos.x, 0.25, f.pos.y), 22, 5, 0x9aa8c0, undefined, 1.4, 0.6, 7);
     if (f.isPlayer) {
       this.trauma = Math.min(1, this.trauma + 0.25);
@@ -4402,7 +4442,6 @@ export class Game {
     const c = new THREE.Vector3(f.pos.x + fwd.x * 0.7 * f.scale, 5.1 * f.scale, f.pos.y + fwd.z * 0.7 * f.scale); // the breastplate
     this.fx.spark(c, 20, 7, 0xffd27a, new THREE.Vector3(fwd.x, 0.5, fwd.z), 1.3, 0.5, 14);
     this.fx.spark(c, 8, 4, 0xffffff, new THREE.Vector3(0, 1, 0), 0.6, 0.3, 6);
-    this.fx.ring(f.pos.x, f.pos.y, 0xffd27a, 3.4, 0.35, 0.08);
     this.trauma = Math.min(1, this.trauma + (f.isPlayer ? 0.14 : 0.08));
     if (f.isPlayer) this.camBump = Math.max(this.camBump, 0.12);
   }
@@ -4420,7 +4459,6 @@ export class Game {
     this.fx.spark(c, 16, 7.5, 0xffd27a, new THREE.Vector3(side.x, 0.9, side.z), 1.2, 0.5, 12);
     this.fx.spark(c, 16, 7.5, 0xffd27a, new THREE.Vector3(-side.x, 0.9, -side.z), 1.2, 0.5, 12);
     this.fx.spark(c, 10, 5, 0xffffff, new THREE.Vector3(0, 1, 0), 0.7, 0.35, 8);
-    this.fx.ring(f.pos.x + fwd.x * 0.6, f.pos.y + fwd.z * 0.6, 0xffe0a0, 3.8, 0.4, 0.08);
     this.trauma = Math.min(1, this.trauma + (f.isPlayer ? 0.16 : 0.1));
     if (f.isPlayer) {
       this.camBump = Math.max(this.camBump, 0.14);
@@ -4441,7 +4479,7 @@ export class Game {
     d.meter = Math.min(100, d.meter + gain);
     this.popup(
       new THREE.Vector3(d.pos.x, 6.1, d.pos.y),
-      deadly ? '⚡ HINDARAN MAUT! [R / L]' : 'PERFECT DODGE! [L]',
+      deadly ? '⚡ HINDARAN MAUT! [R / L COUNTER]' : '⚡ PERFECT SLIP! [COUNTER SIAP / L]',
       'pop-dodge',
     );
     if (d.isPlayer && d.meter >= 100 && !this.meterReadyShown) {
@@ -4449,12 +4487,8 @@ export class Game {
       this.sfx.ready();
       this.popup(new THREE.Vector3(d.pos.x, 6.9, d.pos.y), '🔥 OVERDRIVE COMEBACK SIAP! [R]', 'pop-crit');
     }
-    if (this.noSlowMoNormal) {
-      this.slowT = 0;
-    } else {
-      this.slowT = deadly ? 0.28 : 0.22; // crisp reflex window to press R (Overdrive) or L (Counter)
-      this.slowScale = deadly ? 0.45 : 0.52;
-    }
+    // No sluggish slow-mo on dodges — the slip remains fast, fluid, and responsive at full speed!
+    this.slowT = 0;
     this.flashAmt = Math.max(this.flashAmt, 0.22);
     this.fovKick = 3.0;
     this.fx.ring(d.pos.x, d.pos.y, 0x5affc8, deadly ? 7.5 : 6, 0.5, 0.1);
@@ -4698,14 +4732,10 @@ export class Game {
       this.sfx.ready();
       this.popup(new THREE.Vector3(d.pos.x, 6.95, d.pos.y), '🔥 OVERDRIVE COMEBACK SIAP! [R]', 'pop-crit');
     }
-    if (this.noSlowMoNormal) {
-      this.slowT = 0;
-    } else {
-      this.slowT = 0.24; // crisp, satisfying parry slow-mo
-      this.slowScale = 0.48;
-    }
+    // Crisp parry: immediate full-speed counter window with punchy mechanical hitstop
+    this.slowT = 0;
     this.flashAmt = Math.max(this.flashAmt, 0.26);
-    this.freeze = 0.06;
+    this.freeze = 0.085;
     this.frozenFighter = a;
     this.trauma = Math.min(0.6, this.trauma + 0.26);
     this.camPush += 0.24;
@@ -5066,6 +5096,8 @@ export class Game {
       cond: 0, // conditioning: how many times in a row it has shown the same setup
       condId: '' as MoveId | '', // the move it is conditioning you with
       holdOD: 0, // how long it has been saving its Overdrive for the right moment
+      zeusComboOD: false, // Zeus signature: combos player with punch combinations before Overdrive finisher
+      zeusODStep: 0,
     };
   }
 
@@ -5192,16 +5224,79 @@ export class Game {
     if (Math.random() > p) return;
     const act = defenceAgainst(m.id, isZeusAI ? Math.max(0.86, def.dodge) : def.dodge);
     ai.reactAct = act;
-    // razor-sharp reaction time so jabs, hooks, and counters are cleanly slipped or parried
-    const rt = (isZeusAI ? 0.02 : 0.04) + Math.random() * (isZeusAI ? 0.03 : 0.07) + (1 - def.react) * 0.09;
-    ai.reactT = Math.max(isZeusAI ? 0.015 : 0.02, rt / Math.pow(iq, 0.75));
+    // fair, athletic reaction time so jabs, hooks, and counters are slipped with realistic championship boxing timing
+    const rt = (isZeusAI ? 0.09 : 0.12) + Math.random() * 0.05 + (1 - def.react) * 0.08;
+    ai.reactT = Math.max(isZeusAI ? 0.08 : 0.10, rt / Math.pow(iq, 0.42));
   }
 
   private pickAiMove(e: Fighter, chain: MoveId | null, dist: number): MoveId {
     const ai = this.ai;
     const pl = this.foeOf(e);
-    if (this.def.slam && e.meter >= 100 && (e.robot.isZeus || ai.combo <= 1)) {
-      // Overdrive finisher: Zeus immediately unleashes Overdrive to decapitate the player!
+    const isZeusAI = e.robot.isZeus;
+
+    // ---- ZEUS SIGNATURE OVERDRIVE SETUP COMBO ----
+    // Zeus is the undisputed King of the Ring in Real Steel:
+    // When Zeus is ready to Overdrive (e.meter >= 100), he DOES NOT fire a raw isolated Overdrive from neutral.
+    // Instead, he delights in battering the opponent with a relentless multi-hit punch combination
+    // (Jab -> Cross -> Hook -> Uppercut), shattering their guard before delivering the grand Overdrive finisher!
+    if (isZeusAI && e.meter >= 100) {
+      if (!chain) {
+        // Start the Overdrive Setup Combo flurry: prime 3 to 4 punches before the finisher
+        ai.zeusComboOD = true;
+        ai.zeusODStep = 0;
+        ai.combo = 3 + Math.floor(Math.random() * 2);
+        e.glowBoost = 1.35;
+        this.popup(new THREE.Vector3(e.pos.x, 6.4 * e.scale, e.pos.y), '⚡ ZEUS COMBO OVERDRIVE!', 'pop-big');
+        this.sfx.ready();
+        // Aggressive opener to start the combination
+        const starter: MoveId = dist > 3.8 * e.scale ? 'counter' : Math.random() < 0.6 ? 'jab' : 'cross';
+        ai.lastId = starter;
+        return starter;
+      } else if (ai.zeusComboOD) {
+        ai.zeusODStep++;
+        // If still building up the combo flurry and not at the finale:
+        if (ai.combo > 1 && pl.state !== 'stagger' && pl.state !== 'air') {
+          // If player tries to block or peek-a-boo turtle, mix in uppercuts or hooks to smash the guard!
+          if (pl.blocking || pl.ippo) {
+            if (dist <= 3.3 * e.scale && Math.random() < 0.35) return 'grab';
+            return Math.random() < 0.6 ? 'upper' : 'hook';
+          }
+          if (dist > 3.8 * e.scale) {
+            return Math.random() < 0.6 ? 'counter' : 'cross';
+          }
+          const zSeq: Partial<Record<MoveId, MoveId[]>> = {
+            jab: ['cross', 'hook', 'counter'],
+            cross: ['hook', 'upper', 'counter'],
+            hook: ['upper', 'cross', 'counter'],
+            upper: ['hook', 'cross', 'counter'],
+            counter: ['hook', 'upper', 'cross'],
+          };
+          const nextOpts = zSeq[chain] || ['cross', 'hook', 'upper'];
+          const nextPunch = nextOpts[Math.floor(Math.random() * nextOpts.length)];
+          ai.lastId = nextPunch;
+          return nextPunch;
+        }
+
+        // CLIMAX OF THE COMBO FLURRY: ZEUS UNLEASHES THE OVERDRIVE FINISHER!
+        e.meter = 0;
+        ai.zeusComboOD = false;
+        ai.holdOD = 0;
+        e.glowBoost = 2.0;
+        const odRoll = Math.random();
+        const finisher: MoveId =
+          odRoll < 0.38
+            ? 'windmill'
+            : odRoll < 0.70 && dist <= 4.3 * e.scale
+              ? 'skyhook'
+              : dist > 4.0 * e.scale || odRoll < 0.88
+                ? 'bolt'
+                : 'slam';
+        ai.lastId = finisher;
+        return finisher;
+      }
+    }
+
+    if (this.def.slam && e.meter >= 100 && ai.combo <= 1) {
       if (this.strat && !e.robot.isZeus) {
         const cornered = Math.hypot(pl.pos.x, pl.pos.y) > RING - 4.0;
         const open = pl.state === 'stagger' || pl.state === 'air' || pl.tauntT > 0 || (pl.state === 'attack' && !pl.impacted);
@@ -5337,10 +5432,11 @@ export class Game {
 
     // ---- HIT-CONFIRMED & PRESSURE COMBO CHAINING ----
     if (e.state === 'attack' && e.move && ai.combo > 0 && e.impacted && this.canCancel(e) && !pDown && p.state !== 'air') {
-      if (e.hitConfirmed || (dist <= 4.3 * e.scale && Math.random() < 0.65)) {
+      const zChainP = ai.zeusComboOD ? 1.0 : e.robot.isZeus ? 0.95 : (ai.pressure ? 0.8 : 0.65);
+      if (e.hitConfirmed || (dist <= 4.5 * e.scale && Math.random() < zChainP)) {
         this.startMove(e, this.pickAiMove(e, e.move.id, dist), true); // seamless combo flow
         ai.combo--;
-        if (ai.combo <= 0) ai.cool = (e.robot.isZeus ? 0.08 : def.rest * (ai.pressure ? 0.38 : 0.65)) * (0.6 + Math.random() * 0.6);
+        if (ai.combo <= 0) ai.cool = (e.robot.isZeus ? 0.38 + Math.random() * 0.22 : Math.max(0.42, def.rest * (0.85 + Math.random() * 0.45)));
         return;
       }
     }
@@ -5592,13 +5688,13 @@ export class Game {
         ai.cool = def.rest * (0.55 + Math.random() * 0.5);
         return;
       }
-      if (ai.combo <= 0) ai.combo = 2 + Math.floor(Math.random() * def.combo);
+      if (ai.combo <= 0) ai.combo = e.robot.isZeus ? (3 + Math.floor(Math.random() * 3)) : (2 + Math.floor(Math.random() * def.combo));
       const id = this.pickAiMove(e, null, dist);
       ai.lastId = id;
       this.startMove(e, id);
       ai.combo--;
       const rest = def.rest * (ai.pressure ? 0.38 : 0.72);
-      ai.cool = ai.combo > 0 ? 0.03 + Math.random() * 0.06 : (e.robot.isZeus ? 0.08 + Math.random() * 0.06 : Math.max(0.18, rest * (0.55 + Math.random() * 0.6)));
+      ai.cool = ai.combo > 0 ? (e.robot.isZeus ? 0.05 + Math.random() * 0.04 : 0.06 + Math.random() * 0.06) : (e.robot.isZeus ? 0.38 + Math.random() * 0.22 : Math.max(0.45, rest * (0.85 + Math.random() * 0.45)));
       // After finishing its combo, the AI either weaves/slips out at an angle OR raises a tight high guard!
       if (ai.combo <= 0) {
         if (e.dodgeCd <= 0 && Math.random() < 0.42) {
@@ -5696,6 +5792,58 @@ export class Game {
     // the beats of the move fire off its own progress clock, so sound, sparks and camera always land together
     for (const c of fs.cues) if (was > (1 - c.p) * fs.dur && f.tauntT <= (1 - c.p) * fs.dur) this.fsCue(f, c.s);
     if (f.tauntT <= 0) f.softT = Math.max(f.softT, 0.35);
+  }
+
+  /** THE CHAMPION'S VICTORY WALK & PROUD STRUT:
+   * When a robot wins, they walk around the arena with heavy, deliberate strides, celebrating and taunting!
+   * Circles the canvas in a proud perimeter stroll, head held high, chest out, acknowledging the roaring crowd.
+   */
+  private updateVictoryWalk(f: Fighter, dt: number) {
+    f.victoryT += dt;
+    f.blocking = false;
+    f.sprinting = false;
+    f.ippo = false;
+    if (f.state !== 'idle') f.state = 'idle';
+
+    const cx = f.pos.x;
+    const cz = f.pos.y;
+    const dist = Math.hypot(cx, cz);
+    const targetR = 4.2; // comfortable inner loop radius
+
+    // Tangential direction (CCW circular lap around the ring canvas)
+    let dirX = -cz / Math.max(0.001, dist);
+    let dirZ = cx / Math.max(0.001, dist);
+
+    // Radial guidance to stay around the target radius without hitting the ropes
+    const radial = (targetR - dist) * 0.45;
+    dirX += (cx / Math.max(0.001, dist)) * radial;
+    dirZ += (cz / Math.max(0.001, dist)) * radial;
+
+    const len = Math.hypot(dirX, dirZ) || 1;
+    dirX /= len;
+    dirZ /= len;
+
+    // Confident, weighty champion walking speed (2.6 - 3.0 m/s)
+    const walkSpd = (f.robot.isZeus ? 2.5 : 2.85) * f.scale;
+    f.wish.set(dirX * walkSpd, dirZ * walkSpd);
+
+    // Occasional servo revs and chest spark cues during chest pounding
+    const vt = f.victoryT % 8.0;
+    if (vt >= 2.2 && vt <= 4.2) {
+      const beat = Math.floor((vt - 2.2) / 0.5);
+      if (beat !== f.victoryChestCue) {
+        f.victoryChestCue = beat;
+        this.sfx.servo();
+        const chestPos = new THREE.Vector3(
+          f.pos.x + Math.sin(f.yaw) * 0.4 * f.scale,
+          f.y + 4.8 * f.scale,
+          f.pos.y + Math.cos(f.yaw) * 0.4 * f.scale,
+        );
+        this.fx.spark(chestPos, 4, 3.2, 0xffd27a, new THREE.Vector3(0, 0.4, 0), 0.35, 0.35, 4);
+      }
+    } else {
+      f.victoryChestCue = -1;
+    }
   }
 
   // ------------------------------------------------------------ fighter update
@@ -5943,6 +6091,29 @@ export class Game {
     let nx = f.pos.x + (f.vel.x + f.kb.x + f.dash.x) * dt;
     let nz = f.pos.y + (f.vel.y + f.kb.y + f.dash.y) * dt;
 
+    // Real Steel physical body collision hull: fighters cannot walk or dash through each other
+    if (this.phase !== 'walk' && o.state !== 'air' && f.state !== 'air') {
+      const minBodyHull = (f.scale + o.scale) * 1.55;
+      const cdx = nx - o.pos.x;
+      const cdz = nz - o.pos.y;
+      const curDist = Math.hypot(cdx, cdz);
+      if (curDist < minBodyHull && curDist > 0.001) {
+        const toF_x = cdx / curDist;
+        const toF_z = cdz / curDist;
+        const pen = minBodyHull - curDist;
+        nx += toF_x * pen * 0.7;
+        nz += toF_z * pen * 0.7;
+        // Damp velocity heading directly into opponent
+        const vDot = (f.vel.x + f.dash.x) * -toF_x + (f.vel.y + f.dash.y) * -toF_z;
+        if (vDot > 0) {
+          f.vel.x += toF_x * vDot * 0.65;
+          f.vel.y += toF_z * vDot * 0.65;
+          f.dash.x += toF_x * vDot * 0.65;
+          f.dash.y += toF_z * vDot * 0.65;
+        }
+      }
+    }
+
     // ---- rope contact: the ropes stretch like a soft spring-damper, hold the body and ease it back
     const touch = RING_IN - BODY_R * f.scale;
     f.ropeDepth = 0;
@@ -6114,10 +6285,16 @@ export class Game {
       if (dt > 0) f.yawRate = lerp(f.yawRate, f.airSpin, 1 - Math.exp(-14 * dt));
     } else if (f.state !== 'ko' && f.state !== 'down' && this.phase !== 'menu') {
       f.airSpin = 0;
-      const target = Math.atan2(o.pos.x - f.pos.x, o.pos.y - f.pos.y);
+      let target: number;
+      if (f.mode === 'victory') {
+        const moveSpd = Math.hypot(f.vel.x, f.vel.y);
+        target = moveSpd > 0.35 ? Math.atan2(f.vel.x, f.vel.y) : f.yaw;
+      } else {
+        target = Math.atan2(o.pos.x - f.pos.x, o.pos.y - f.pos.y);
+      }
       const locked = f.state === 'attack' && f.whooshed;
       const counterAim = f.isPlayer && (f.dodgeT > 0 || f.dodgeTail > 0 || (f.state === 'attack' && !f.whooshed));
-      const rate = locked ? (f.move?.id === 'hook' || f.move?.id === 'counter' ? 4.5 : 0.8) : f.state === 'air' ? 3 : counterAim ? 18 : f.softT > 0 ? 4.5 : 10.5;
+      const rate = f.mode === 'victory' ? 5.2 : locked ? (f.move?.id === 'hook' || f.move?.id === 'counter' ? 4.5 : 0.8) : f.state === 'air' ? 3 : counterAim ? 18 : f.softT > 0 ? 4.5 : 10.5;
       const dyaw = wrapAngle(target - f.yaw) * (1 - Math.exp(-rate * dt));
       f.yaw += dyaw;
       if (dt > 0) f.yawRate = lerp(f.yawRate, dyaw / dt, 1 - Math.exp(-14 * dt));
@@ -6306,7 +6483,7 @@ export class Game {
         const p = list[i];
         const e = list[j];
         if (p.state === 'air' || e.state === 'air') continue;
-        const minD = 3.2 * (p.scale + e.scale) * 0.5;
+        const minD = 3.35 * (p.scale + e.scale) * 0.5;
         const d = p.pos.distanceTo(e.pos);
         if (d >= minD || d < 0.001) continue;
         const pw = w(p);
@@ -6350,7 +6527,6 @@ export class Game {
     const disp = Math.min(isPlayerCounter ? Math.max(maxStep, Math.min(allowed, 3.8 * f.scale)) : maxStep, allowed);
     if (f.runStrike) {
       // the whole run is thrown into the punch: dust burst at the planted foot
-      this.fx.ring(f.pos.x + dir.x * 0.6, f.pos.y + dir.y * 0.6, 0xc8d2e8, 5.5, 0.4, 0.07);
       this.fx.spark(new THREE.Vector3(f.pos.x, 0.2, f.pos.y), 22, 6, 0x9a9aaa, new THREE.Vector3(-dir.x, 0.1, -dir.y), 1.1, 0.5, 3);
     }
     f.dash.addScaledVector(dir, disp * 7.2);
@@ -6358,7 +6534,6 @@ export class Game {
     this.sfx.step(0.55 + m.power * 0.8);
     const fx = f.pos.x + dir.x * 0.9;
     const fz = f.pos.y + dir.y * 0.9;
-    this.fx.ring(fx, fz, 0x9aa8c0, 2.2 * f.scale + m.power * 2.5, 0.35, 0.06);
     this.fx.spark(new THREE.Vector3(fx, 0.15, fz), 6 + Math.floor(m.power * 22), 3 + m.power * 4, 0x9a9aaa, undefined, 1.2, 0.4, 3);
     this.fx.flash(new THREE.Vector3(fx, this.aimY(f, m) * 0.7 * f.scale, fz), 0.7 + m.power * 1.6, 0xbfe6ff, 0.09); // the punch cuts the air
   }
@@ -6403,7 +6578,6 @@ export class Game {
       this.fx.ring(a.pos.x - toA.x * 1.2, a.pos.y - toA.y * 1.2, 0xfff6dc, 5.2, 0.42, 4.5 * a.scale);
       this.fx.spark(fxp, 18, 15, 0xffd27a, up, 0.8, 0.75, 9);
       this.fx.spark(fxp, 10, 12, 0xffffff, up, 0.6, 0.6, 7);
-      this.fx.ring(a.pos.x, a.pos.y, 0xcfd6e6, 4.2, 0.35); // the canvas he pushed off
     }
     if (m.id === 'counter') {
       // HALF AN OVERDRIVE — and the same fireworks, scaled down: a tight shock ring at the fist and a short speed
@@ -6590,13 +6764,8 @@ export class Game {
         this.ai.blockT = 0;
         this.sfx.guardBreak();
         this.popup(new THREE.Vector3(d.pos.x, 6.4 * d.scale, d.pos.y), 'GUARD BREAK!', 'pop-crit');
-        this.freeze = 0.08;
-        if (this.noSlowMoNormal) {
-          this.slowT = 0;
-        } else {
-          this.slowT = 0.2;
-          this.slowScale = 0.46;
-        }
+        this.freeze = 0.09;
+        this.slowT = 0;
         this.trauma = Math.min(0.7, this.trauma + 0.32);
         this.camImpVel.y -= 2.4;
         d.stam = 25;
@@ -6762,36 +6931,28 @@ export class Game {
       this.ai.queued = null;
     }
 
-    // feedback — heavy, on-beat hitstop + 3D spring-damper camera punch + crisp slow-mo so every 2-ton robot blow feels massive!
-    this.freeze = 0.045 + big * 0.068 + (launched ? 0.015 : 0);
-    if (launched) {
-      // a knock-down is NOT slowed: the body leaves the feet and the whole fall plays in real time (a short
-      // hit-stop on the contact is all the punctuation it gets — the simulation does the rest)
-      this.slowT = 0;
-    } else if (isOD(m.id)) {
-      // OVERDRIVE ALWAYS GETS CINEMATIC SLOW MOTION! (Crisp & snappy pacing, avoids sluggish freeze)
+    // feedback — heavy mechanical hitstop + 3D spring-damper camera punch so every 2-ton robot blow feels massive and solid!
+    // Solid mechanical hitstop (freeze frames on contact): creates crushing punch weight without sluggish time-dilation!
+    this.freeze = 0.055 + big * 0.075 + (launched ? 0.02 : 0);
+    if (isOD(m.id)) {
+      // OVERDRIVE: Cinematic slow motion exclusively for Overdrive impact
       this.slowT = 0.28;
       this.slowScale = 0.52;
-    } else if (this.noSlowMoNormal) {
-      // FAST COMBAT: ordinary hits, crits, and counters do not slow time! Full FPS and relentless pace!
-      this.slowT = 0;
-    } else if (big >= 0.6 || crit || a.runStrike || a.winStrike || a.rage) {
-      this.slowT = Math.max(this.slowT, 0.14 + big * 0.11);
-      this.slowScale = 0.46;
-    } else if (m.id === 'jab') {
-      // THE JAB DOES NOT SLOW TIME. It is the one punch you are supposed to be able to chain, so it gets PUNCH,
-      // not pause: no slow-mo, no leftover time-scale to drag the next jab down — the snap comes from the hit-stop
-      // above, the white crack below and the sound, and the flurry keeps its own momentum.
+    } else if (launched && d.hp <= 0) {
+      // MATCH-ENDING KO KNOCKDOWN: Slow-motion impact punctuation
+      this.slowT = 0.65;
+      this.slowScale = 0.38;
     } else {
-      this.slowT = Math.max(this.slowT, 0.065);
-      this.slowScale = Math.min(this.slowScale < 1 ? this.slowScale : 1, 0.68);
+      // ALL NORMAL STRIKES (Jab, Cross, Hook, Uppercut, Counter, Crits, Dodge-Strikes):
+      // NO awkward slow-mo hiccups! Keeps the fight fluid, crisp, and responsive at 100% full FPS!
+      this.slowT = 0;
     }
     this.frozenFighter = d;
-    this.trauma = Math.min(0.85, this.trauma + 0.26 + big * 0.42 + (crit ? 0.12 : 0) + (launched ? 0.14 : 0));
+    this.trauma = Math.min(0.9, this.trauma + 0.28 + big * 0.44 + (crit ? 0.15 : 0) + (launched ? 0.16 : 0));
     this.shakePh = 0; // start shockwave at phase 0 right on impact for a clean, deterministic punch wave
-    const impMag = (2.6 + big * 4.8) * (crit || launched ? 1.25 : 1);
+    const impMag = (2.8 + big * 5.2) * (crit || launched ? 1.3 : 1);
     this.camImpVel.x += away.x * impMag;
-    this.camImpVel.y -= 1.2 + big * 2.4;
+    this.camImpVel.y -= 1.3 + big * 2.6;
     this.camImpVel.z += away.y * impMag;
     d.flash = 1;
     // THE JAB SNAP: its own little report, so a flurry of them reads as a machine gun instead of a mush of small
@@ -7274,6 +7435,28 @@ export class Game {
             rl -= sgn * 0.08 * varEnv;
           }
         }
+        // REAL STEEL ANTI-PENETRATION & CONTACT STOPPING:
+        // Calculates the distance to the opponent's outer physical body boundary (chest/jaw/guard hull).
+        // The punching fist and forearm physically stop at contact instead of penetrating through the opponent!
+        const distToFoe = f.pos.distanceTo(o.pos);
+        const foeHull = (o.blocking ? 1.42 : 1.16) * o.scale;
+        const maxReachWorld = Math.max(0.6 * f.scale, distToFoe - foeHull);
+        const maxReachModel = maxReachWorld / f.scale;
+
+        // Prevent body torso lunge from penetrating through the opponent's chest
+        const minBodyDist = (f.scale + o.scale) * 1.35;
+        const maxLungeAllowed = Math.max(0, (distToFoe - minBodyDist) / f.scale);
+
+        if (maxReachModel < 2.95) {
+          const dFist = Math.max(0.6, maxReachModel - 0.48);
+          const cosElbow = THREE.MathUtils.clamp((2.90 - dFist * dFist) / 2.86, -0.999, 0.999);
+          const exLimit = -(Math.PI - Math.acos(cosElbow));
+          variedStrike.ex = Math.min(variedStrike.ex, exLimit);
+          if (maxReachModel < 1.95) {
+            variedStrike.sx += 0.36 * (1.95 - maxReachModel);
+          }
+        }
+
         if (arm === 0) {
           a0 = variedStrike;
           a1 = offGuard;
@@ -7287,7 +7470,7 @@ export class Game {
         tw = s.twist * (mirrored ? -1 : 1) * (f.ippoStrike ? 1.35 : 1) + extraTw;
         if (f.tellT > 0) tw += Math.sin(f.animT * 46) * 0.03; // the held wind-up trembles
         ln += s.lean + (f.runStrike ? 0.22 : f.ippoStrike ? 0.16 : f.rage ? 0.12 : 0); // leaning into it
-        lg = (s.lunge + (v === 2 ? 0.18 * varEnv : 0)) * (f.runStrike ? 1.3 : 1) * (f.aim === AIM_BODY ? 0.94 : 1);
+        lg = Math.min((s.lunge + (v === 2 ? 0.18 * varEnv : 0)) * (f.runStrike ? 1.3 : 1) * (f.aim === AIM_BODY ? 0.94 : 1), maxLungeAllowed);
         dp += s.dip + (this.aimsLow(f, m) ? 0.1 : 0); // and you sit down into a body shot
         kk = f.rage ? 92 : 75;
       }
@@ -7374,9 +7557,71 @@ export class Game {
       ln = 0;
       dp = 0.15;
     } else if (f.mode === 'victory') {
-      a0 = a1 = { ...VICTORY, sx: VICTORY.sx + Math.sin(t * 6) * 0.15 };
-      ln = -0.15;
-      dp = 0.1;
+      // PROUD CHAMPION VICTORY STRUT & FREESTYLE TAUNTING WHILE WALKING:
+      // Robot berjalan mengelilingi ring dengan bangga, kepala mendongak, dada tegap, dan taunting!
+      // Gerakan tangan dan torso bersinkronisasi langsung dengan langkah kaki (f.robot.stride.arm & swing).
+      const vt = f.victoryT;
+      const cyc = vt % 8.0;
+      const g = f.robot.stride.arm; // live gait arm phase (−1..1)
+      const gs = f.robot.stride.swing;
+
+      // Glow boost: mata dan reaktor menyala terang bertenaga penuh!
+      f.glowBoost = Math.max(f.glowBoost, 2.2 + Math.sin(vt * 4) * 0.35);
+
+      if (cyc < 2.2) {
+        // TAHAP 1 (0.0s - 2.2s): ANGKAT KEDUA TANGAN & TERIAK BANGGA KE LANGIT (DOUBLE FIST PUMP)
+        // Kedua tinju diangkat tinggi, memompa berirama mengikuti setiap langkah mantap, kepala mendongak ke atas
+        const pumpL = Math.sin(vt * 6.5) * 0.22 + g * 0.15;
+        const pumpR = Math.sin(vt * 6.5 + 1.8) * 0.22 - g * 0.15;
+        a0 = P(-2.88 + pumpL, -0.14, 0.42, -0.55);
+        a1 = P(-2.88 + pumpR, 0.14, 0.42, -0.55);
+        tw = -g * 0.22;
+        rl = g * 0.08;
+        ln = -0.22; // dagu dan kepala mendongak bangga menatap penonton / lampu stadion
+        dp = 0.07 + gs * gs * 0.04;
+        kk = 38;
+        f.headYaw = Math.sin(vt * 1.6) * 0.25;
+      } else if (cyc < 4.2) {
+        // TAHAP 2 (2.2s - 4.2s): PUKUL DADA BAJA DENGAN GAGAH SAMBIL MELANGKAH MAJU (CHEST POUND)
+        // Langkah tegap juara: tinju memalu pelat dada baja berulang kali, kepala mengangguk bangga
+        const uSub = (cyc - 2.2) / 2.0;
+        const thump = Math.max(0, Math.sin(uSub * Math.PI * 4)); // hentakan ke dada
+        const braceL = P(-1.35, -0.52, 0.42, -1.9);
+        const poundR = P(-0.18, -0.96, -0.82, -2.05);
+        const swingR = P(-1.25, -0.65, 0.65, -1.75);
+        a0 = braceL;
+        a1 = lerpPose(swingR, poundR, thump);
+        tw = -g * 0.26 + thump * 0.18;
+        rl = g * 0.09 - thump * 0.08;
+        ln = -0.14 + thump * 0.12;
+        dp = 0.11 + thump * 0.06;
+        kk = 45 + thump * 30;
+        f.headYaw = -0.15 + thump * 0.3;
+      } else if (cyc < 6.2) {
+        // TAHAP 3 (4.2s - 6.2s): ANGKAT SATU TANGAN KE PENONTON & KEPALA MENOLEH (CROWD SALUTE #1)
+        // Tangan kiri terangkat ke tribun menunjuk #1 Sang Juara, tangan kanan di pinggang, kepala menoleh ke tribun penonton
+        const pan = Math.sin((cyc - 4.2) * 1.7);
+        a0 = P(-2.92 + Math.sin(vt * 3.5) * 0.1, -0.2, 0.25, -0.42); // tinju #1 ke angkasa
+        a1 = P(-0.72 - g * 0.15, 0.35, 0.45, -1.85); // tinju di pinggang
+        tw = 0.14 - g * 0.18;
+        rl = 0.07 + g * 0.06;
+        ln = -0.16;
+        dp = 0.09 + gs * gs * 0.03;
+        kk = 28;
+        f.headYaw = pan * 0.55; // menoleh bangga menatap para fans di tribun
+      } else {
+        // TAHAP 4 (6.2s - 8.0s): POSE SOMBONG JUARA / FLEKSING PNEUMATIK (ARROGANT STRUT & BECKON)
+        // Bahu bergoyang gagah, lengan merentang sombong "Ayo siapa lagi lawan berikutnya!"
+        const rollPh = (cyc - 6.2) * 4.2;
+        a0 = P(-1.18 + Math.sin(rollPh) * 0.18, -0.78, 0.45, -1.4);
+        a1 = P(-1.18 - Math.sin(rollPh) * 0.18, 0.78, 0.45, -1.4);
+        tw = Math.sin(rollPh) * 0.26;
+        rl = Math.cos(rollPh) * 0.12;
+        ln = -0.18 + Math.sin(rollPh * 0.8) * 0.05;
+        dp = 0.13;
+        kk = 32;
+        f.headYaw = Math.sin(rollPh * 0.6) * 0.32;
+      }
     } else if (f.ippo) {
       // PEEK-A-BOO: fists glued to the cheeks, chin tucked, the body weaving on a figure-8 (the Dempsey Roll).
       // The weave speeds up and widens as the roll charges.
@@ -7584,6 +7829,23 @@ export class Game {
         ex: sp[3].update(ps.ex, hzA, zA, dt),
       };
     }
+    // Hard surface-contact clamping after spring solver: guarantees that no spring overshoot can push the fist or forearm into the opponent's body
+    if (atk && f.move) {
+      const armIdx = this.armOf(f, f.move);
+      const dToFoe = f.pos.distanceTo(o.pos);
+      const fHull = (o.blocking ? 1.42 : 1.16) * o.scale;
+      const maxRMod = Math.max(0.6, (dToFoe - fHull) / f.scale);
+      if (maxRMod < 2.95) {
+        const dF = Math.max(0.6, maxRMod - 0.48);
+        const cEl = THREE.MathUtils.clamp((2.90 - dF * dF) / 2.86, -0.999, 0.999);
+        const exLim = -(Math.PI - Math.acos(cEl));
+        const armsToClamp = armIdx === 2 ? [0, 1] : [armIdx];
+        for (const ai of armsToClamp) {
+          f.arms[ai].ex = Math.min(f.arms[ai].ex, exLim);
+          if (maxRMod < 1.95) f.arms[ai].sx += 0.36 * (1.95 - maxRMod);
+        }
+      }
+    }
     const hzB = (atk ? 10.5 : f.state === 'stagger' ? 9.5 : lerp(5.4, 11.2, dodgeBlend)) * soft;
     const zB = atk ? 0.74 : lerp(0.84, 0.76, dodgeBlend);
     f.twist = f.bodyS.twist.update(tw, hzB, zB, dt);
@@ -7727,14 +7989,12 @@ export class Game {
       const arm = m ? this.armOf(f, m) : -1;
       const isWindmill = !!m && m.id === 'windmill';
       const mine = !!m && (arm === 2 || arm === i || (isWindmill && f.moveT < m.strikeAt * 0.72));
-      const emit =
-        dt > 0 &&
-        f.state === 'attack' &&
-        mine &&
-        ((f.moveT >= m!.strikeAt - 0.02 && f.moveT <= m!.impact + 0.1) || (isWindmill && f.moveT <= m!.impact + 0.12));
+      // Forward-only motion emission: stops immediately at impact / apex so the trail never folds back during recovery
+      const forwardStrike = !m ? false : isWindmill ? (f.moveT <= m.impact) : (f.moveT >= m.strikeAt - 0.02 && f.moveT <= m.impact + 0.015);
+      const emit = dt > 0 && f.state === 'attack' && mine && forwardStrike;
       tmp.set(0, -1.0, 0.05);
       f.robot.fists[i].localToWorld(tmp);
-      f.trails[i].width = 0.26 * f.scale * (m && isOD(m.id) ? 1.55 : f.rage ? 1.25 : 1);
+      f.trails[i].width = 0.28 * f.scale * (m && isOD(m.id) ? 1.45 : f.rage ? 1.25 : 1);
       // CHARGE: in the last instant of the wind-up (or throughout the Windmill spin!) the fist crackles with energy
       if (
         dt > 0 &&

@@ -56,8 +56,8 @@ export class Effects {
   private grav: Float32Array;
   private head = 0;
   private points: THREE.Points;
-  private rings: { m: THREE.Mesh; age: number; life: number; max: number }[] = [];
-  private impactRings: { m: THREE.Mesh; age: number; life: number; max: number }[] = [];
+  private rings: { m: THREE.Mesh; age: number; life: number; max: number; alpha?: number }[] = [];
+  private impactRings: { m: THREE.Mesh; age: number; life: number; max: number; alpha?: number }[] = [];
   private flashes: { s: THREE.Sprite; age: number; life: number; size: number }[] = [];
   private starFlares: { s: THREE.Sprite; age: number; life: number; size: number }[] = [];
   private light: THREE.PointLight;
@@ -130,7 +130,7 @@ export class Effects {
       m.rotation.x = -Math.PI / 2;
       m.visible = false;
       scene.add(m);
-      this.rings.push({ m, age: 1, life: 1, max: 1 });
+      this.rings.push({ m, age: 1, life: 1, max: 1, alpha: 0.26 });
     }
     for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(
@@ -139,7 +139,7 @@ export class Effects {
       );
       m.visible = false;
       scene.add(m);
-      this.impactRings.push({ m, age: 1, life: 1, max: 1 });
+      this.impactRings.push({ m, age: 1, life: 1, max: 1, alpha: 0.28 });
     }
     const tex = glowTexture();
     for (let i = 0; i < 6; i++) {
@@ -292,11 +292,12 @@ export class Effects {
     if (this.shardMesh.instanceColor) this.shardMesh.instanceColor.needsUpdate = true;
   }
 
-  ring(x: number, z: number, color: number, max: number, life = 0.5, y = 0.07) {
+  ring(x: number, z: number, color: number, max: number, life = 0.5, y = 0.07, alpha = 0.26) {
     const r = this.rings.find((q) => q.age >= q.life) ?? this.rings[0];
     r.age = 0;
     r.life = life;
     r.max = Math.min(max, 5.5);
+    r.alpha = alpha;
     r.m.position.set(x, y, z);
     (r.m.material as THREE.MeshBasicMaterial).color.setHex(color);
     r.m.visible = true;
@@ -305,11 +306,12 @@ export class Effects {
   /**
    * 3D Oriented Sonic Shockwave Ring + 4-Point Starburst Impact Flare right at the point of fist contact!
    */
-  impactWave(p: THREE.Vector3, dir: THREE.Vector3, color: number, max: number, life = 0.24) {
+  impactWave(p: THREE.Vector3, dir: THREE.Vector3, color: number, max: number, life = 0.24, alpha = 0.28) {
     const r = this.impactRings.find((q) => q.age >= q.life) ?? this.impactRings[0];
     r.age = 0;
     r.life = life;
     r.max = Math.min(max, 4.6);
+    r.alpha = alpha;
     r.m.position.copy(p);
     // Orient ring perpendicular to the punch vector so it bursts outward like a 3D sonic boom halo
     r.m.lookAt(p.x + dir.x, p.y + dir.y * 0.4, p.z + dir.z);
@@ -439,7 +441,7 @@ export class Effects {
       const u = Math.min(1, r.age / r.life);
       const e = 1 - Math.pow(1 - u, 3);
       r.m.scale.setScalar(0.3 + e * r.max);
-      (r.m.material as THREE.MeshBasicMaterial).opacity = (1 - u) * 0.9;
+      (r.m.material as THREE.MeshBasicMaterial).opacity = (1 - u) * (r.alpha ?? 0.26);
     }
     for (const r of this.impactRings) {
       if (r.age >= r.life) {
@@ -450,7 +452,7 @@ export class Effects {
       const u = Math.min(1, r.age / r.life);
       const e = 1 - Math.pow(1 - u, 3.2);
       r.m.scale.setScalar(0.25 + e * r.max);
-      (r.m.material as THREE.MeshBasicMaterial).opacity = Math.pow(1 - u, 1.3) * 0.95;
+      (r.m.material as THREE.MeshBasicMaterial).opacity = Math.pow(1 - u, 1.4) * (r.alpha ?? 0.28);
     }
     for (const f of this.flashes) {
       if (f.age >= f.life) {
@@ -460,7 +462,7 @@ export class Effects {
       f.age += dt;
       const u = Math.min(1, f.age / f.life);
       f.s.scale.setScalar(f.size * (0.5 + u * 1.6));
-      (f.s.material as THREE.SpriteMaterial).opacity = (1 - u) * 0.65;
+      (f.s.material as THREE.SpriteMaterial).opacity = (1 - u) * 0.38;
     }
     for (const sf of this.starFlares) {
       if (sf.age >= sf.life) {
@@ -472,7 +474,7 @@ export class Effects {
       const e = 1 - Math.pow(1 - u, 2.5);
       sf.s.scale.setScalar(sf.size * (0.35 + e * 1.45));
       const smat = sf.s.material as THREE.SpriteMaterial;
-      smat.opacity = Math.pow(1 - u, 1.5) * 0.92;
+      smat.opacity = Math.pow(1 - u, 1.5) * 0.38;
       smat.rotation += dt * 2.5;
     }
     this.lightPow *= Math.exp(-14 * dt);
@@ -480,31 +482,51 @@ export class Effects {
   }
 }
 
-/** Camera-facing ribbon that follows a fast-moving fist. */
+/** Camera-facing ultra-smooth ribbon that follows a fast-moving fist with Catmull-Rom spline and anti-twist framing. */
 export class Trail {
   private pts: { p: THREE.Vector3; age: number }[] = [];
-  private N = 18;
-  private life = 0.29;
+  private readonly MAX_CTRL = 14;
+  private readonly SEGS = 32;
+  private life = 0.24;
   private geo = new THREE.BufferGeometry();
   private posA: Float32Array;
   private colA: Float32Array;
   readonly mesh: THREE.Mesh;
   private color = new THREE.Color();
-  width = 0.76;
+  width = 0.55;
+
+  // Cached vector helpers to eliminate garbage collection / heap churn
+  private _t0 = new THREE.Vector3();
+  private _t1 = new THREE.Vector3();
+  private _t2 = new THREE.Vector3();
+  private _t3 = new THREE.Vector3();
+  private _tan = new THREE.Vector3();
+  private _view = new THREE.Vector3();
+  private _side = new THREE.Vector3();
+  private _prevSide = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, color: number) {
     this.color.setHex(color);
-    this.posA = new Float32Array(this.N * 2 * 3);
-    this.colA = new Float32Array(this.N * 2 * 3);
+    // (SEGS + 1) rings of vertices = (32 + 1) * 2 = 66 vertices
+    const vertCount = (this.SEGS + 1) * 2;
+    this.posA = new Float32Array(vertCount * 3);
+    this.colA = new Float32Array(vertCount * 3);
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.posA, 3));
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.colA, 3));
+
     const idx: number[] = [];
-    for (let i = 0; i < this.N - 1; i++) {
+    for (let i = 0; i < this.SEGS; i++) {
       const a = i * 2;
       idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
     }
     this.geo.setIndex(idx);
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
@@ -515,48 +537,161 @@ export class Trail {
     this.color.setHex(c);
   }
 
+  clear() {
+    this.pts.length = 0;
+    this.mesh.visible = false;
+  }
+
   update(p: THREE.Vector3, emit: boolean, dt: number, cam: THREE.Camera) {
-    for (const q of this.pts) q.age += dt;
-    while (this.pts.length && this.pts[this.pts.length - 1].age > this.life) this.pts.pop();
-    if (emit) {
-      this.pts.unshift({ p: p.clone(), age: 0 });
-      if (this.pts.length > this.N) this.pts.pop();
+    for (let i = 0; i < this.pts.length; i++) {
+      this.pts[i].age += dt;
     }
-    const n = this.pts.length;
-    if (n < 2) {
+    while (this.pts.length > 0 && this.pts[this.pts.length - 1].age > this.life) {
+      this.pts.pop();
+    }
+
+    if (emit) {
+      if (this.pts.length === 0) {
+        this.pts.unshift({ p: p.clone(), age: 0 });
+      } else {
+        const dSq = p.distanceToSquared(this.pts[0].p);
+        // Only insert new node when the fist has moved meaningfully (prevents zero-length kinks)
+        if (dSq >= 0.0016) {
+          this.pts.unshift({ p: p.clone(), age: 0 });
+          if (this.pts.length > this.MAX_CTRL) this.pts.pop();
+        } else {
+          // Update the leading head position smoothly and keep it fresh
+          this.pts[0].p.copy(p);
+          this.pts[0].age = 0;
+        }
+      }
+    }
+
+    const K = this.pts.length;
+    if (K < 2) {
       this.mesh.visible = false;
       return;
     }
+
+    // Verify the curve has meaningful extension so we don't render a collapsed dot
+    let totalLen = 0;
+    for (let i = 0; i < K - 1; i++) {
+      totalLen += this.pts[i].p.distanceTo(this.pts[i + 1].p);
+    }
+    if (totalLen < 0.08) {
+      this.mesh.visible = false;
+      return;
+    }
+
     this.mesh.visible = true;
-    const tan = new THREE.Vector3();
-    const view = new THREE.Vector3();
-    const side = new THREE.Vector3();
-    for (let i = 0; i < this.N; i++) {
-      const j = Math.min(i, n - 1);
-      const cur = this.pts[j];
-      const prev = this.pts[Math.max(0, j - 1)].p;
-      const next = this.pts[Math.min(n - 1, j + 1)].p;
-      tan.subVectors(prev, next);
-      if (tan.lengthSq() < 1e-6) tan.set(0, 1, 0);
-      view.subVectors(cam.position, cur.p);
-      side.crossVectors(tan, view).normalize();
-      const f = i < n ? Math.max(0, 1 - cur.age / this.life) : 0;
-      const w = this.width * f * (0.35 + 0.65 * f);
-      const o = i * 6;
-      this.posA[o] = cur.p.x + side.x * w;
-      this.posA[o + 1] = cur.p.y + side.y * w;
-      this.posA[o + 2] = cur.p.z + side.z * w;
-      this.posA[o + 3] = cur.p.x - side.x * w;
-      this.posA[o + 4] = cur.p.y - side.y * w;
-      this.posA[o + 5] = cur.p.z - side.z * w;
-      const c = Math.pow(f, 1.8) * 0.9;
+    const M = this.SEGS;
+
+    // Reset reference side vector
+    this._prevSide.set(0, 0, 0);
+
+    for (let s = 0; s <= M; s++) {
+      const u = s / M; // 0 = fist tip, 1 = trail tail
+      const t = u * (K - 1);
+      const idx = Math.min(Math.floor(t), K - 2);
+      const f = t - idx;
+      const f2 = f * f;
+      const f3 = f2 * f;
+
+      // 4 control points for standard Catmull-Rom spline
+      const p1 = this.pts[idx].p;
+      const p2 = this.pts[idx + 1].p;
+      const p0 = idx > 0 ? this.pts[idx - 1].p : this._t0.subVectors(p1, this._t1.subVectors(p2, p1));
+      const p3 = idx + 2 < K ? this.pts[idx + 2].p : this._t3.addVectors(p2, this._t2.subVectors(p2, p1));
+
+      // Catmull-Rom position
+      const c0 = -0.5 * f3 + f2 - 0.5 * f;
+      const c1 = 1.5 * f3 - 2.5 * f2 + 1.0;
+      const c2 = -1.5 * f3 + 2.0 * f2 + 0.5 * f;
+      const c3 = 0.5 * f3 - 0.5 * f2;
+
+      const posX = c0 * p0.x + c1 * p1.x + c2 * p2.x + c3 * p3.x;
+      const posY = c0 * p0.y + c1 * p1.y + c2 * p2.y + c3 * p3.y;
+      const posZ = c0 * p0.z + c1 * p1.z + c2 * p2.z + c3 * p3.z;
+
+      // Catmull-Rom tangent derivative
+      const dc0 = -1.5 * f2 + 2.0 * f - 0.5;
+      const dc1 = 4.5 * f2 - 5.0 * f;
+      const dc2 = -4.5 * f2 + 4.0 * f + 0.5;
+      const dc3 = 1.5 * f2 - f;
+
+      this._tan.set(
+        dc0 * p0.x + dc1 * p1.x + dc2 * p2.x + dc3 * p3.x,
+        dc0 * p0.y + dc1 * p1.y + dc2 * p2.y + dc3 * p3.y,
+        dc0 * p0.z + dc1 * p1.z + dc2 * p2.z + dc3 * p3.z,
+      );
+      if (this._tan.lengthSq() < 1e-6) {
+        this._tan.subVectors(p2, p1);
+        if (this._tan.lengthSq() < 1e-6) this._tan.set(0, 1, 0);
+      }
+      this._tan.normalize();
+
+      // Camera view vector from curve point to camera
+      this._view.set(cam.position.x - posX, cam.position.y - posY, cam.position.z - posZ);
+
+      // Ribbon side vector perpendicular to tangent and camera ray
+      this._side.crossVectors(this._tan, this._view);
+      const sLen = this._side.length();
+      if (sLen < 1e-4) {
+        // Tangent is collinear with view: fallback to camera up vector to avoid flipping
+        this._side.crossVectors(this._tan, cam.up);
+        if (this._side.lengthSq() < 1e-4) {
+          this._side.copy(this._prevSide.lengthSq() > 0.1 ? this._prevSide : new THREE.Vector3(0, 1, 0));
+        } else {
+          this._side.normalize();
+        }
+      } else {
+        this._side.multiplyScalar(1 / sLen);
+      }
+
+      // ANTI-TWIST & ANTI-FOLD (Strict parallel-transport orientation lock)
+      // Ensures the ribbon's left/right orientation never flips backwards or creates figure-8 kinks!
+      if (this._prevSide.lengthSq() > 0.1) {
+        if (this._side.dot(this._prevSide) < 0) {
+          this._side.negate();
+        }
+        // Smooth out angular variations between consecutive spline samples
+        this._side.lerp(this._prevSide, 0.22).normalize();
+      }
+      this._prevSide.copy(this._side);
+
+      // Interpolated age & life fraction along the spline
+      const age = this.pts[idx].age * (1 - f) + this.pts[idx + 1].age * f;
+      const lifeFrac = Math.max(0, 1 - age / this.life);
+
+      // Aerodynamic blade taper profile:
+      // - Smoothly tapers at the very fist knuckle (no blunt flat rectangle block)
+      // - Swells to full aerodynamic width right behind the fist
+      // - Tapers gracefully down to a razor-sharp tip at the tail
+      const headTaper = Math.sin(Math.min(1, s / 3.0) * (Math.PI * 0.5));
+      const tailTaper = Math.pow(lifeFrac, 1.25) * Math.pow(1 - u, 0.65);
+      const w = this.width * (0.28 + 0.72 * headTaper) * tailTaper;
+
+      // Color intensity & alpha falloff
+      const c = Math.pow(lifeFrac, 1.35) * Math.min(1, (s + 0.5) / 2.5) * 0.85;
+
+      const o = s * 6;
+      this.posA[o] = posX + this._side.x * w;
+      this.posA[o + 1] = posY + this._side.y * w;
+      this.posA[o + 2] = posZ + this._side.z * w;
+
+      this.posA[o + 3] = posX - this._side.x * w;
+      this.posA[o + 4] = posY - this._side.y * w;
+      this.posA[o + 5] = posZ - this._side.z * w;
+
       for (let k = 0; k < 2; k++) {
-        this.colA[o + k * 3] = this.color.r * c;
-        this.colA[o + k * 3 + 1] = this.color.g * c;
-        this.colA[o + k * 3 + 2] = this.color.b * c;
+        const ko = o + k * 3;
+        this.colA[ko] = this.color.r * c;
+        this.colA[ko + 1] = this.color.g * c;
+        this.colA[ko + 2] = this.color.b * c;
       }
     }
-    this.geo.setDrawRange(0, (n - 1) * 6);
+
+    this.geo.setDrawRange(0, M * 6);
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.color.needsUpdate = true;
   }
