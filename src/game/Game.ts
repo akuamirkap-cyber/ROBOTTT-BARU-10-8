@@ -458,6 +458,7 @@ const BLOCK: Pose = { sx: -1.0, sy: -0.75, sz: 0, ex: -2.2 };
 const STAGGER: Pose = { sx: -0.42, sy: -0.34, sz: 0.34, ex: -1.15 };
 const LIMP: Pose = { sx: 0.1, sy: 0, sz: 0.35, ex: -0.25 };
 const TAUNT: Pose = { sx: -0.3, sy: -0.1, sz: 1.3, ex: -2.3 };
+const VICTORY: Pose = { sx: -3.0, sy: 0, sz: 0.5, ex: -0.3 };
 
 const k = (t: number, p: Pose, twist = 0, lean = 0.08, lunge = 0, dip = 0.12, e: Ease = 'io'): Key => ({ t, p, twist, lean, lunge, dip, e });
 
@@ -1081,8 +1082,6 @@ class Fighter {
   animT = Math.random() * 10;
   glowBoost = 0;
   mode: 'normal' | 'taunt' | 'victory' = 'normal';
-  victoryT = 0; // time spent in victory walk / celebration
-  victoryChestCue = -1; // tracking chest pound cues
   tauntT = 0; // FREESTYLE: time left of the show-off
   tauntDur = 0;
   tauntStyle = 0; // index into the freestyle book (poses.ts) — M N B U I Y O pick one each
@@ -1196,8 +1195,6 @@ class Fighter {
     this.tauntT = 0;
     this.tauntDur = 0;
     this.tauntStyle = 0;
-    this.victoryT = 0;
-    this.victoryChestCue = -1;
     this.swagger = 0;
     this.headYaw = 0;
     this.pkPre = 0;
@@ -3383,8 +3380,6 @@ export class Game {
     this.phaseT = 0;
     for (const f of this.fighters()) {
       f.mode = 'normal';
-      f.victoryT = 0;
-      f.victoryChestCue = -1;
       f.tauntT = 0;
       f.glowBoost = 0;
     }
@@ -3412,20 +3407,11 @@ export class Game {
     const youWon = winner.team === 0;
     this.wins[idx]++;
     winner.mode = 'victory';
-    winner.victoryT = 0;
-    winner.victoryChestCue = -1;
-    winner.state = 'idle';
-    winner.move = null;
-    winner.tellT = 0;
-    winner.glowBoost = 2.4;
+    winner.glowBoost = 1.5;
     const mate = this.mateOf(winner);
     if (mate && mate.state !== 'ko') {
       mate.mode = 'victory';
-      mate.victoryT = 0;
-      mate.victoryChestCue = -1;
-      mate.state = 'idle';
-      mate.move = null;
-      mate.glowBoost = 2.0;
+      mate.glowBoost = 1.5;
     }
     const who = this.teamMode ? (youWon ? 'Tim kamu' : 'Tim lawan') : youWon ? 'Kamu' : this.def.name;
     if (how === 'ko') {
@@ -3450,23 +3436,6 @@ export class Game {
       this.phaseT = 0;
       this.result = this.wins[0] >= 2 ? 'win' : 'lose';
       this.banner = null;
-      const winner = this.result === 'win' ? this.player : this.enemy;
-      winner.mode = 'victory';
-      winner.victoryT = 0;
-      winner.victoryChestCue = -1;
-      winner.state = 'idle';
-      winner.move = null;
-      winner.tellT = 0;
-      winner.glowBoost = 2.5;
-      const mate = this.mateOf(winner);
-      if (mate && mate.state !== 'ko') {
-        mate.mode = 'victory';
-        mate.victoryT = 0;
-        mate.victoryChestCue = -1;
-        mate.state = 'idle';
-        mate.move = null;
-        mate.glowBoost = 2.0;
-      }
       // the final result: a long, thunderous ovation for a win; a sympathetic, shorter one for a loss
       this.lastRoar = 0;
       this.crowdRoar(this.result === 'win' ? 1 : 0.55, this.result === 'win' ? 5.5 : 3.2);
@@ -3835,7 +3804,7 @@ export class Game {
         // hit feedback), so the flight, the landing and the collapse are one continuous simulation at 1×; and if a
         // slow-mo from something else is still winding down, it eases out gently instead of snapping while a body
         // is still settling on the canvas.
-        const inFight = this.phase === 'fight' || this.phase === 'ko' || this.phase === 'matchEnd';
+        const inFight = this.phase === 'fight' || this.phase === 'ko';
         const settling = inFight && this.fighters().some((f) => f.state === 'air' || ((f.state === 'ko' || f.state === 'down') && f.fallS.x < 0.97));
         this.timeScale += (1 - this.timeScale) * (1 - Math.exp(-(settling ? 5 : 16) * raw));
       }
@@ -4038,32 +4007,16 @@ export class Game {
       }
       case 'ko':
         for (const f of this.fighters()) {
-          if (f.mode === 'victory' && f.state !== 'ko' && f.state !== 'down') {
-            this.updateVictoryWalk(f, dt);
-          } else {
-            f.wish.set(0, 0);
-          }
+          f.wish.set(0, 0);
           f.blocking = false;
         }
         this.player.ippo = false;
         this.player.queued = null;
         for (const f of this.fighters()) this.updateFighter(f, this.foeOf(f), dt);
         this.separate();
-        if (this.phaseT > (this.timeUp ? 3.6 : 4.8)) this.afterRound();
+        if (this.phaseT > (this.timeUp ? 3.2 : 4.2)) this.afterRound();
         break;
       case 'matchEnd':
-        for (const f of this.fighters()) {
-          if (f.mode === 'victory' && f.state !== 'ko' && f.state !== 'down') {
-            this.updateVictoryWalk(f, dt);
-          } else {
-            f.wish.set(0, 0);
-          }
-          f.blocking = false;
-        }
-        this.player.ippo = false;
-        this.player.queued = null;
-        for (const f of this.fighters()) this.updateFighter(f, this.foeOf(f), dt);
-        this.separate();
         break;
     }
   }
@@ -5794,58 +5747,6 @@ export class Game {
     if (f.tauntT <= 0) f.softT = Math.max(f.softT, 0.35);
   }
 
-  /** THE CHAMPION'S VICTORY WALK & PROUD STRUT:
-   * When a robot wins, they walk around the arena with heavy, deliberate strides, celebrating and taunting!
-   * Circles the canvas in a proud perimeter stroll, head held high, chest out, acknowledging the roaring crowd.
-   */
-  private updateVictoryWalk(f: Fighter, dt: number) {
-    f.victoryT += dt;
-    f.blocking = false;
-    f.sprinting = false;
-    f.ippo = false;
-    if (f.state !== 'idle') f.state = 'idle';
-
-    const cx = f.pos.x;
-    const cz = f.pos.y;
-    const dist = Math.hypot(cx, cz);
-    const targetR = 4.2; // comfortable inner loop radius
-
-    // Tangential direction (CCW circular lap around the ring canvas)
-    let dirX = -cz / Math.max(0.001, dist);
-    let dirZ = cx / Math.max(0.001, dist);
-
-    // Radial guidance to stay around the target radius without hitting the ropes
-    const radial = (targetR - dist) * 0.45;
-    dirX += (cx / Math.max(0.001, dist)) * radial;
-    dirZ += (cz / Math.max(0.001, dist)) * radial;
-
-    const len = Math.hypot(dirX, dirZ) || 1;
-    dirX /= len;
-    dirZ /= len;
-
-    // Confident, weighty champion walking speed (2.6 - 3.0 m/s)
-    const walkSpd = (f.robot.isZeus ? 2.5 : 2.85) * f.scale;
-    f.wish.set(dirX * walkSpd, dirZ * walkSpd);
-
-    // Occasional servo revs and chest spark cues during chest pounding
-    const vt = f.victoryT % 8.0;
-    if (vt >= 2.2 && vt <= 4.2) {
-      const beat = Math.floor((vt - 2.2) / 0.5);
-      if (beat !== f.victoryChestCue) {
-        f.victoryChestCue = beat;
-        this.sfx.servo();
-        const chestPos = new THREE.Vector3(
-          f.pos.x + Math.sin(f.yaw) * 0.4 * f.scale,
-          f.y + 4.8 * f.scale,
-          f.pos.y + Math.cos(f.yaw) * 0.4 * f.scale,
-        );
-        this.fx.spark(chestPos, 4, 3.2, 0xffd27a, new THREE.Vector3(0, 0.4, 0), 0.35, 0.35, 4);
-      }
-    } else {
-      f.victoryChestCue = -1;
-    }
-  }
-
   // ------------------------------------------------------------ fighter update
   private updateFighter(f: Fighter, o: Fighter, dt: number) {
     f.hit = Math.max(0, f.hit - dt * 2.4);
@@ -6285,16 +6186,10 @@ export class Game {
       if (dt > 0) f.yawRate = lerp(f.yawRate, f.airSpin, 1 - Math.exp(-14 * dt));
     } else if (f.state !== 'ko' && f.state !== 'down' && this.phase !== 'menu') {
       f.airSpin = 0;
-      let target: number;
-      if (f.mode === 'victory') {
-        const moveSpd = Math.hypot(f.vel.x, f.vel.y);
-        target = moveSpd > 0.35 ? Math.atan2(f.vel.x, f.vel.y) : f.yaw;
-      } else {
-        target = Math.atan2(o.pos.x - f.pos.x, o.pos.y - f.pos.y);
-      }
+      const target = Math.atan2(o.pos.x - f.pos.x, o.pos.y - f.pos.y);
       const locked = f.state === 'attack' && f.whooshed;
       const counterAim = f.isPlayer && (f.dodgeT > 0 || f.dodgeTail > 0 || (f.state === 'attack' && !f.whooshed));
-      const rate = f.mode === 'victory' ? 5.2 : locked ? (f.move?.id === 'hook' || f.move?.id === 'counter' ? 4.5 : 0.8) : f.state === 'air' ? 3 : counterAim ? 18 : f.softT > 0 ? 4.5 : 10.5;
+      const rate = locked ? (f.move?.id === 'hook' || f.move?.id === 'counter' ? 4.5 : 0.8) : f.state === 'air' ? 3 : counterAim ? 18 : f.softT > 0 ? 4.5 : 10.5;
       const dyaw = wrapAngle(target - f.yaw) * (1 - Math.exp(-rate * dt));
       f.yaw += dyaw;
       if (dt > 0) f.yawRate = lerp(f.yawRate, dyaw / dt, 1 - Math.exp(-14 * dt));
@@ -7557,71 +7452,9 @@ export class Game {
       ln = 0;
       dp = 0.15;
     } else if (f.mode === 'victory') {
-      // PROUD CHAMPION VICTORY STRUT & FREESTYLE TAUNTING WHILE WALKING:
-      // Robot berjalan mengelilingi ring dengan bangga, kepala mendongak, dada tegap, dan taunting!
-      // Gerakan tangan dan torso bersinkronisasi langsung dengan langkah kaki (f.robot.stride.arm & swing).
-      const vt = f.victoryT;
-      const cyc = vt % 8.0;
-      const g = f.robot.stride.arm; // live gait arm phase (−1..1)
-      const gs = f.robot.stride.swing;
-
-      // Glow boost: mata dan reaktor menyala terang bertenaga penuh!
-      f.glowBoost = Math.max(f.glowBoost, 2.2 + Math.sin(vt * 4) * 0.35);
-
-      if (cyc < 2.2) {
-        // TAHAP 1 (0.0s - 2.2s): ANGKAT KEDUA TANGAN & TERIAK BANGGA KE LANGIT (DOUBLE FIST PUMP)
-        // Kedua tinju diangkat tinggi, memompa berirama mengikuti setiap langkah mantap, kepala mendongak ke atas
-        const pumpL = Math.sin(vt * 6.5) * 0.22 + g * 0.15;
-        const pumpR = Math.sin(vt * 6.5 + 1.8) * 0.22 - g * 0.15;
-        a0 = P(-2.88 + pumpL, -0.14, 0.42, -0.55);
-        a1 = P(-2.88 + pumpR, 0.14, 0.42, -0.55);
-        tw = -g * 0.22;
-        rl = g * 0.08;
-        ln = -0.22; // dagu dan kepala mendongak bangga menatap penonton / lampu stadion
-        dp = 0.07 + gs * gs * 0.04;
-        kk = 38;
-        f.headYaw = Math.sin(vt * 1.6) * 0.25;
-      } else if (cyc < 4.2) {
-        // TAHAP 2 (2.2s - 4.2s): PUKUL DADA BAJA DENGAN GAGAH SAMBIL MELANGKAH MAJU (CHEST POUND)
-        // Langkah tegap juara: tinju memalu pelat dada baja berulang kali, kepala mengangguk bangga
-        const uSub = (cyc - 2.2) / 2.0;
-        const thump = Math.max(0, Math.sin(uSub * Math.PI * 4)); // hentakan ke dada
-        const braceL = P(-1.35, -0.52, 0.42, -1.9);
-        const poundR = P(-0.18, -0.96, -0.82, -2.05);
-        const swingR = P(-1.25, -0.65, 0.65, -1.75);
-        a0 = braceL;
-        a1 = lerpPose(swingR, poundR, thump);
-        tw = -g * 0.26 + thump * 0.18;
-        rl = g * 0.09 - thump * 0.08;
-        ln = -0.14 + thump * 0.12;
-        dp = 0.11 + thump * 0.06;
-        kk = 45 + thump * 30;
-        f.headYaw = -0.15 + thump * 0.3;
-      } else if (cyc < 6.2) {
-        // TAHAP 3 (4.2s - 6.2s): ANGKAT SATU TANGAN KE PENONTON & KEPALA MENOLEH (CROWD SALUTE #1)
-        // Tangan kiri terangkat ke tribun menunjuk #1 Sang Juara, tangan kanan di pinggang, kepala menoleh ke tribun penonton
-        const pan = Math.sin((cyc - 4.2) * 1.7);
-        a0 = P(-2.92 + Math.sin(vt * 3.5) * 0.1, -0.2, 0.25, -0.42); // tinju #1 ke angkasa
-        a1 = P(-0.72 - g * 0.15, 0.35, 0.45, -1.85); // tinju di pinggang
-        tw = 0.14 - g * 0.18;
-        rl = 0.07 + g * 0.06;
-        ln = -0.16;
-        dp = 0.09 + gs * gs * 0.03;
-        kk = 28;
-        f.headYaw = pan * 0.55; // menoleh bangga menatap para fans di tribun
-      } else {
-        // TAHAP 4 (6.2s - 8.0s): POSE SOMBONG JUARA / FLEKSING PNEUMATIK (ARROGANT STRUT & BECKON)
-        // Bahu bergoyang gagah, lengan merentang sombong "Ayo siapa lagi lawan berikutnya!"
-        const rollPh = (cyc - 6.2) * 4.2;
-        a0 = P(-1.18 + Math.sin(rollPh) * 0.18, -0.78, 0.45, -1.4);
-        a1 = P(-1.18 - Math.sin(rollPh) * 0.18, 0.78, 0.45, -1.4);
-        tw = Math.sin(rollPh) * 0.26;
-        rl = Math.cos(rollPh) * 0.12;
-        ln = -0.18 + Math.sin(rollPh * 0.8) * 0.05;
-        dp = 0.13;
-        kk = 32;
-        f.headYaw = Math.sin(rollPh * 0.6) * 0.32;
-      }
+      a0 = a1 = { ...VICTORY, sx: VICTORY.sx + Math.sin(t * 6) * 0.15 };
+      ln = -0.15;
+      dp = 0.1;
     } else if (f.ippo) {
       // PEEK-A-BOO: fists glued to the cheeks, chin tucked, the body weaving on a figure-8 (the Dempsey Roll).
       // The weave speeds up and widens as the roll charges.
