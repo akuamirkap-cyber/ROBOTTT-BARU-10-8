@@ -6,7 +6,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { MeterPass, makeGradePass, SAT_STEPS, DEFAULT_SAT } from './grade';
 export { SAT_STEPS, DEFAULT_SAT };
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Robot, type Pose, type RobotStyle } from './robot';
+import { Robot, type Pose, type RobotStyle, type AnimState } from './robot';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from './build';
 import { mount100PercentZeus } from './zeusModel';
 import { FREESTYLE, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
@@ -660,23 +660,31 @@ export const VS_CLASH_SQUARE_T = 0.45;
 export const VS_CLASH_KEYS: Key[] = [
   //         shoulder pitch / yaw / roll / elbow          twist   lean    lunge   dip    ease
   k(0.00, P(-0.55, -0.26, 0.32, -2.20), -0.05, -0.06, -0.04, 0.17, 'io'), // out of the stare-down
-  // COIL: turn the right cross fully into its rear-shoulder chamber, fist high and body loaded over the back foot.
+  // COIL / CHAMBER: turn the right cross fully into rear chamber, loading body over back foot (Real Steel Sim load)
   k(0.38, P(-0.08, 0.85, 0.42, -2.60), -1.15, -0.26, -0.60, 0.36, 'out'),
-  k(0.56, P(-1.10, 0.75, 0.60, -2.20), -1.15, -0.38, -0.72, 0.56, 'io'), // fist high beside the shoulder
-  k(0.68, P(-1.10, 0.75, 0.60, -2.20), -1.15, -0.38, -0.72, 0.56, 'io'), // hold the full-power chamber so it reads
-  // RELEASE: the rear boot drives first; hips, chest and shoulder then unwind through a long, clean arc.
+  k(0.56, P(-1.10, 0.75, 0.60, -2.20), -1.15, -0.38, -0.72, 0.56, 'io'), // fist high beside shoulder
+  k(0.68, P(-1.10, 0.75, 0.60, -2.20), -1.15, -0.38, -0.72, 0.56, 'io'), // hold full-power chamber
+  // RELEASE & EXPLOSIVE CROSS: rear boot drives, hips whip forward into straight right punch
   k(0.74, P(-0.82, 0.66, 0.50, -2.22), -1.08, -0.31, -0.58, 0.50, 'io'),
   k(0.90, P(-0.62, 0.20, 0.30, -1.55), -0.46, -0.12, -0.28, 0.31, 'flow'),
   k(0.9325, P(-0.765, 0.08, 0.278, -1.345), -0.325, -0.095, -0.235, 0.288, 'flow'),
-  k(0.965, P(-0.91, -0.04, 0.255, -1.14), -0.19, -0.07, -0.19, 0.265, 'flow'), // subdivide the release arc to keep it fluid at 60 fps
+  k(0.965, P(-0.91, -0.04, 0.255, -1.14), -0.19, -0.07, -0.19, 0.265, 'flow'),
   k(1.03, P(-1.20, -0.28, 0.21, -0.72), 0.08, -0.02, -0.10, 0.22, 'flow'),
-  // CONTACT: stay just shy of the other glove, then let the knuckles meet exactly on the impact beat.
+  // CONTACT & IMPACT: knuckles collide in dead centre (Real Steel Sim cross impact)
   k(1.13, P(-1.56, -0.46, 0.19, -0.26), 0.34, 0.01, -0.02, 0.19, 'flow'),
-  k(1.18, P(-1.63, -0.53, 0.17, -0.10), 0.58, 0.05, 0.0, 0.17, 'flow'),
-  // RECOIL: a small, controlled give through the elbows and shoulders keeps the gloves from clipping after impact.
-  k(1.27, P(-1.57, -0.46, 0.19, -0.30), 0.44, 0.02, 0.0, 0.20, 'flow'),
-  k(1.50, P(-1.57, -0.46, 0.19, -0.30), 0.44, 0.02, 0.0, 0.20, 'io'),
-  k(1.86, P(-1.57, -0.46, 0.19, -0.30), 0.44, 0.02, 0.0, 0.20, 'io'), // stay close through the transition
+  k(1.18, P(-1.63, -0.53, 0.17, -0.10), 0.58, 0.05, 0.0, 0.17, 'flow'), // IMPACT (H = 1.18)
+  // COMPRESS & LOCKED KNUCKLE GRIND: fists locked, bodies strain & drive forward in deep slow-mo
+  k(1.28, P(-1.58, -0.48, 0.18, -0.25), 0.52, 0.04, 0.02, 0.18, 'flow'),
+  k(1.48, P(-1.56, -0.46, 0.18, -0.28), 0.48, 0.03, 0.03, 0.19, 'io'),
+  k(1.68, P(-1.56, -0.46, 0.18, -0.28), 0.48, 0.03, 0.03, 0.19, 'io'),
+  // PUSH-OFF (Real Steel Sim push): drive through locked fists and spring apart backward!
+  k(1.78, P(-1.42, -0.32, 0.20, -0.55), 0.30, -0.08, -0.35, 0.15, 'flow'),
+  k(1.92, P(-1.15, -0.15, 0.24, -1.20), 0.12, -0.16, -0.55, 0.12, 'flow'), // recoil spring back
+  // SERVO SHAKEOUT & RECOVERY (Real Steel Sim recovery)
+  k(2.15, P(-0.85, -0.20, 0.28, -1.75), 0.04, -0.08, -0.30, 0.14, 'io'),
+  k(2.35, P(-0.65, -0.24, 0.30, -2.10), 0.00, -0.04, -0.12, 0.16, 'io'),
+  // SETTLE BACK TO GUARD STANCE
+  k(2.55, P(-0.55, -0.26, 0.32, -2.20), -0.05, -0.06, -0.04, 0.17, 'io'),
 ];
 /** Mirrored-rig opponent tuning: same event times, but its own right glove also chambers outside the chest line. */
 export const VS_CLASH_KEYS_FOE: Key[] = VS_CLASH_KEYS.map((key) => {
@@ -825,22 +833,23 @@ export const VS_CLASH_POINT = { x: 0.16, y: 5.92, z: 1.37 };
  * Full speed on windup, deep slow-down into impact (0.13x speed), slow-mo locked grind, and smooth push-off return.
  */
 export const vsClashTimeScale = (t: number): number => {
-  const H = VS_CLASH_HIT; // 1.18
-  if (t < H - 0.12) return 1.0;
-  if (t < H + 0.02) {
-    const u = (t - (H - 0.12)) / 0.14;
-    return 1.0 + (0.13 - 1.0) * (u * u * (3 - 2 * u));
+  const H = 1.32;
+  const REL = 1.92;
+  if (t < H - 0.05) return 1.0;
+  if (t < H + 0.01) {
+    const u = (t - (H - 0.05)) / 0.06;
+    return 1.0 + (0.12 - 1.0) * (u * u * (3 - 2 * u));
   }
-  if (t < H + 0.14) {
-    return 0.13; // Super slow-mo right at knuckle collision
+  if (t < H + 0.12) {
+    return 0.12; // Super slow-mo right at knuckle collision
   }
-  if (t < H + 0.44) {
-    const u = (t - (H + 0.14)) / 0.30;
-    return 0.13 + 0.10 * u; // Locked knuckle grind & sparks
+  if (t < H + 0.55) {
+    const u = (t - (H + 0.12)) / 0.43;
+    return 0.16 + 0.06 * u; // 0.16 -> 0.22 locked knuckle grind & sparks
   }
-  if (t < H + 0.70) {
-    const u = (t - (H + 0.44)) / 0.26;
-    return 0.23 + (1.0 - 0.23) * (u * u * (3 - 2 * u)); // Smooth ramp up on push-off
+  if (t < REL + 0.10) {
+    const u = (t - (H + 0.55)) / (REL + 0.10 - (H + 0.55));
+    return 0.22 + (1.0 - 0.22) * (u * u * (3 - 2 * u)); // Accelerates into push-off
   }
   return 1.0;
 };
@@ -2795,7 +2804,8 @@ export class Game {
         const d = this.makeDef(i);
         f = this.makeFighter(false, d.style, d.scale, d.hp, d.dmg, d.tscale);
         this.enemyCache.set(i, f);
-      } else if (f.robot.root.parent !== this.scene) {
+      }
+      if (f.robot.root.parent !== this.scene) {
         this.scene.add(f.robot.root);
       }
       if (i === 0) mount100PercentZeus(f.robot, '#22ff44');
@@ -2804,6 +2814,7 @@ export class Game {
       f.robot.head.visible = true;
       f.robot.root.visible = true;
       f.robot.floorY = 0; // the hangar floor
+      f.robot.root.position.y = 0;
       f.robot.root.rotation.x = 0;
       f.robot.root.rotation.z = 0;
       return f;
@@ -2827,13 +2838,21 @@ export class Game {
       this.menuHero.root.rotation.y = VS_PLAYER_YAW;
       this.menuHero.snapFeet();
       if (this.vsFoe) {
+        if (this.vsFoe.robot.root.parent !== this.scene) this.scene.add(this.vsFoe.robot.root);
         this.vsFoe.robot.root.position.set(hx + VS_STAGE_SEP, 0, hz);
         this.vsFoe.robot.root.rotation.y = VS_OPPONENT_YAW;
+        this.vsFoe.robot.root.visible = true;
+        this.vsFoe.robot.head.visible = true;
+        this.vsFoe.robot.floorY = 0;
         this.vsFoe.robot.snapFeet();
       }
       if (this.vsFoe2) {
+        if (this.vsFoe2.robot.root.parent !== this.scene) this.scene.add(this.vsFoe2.robot.root);
         this.vsFoe2.robot.root.position.set(hx + VS_STAGE_SEP + 2.4, 0, hz - 2.6);
         this.vsFoe2.robot.root.rotation.y = VS_OPPONENT_YAW - 0.15;
+        this.vsFoe2.robot.root.visible = true;
+        this.vsFoe2.robot.head.visible = true;
+        this.vsFoe2.robot.floorY = 0;
         this.vsFoe2.robot.snapFeet();
       }
       // Prime the menu's current selected pose on all VS rigs before the next rendered frame. They match the lobby
@@ -2861,6 +2880,13 @@ export class Game {
         this.vsClashGrindTimer = 0;
         this.vsClashContact.set(0, 0, 0);
         this.vsPunch = 1.0;
+        if (this.vsFoe) {
+          if (this.vsFoe.robot.root.parent !== this.scene) this.scene.add(this.vsFoe.robot.root);
+          this.vsFoe.robot.root.visible = true;
+          this.vsFoe.robot.head.visible = true;
+          this.vsFoe.robot.floorY = 0;
+          this.vsFoe.robot.root.position.y = 0;
+        }
       }
     }
     this.vs = { idx, idx2, stage };
@@ -2871,7 +2897,7 @@ export class Game {
   }
 
   isVsClashComplete(): boolean {
-    return this.vs?.stage === 'clash' && this.vsClashTime >= 2.05;
+    return this.vs?.stage === 'clash' && this.vsClashTime >= 3.25;
   }
 
   getMenuCamMode() {
@@ -2918,8 +2944,12 @@ export class Game {
     this.player.robot.root.visible = true;
     this.enemy.robot.root.visible = true;
     if (showHero) {
-      this.player.robot.root.position.y = -200;
-      this.enemy.robot.root.position.y = -200;
+      if (!this.vs || (this.player.robot !== this.menuHero && (!this.vsFoe || this.player !== this.vsFoe))) {
+        this.player.robot.root.position.y = -200;
+      }
+      if (!this.vs || (this.enemy !== this.vsFoe && this.enemy !== this.vsFoe2)) {
+        this.enemy.robot.root.position.y = -200;
+      }
     }
     for (const tr of this.player.trails) tr.mesh.visible = !showHero;
     for (const tr of this.enemy.trails) tr.mesh.visible = !showHero;
@@ -3890,7 +3920,7 @@ export class Game {
       }
       const dt = this.freeze > 0 ? 0 : raw * this.timeScale;
       this.time += raw;
-      if (this.phase === 'menu') {
+      if (this.phase === 'menu' && this.vs?.stage !== 'clash') {
         // Keep the menu and matchmaking face-off stable; gameplay hit-shake starts only once the ring fight begins.
         this.trauma = 0;
         this.camBump = 0;
@@ -7252,44 +7282,6 @@ export class Game {
     };
   }
 
-  private clashAnimState(c: ClashPose, t: number) {
-    return {
-      arms: c.arms,
-      twist: c.twist,
-      lean: c.lean,
-      lunge: c.lunge,
-      dip: c.dip,
-      roll: c.roll,
-      vf: 0,
-      vl: 0,
-      af: 0,
-      al: 0,
-      yawRate: 0,
-      air: 0,
-      hit: 0,
-      hitSign: 1,
-      hitUp: 0,
-      fall: 0,
-      time: t,
-      glow: c.glow,
-      flash: c.shock,
-      tilt: 0,
-      dash: 0,
-      dashF: 0,
-      dashL: 1,
-      lookX: c.lookX,
-      lookY: c.lookY,
-      headYaw: c.head,
-      strike: c.strike,
-      strikePow: c.pow,
-      punchFoot: c.punch,
-      punchSeq: c.punchSeq,
-      punchZ: c.punchZ,
-      punchX: c.punchX,
-      punchDur: c.punchDur,
-    };
-  }
-
   private animateMenuHero(dt: number) {
     if (!this.menuHero || this.phase !== 'menu') return;
     const t = this.time;
@@ -7300,31 +7292,318 @@ export class Game {
         const timeScale = vsClashTimeScale(ct);
         this.vsClashTime += dt * timeScale;
 
-        const ch = vsClashState('hero', ct);
-        const cf = vsClashState('foe', ct);
-
         const heroX = HANGAR_POS.x;
         const heroZ = HANGAR_POS.z;
-        const sep = VS_STAGE_SEP;
+        const H = 1.32;
+        const REL = 1.92;
 
-        // Position both fighters on the VS stage and rotate to face each other squarely into the punch
-        this.menuHero.root.position.set(heroX - sep, 0, heroZ);
-        this.menuHero.root.rotation.y = VS_PLAYER_YAW + ch.yaw;
+        // Base/Selected starting pose to continue and blend smoothly from
+        const startHero = this.heroAnimState(this.heroPose, 0, 0, 0, false, true);
+        const startFoe = this.heroAnimState(this.heroPose, 0, 0, 0, true, true);
+
+        // 1. Continuous facing rotation: smoothly transition from diagonal stage facing
+        // to square face-to-face (+X and -X) and back on recovery
+        const heroFacing = Math.PI / 2;
+        const foeFacing = -Math.PI / 2;
+        let baseHeroYaw = heroFacing;
+        let baseFoeYaw = foeFacing;
+        if (ct < 0.54) {
+          const u = ct / 0.52;
+          const k = u * u * (3 - 2 * u);
+          baseHeroYaw = VS_PLAYER_YAW + (heroFacing - VS_PLAYER_YAW) * k;
+          baseFoeYaw = VS_OPPONENT_YAW + (foeFacing - VS_OPPONENT_YAW) * k;
+        } else if (ct >= 2.70) {
+          const u = Math.min(1, (ct - 2.70) / 0.55);
+          const k = u * u * (3 - 2 * u);
+          baseHeroYaw = heroFacing + (VS_PLAYER_YAW - heroFacing) * k;
+          baseFoeYaw = foeFacing + (VS_OPPONENT_YAW - foeFacing) * k;
+        }
+
+        // 2. Maintain proper distance between robots throughout clash animation:
+        // Opens from staging distance (2.60m from center, 5.20m total separation).
+        // Shifts weight into rear foot loading the chamber (3.10m from center, 6.20m separation).
+        // Fists meet cleanly knuckle-to-knuckle at center (X ≈ 0) with zero clipping or penetration.
+        // Pushes apart on release (3.22m), then smoothly recovers to combat stance (2.60m).
+        let rootDist = 2.60;
+        if (ct <= 0.54) {
+          const u = ct / 0.54;
+          const k = u * u * (3 - 2 * u);
+          rootDist = 2.60 + (3.10 - 2.60) * k;
+        } else if (ct <= H) {
+          rootDist = 3.10;
+        } else if (ct <= 1.87) {
+          rootDist = 3.10;
+        } else if (ct <= 2.15) {
+          const u = (ct - 1.87) / 0.28;
+          const k = u * u * (3 - 2 * u);
+          rootDist = 3.10 + (3.22 - 3.10) * k;
+        } else if (ct <= 2.80) {
+          const u = (ct - 2.15) / 0.65;
+          const k = u * u * (3 - 2 * u);
+          rootDist = 3.22 + (2.60 - 3.22) * k;
+        } else {
+          rootDist = 2.60;
+        }
+
+        // 3. Torso twist (coiling hips into rear chamber, accelerating into cross, locked torque, and recoil)
+        let twist = 0;
+        let foeTwist = 0;
+        if (ct < 0.54) {
+          const u = ct / 0.54;
+          const k = u * u * (3 - 2 * u);
+          twist = startHero.twist + (-0.35 - startHero.twist) * k;
+          foeTwist = startFoe.twist + (-0.35 - startFoe.twist) * k;
+        } else if (ct < 0.90) {
+          const u = (ct - 0.54) / 0.36;
+          const k = u * u * (3 - 2 * u);
+          twist = -0.35 + (-0.55 - (-0.35)) * k;
+          foeTwist = twist;
+        } else if (ct < H) {
+          const u = (ct - 0.90) / (H - 0.90);
+          const k = u * u * (3 - 2 * u);
+          twist = -0.55 + (0.48 - (-0.55)) * k;
+          foeTwist = twist;
+        } else if (ct < 1.87) {
+          const shudder = Math.sin(ct * 65) * 0.012;
+          twist = 0.48 + shudder;
+          foeTwist = twist;
+        } else if (ct < 2.15) {
+          const u = (ct - 1.87) / 0.28;
+          const k = u * u * (3 - 2 * u);
+          twist = 0.48 + (-0.15 - 0.48) * k;
+          foeTwist = twist;
+        } else if (ct < 2.80) {
+          const u = (ct - 2.15) / 0.65;
+          const k = u * u * (3 - 2 * u);
+          twist = -0.15 + (startHero.twist - (-0.15)) * k;
+          foeTwist = -0.15 + (startFoe.twist - (-0.15)) * k;
+        } else {
+          twist = startHero.twist;
+          foeTwist = startFoe.twist;
+        }
+
+        // 4. Torso lean & dip
+        let lean = 0;
+        let foeLean = 0;
+        if (ct < 0.54) {
+          const u = ct / 0.54;
+          const k = u * u * (3 - 2 * u);
+          lean = startHero.lean + (-0.10 - startHero.lean) * k;
+          foeLean = startFoe.lean + (-0.10 - startFoe.lean) * k;
+        } else if (ct < 0.90) {
+          const u = (ct - 0.54) / 0.36;
+          const k = u * u * (3 - 2 * u);
+          lean = -0.10 + (-0.18 - (-0.10)) * k;
+          foeLean = lean;
+        } else if (ct < H) {
+          const u = (ct - 0.90) / (H - 0.90);
+          const k = u * u * (3 - 2 * u);
+          lean = -0.18 + (0.22 - (-0.18)) * k;
+          foeLean = lean;
+        } else if (ct < 1.87) {
+          lean = 0.22;
+          foeLean = lean;
+        } else if (ct < 2.15) {
+          const u = (ct - 1.87) / 0.28;
+          const k = u * u * (3 - 2 * u);
+          lean = 0.22 + (-0.20 - 0.22) * k;
+          foeLean = lean;
+        } else if (ct < 2.80) {
+          const u = (ct - 2.15) / 0.65;
+          const k = u * u * (3 - 2 * u);
+          lean = -0.20 + (startHero.lean - (-0.20)) * k;
+          foeLean = -0.20 + (startFoe.lean - (-0.20)) * k;
+        } else {
+          lean = startHero.lean;
+          foeLean = startFoe.lean;
+        }
+
+        let dip = 0;
+        let foeDip = 0;
+        if (ct < 0.54) {
+          const u = ct / 0.54;
+          const k = u * u * (3 - 2 * u);
+          dip = startHero.dip + (0.08 - startHero.dip) * k;
+          foeDip = startFoe.dip + (0.08 - startFoe.dip) * k;
+        } else if (ct < 0.90) {
+          const u = (ct - 0.54) / 0.36;
+          const k = u * u * (3 - 2 * u);
+          dip = 0.08 + (0.12 - 0.08) * k;
+          foeDip = dip;
+        } else if (ct < H) {
+          const u = (ct - 0.90) / (H - 0.90);
+          const k = u * u * (3 - 2 * u);
+          dip = 0.12 + (0.05 - 0.12) * k;
+          foeDip = dip;
+        } else if (ct < 1.87) {
+          dip = 0.05;
+          foeDip = dip;
+        } else if (ct < 2.80) {
+          const u = (ct - 1.87) / 0.93;
+          const k = u * u * (3 - 2 * u);
+          dip = 0.05 + (startHero.dip - 0.05) * k;
+          foeDip = dip;
+        } else {
+          dip = startHero.dip;
+          foeDip = startFoe.dip;
+        }
+
+        // 5. Arms: Calibrated Real Steel cross punches clashing precisely at center with ZERO penetration
+        const coilR = { sx: -0.20, sy: 0.80, sz: 0.45, ex: -2.60 };
+        const clashR = { sx: -1.52, sy: -0.32, sz: 0.20, ex: -0.22 };
+        const guardL = { sx: -0.80, sy: -0.35, sz: 0.32, ex: -2.30 };
+
+        let rSx = clashR.sx, rSy = clashR.sy, rSz = clashR.sz, rEx = clashR.ex;
+        let lSx = guardL.sx, lSy = guardL.sy, lSz = guardL.sz, lEx = guardL.ex;
+        let foeRSx = clashR.sx, foeRSy = clashR.sy, foeRSz = clashR.sz, foeREx = clashR.ex;
+        let foeLSx = guardL.sx, foeLSy = guardL.sy, foeLSz = guardL.sz, foeLEx = guardL.ex;
+
+        if (ct < 0.54) {
+          const u = ct / 0.54;
+          const k = u * u * (3 - 2 * u);
+          // Hero arms blend from startHero into coil
+          rSx = startHero.arms[1].sx + (coilR.sx - startHero.arms[1].sx) * k;
+          rSy = startHero.arms[1].sy + (coilR.sy - startHero.arms[1].sy) * k;
+          rSz = startHero.arms[1].sz + (coilR.sz - startHero.arms[1].sz) * k;
+          rEx = startHero.arms[1].ex + (coilR.ex - startHero.arms[1].ex) * k;
+
+          lSx = startHero.arms[0].sx + (guardL.sx - startHero.arms[0].sx) * k;
+          lSy = startHero.arms[0].sy + (guardL.sy - startHero.arms[0].sy) * k;
+          lSz = startHero.arms[0].sz + (guardL.sz - startHero.arms[0].sz) * k;
+          lEx = startHero.arms[0].ex + (guardL.ex - startHero.arms[0].ex) * k;
+
+          // Foe arms blend from startFoe into coil
+          foeRSx = startFoe.arms[1].sx + (coilR.sx - startFoe.arms[1].sx) * k;
+          foeRSy = startFoe.arms[1].sy + (coilR.sy - startFoe.arms[1].sy) * k;
+          foeRSz = startFoe.arms[1].sz + (coilR.sz - startFoe.arms[1].sz) * k;
+          foeREx = startFoe.arms[1].ex + (coilR.ex - startFoe.arms[1].ex) * k;
+
+          foeLSx = startFoe.arms[0].sx + (guardL.sx - startFoe.arms[0].sx) * k;
+          foeLSy = startFoe.arms[0].sy + (guardL.sy - startFoe.arms[0].sy) * k;
+          foeLSz = startFoe.arms[0].sz + (guardL.sz - startFoe.arms[0].sz) * k;
+          foeLEx = startFoe.arms[0].ex + (guardL.ex - startFoe.arms[0].ex) * k;
+        } else if (ct < 0.90) {
+          rSx = coilR.sx; rSy = coilR.sy; rSz = coilR.sz; rEx = coilR.ex;
+          lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
+          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
+          foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
+        } else if (ct < H) {
+          const u = (ct - 0.90) / (H - 0.90);
+          const k = u * u * (3 - 2 * u);
+          rSx = coilR.sx + (clashR.sx - coilR.sx) * k;
+          rSy = coilR.sy + (clashR.sy - coilR.sy) * k;
+          rSz = coilR.sz + (clashR.sz - coilR.sz) * k;
+          rEx = coilR.ex + (clashR.ex - coilR.ex) * k;
+
+          lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
+          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
+          foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
+        } else if (ct < 1.87) {
+          const shudder = Math.sin(ct * 70) * 0.015;
+          rSx = clashR.sx + shudder;
+          rSy = clashR.sy;
+          rSz = clashR.sz;
+          rEx = clashR.ex;
+
+          lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
+          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
+          foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
+        } else if (ct < 2.15) {
+          const u = (ct - 1.87) / 0.28;
+          const k = u * u * (3 - 2 * u);
+          rSx = clashR.sx + (-1.20 - clashR.sx) * k;
+          rSy = clashR.sy + (-0.15 - clashR.sy) * k;
+          rSz = clashR.sz + (0.25 - clashR.sz) * k;
+          rEx = clashR.ex + (-1.60 - clashR.ex) * k;
+
+          lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
+          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
+          foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
+        } else if (ct < 2.80) {
+          const u = (ct - 2.15) / 0.65;
+          const k = u * u * (3 - 2 * u);
+          rSx = -1.20 + (startHero.arms[1].sx - (-1.20)) * k;
+          rSy = -0.15 + (startHero.arms[1].sy - (-0.15)) * k;
+          rSz = 0.25 + (startHero.arms[1].sz - 0.25) * k;
+          rEx = -1.60 + (startHero.arms[1].ex - (-1.60)) * k;
+
+          lSx = guardL.sx + (startHero.arms[0].sx - guardL.sx) * k;
+          lSy = guardL.sy + (startHero.arms[0].sy - guardL.sy) * k;
+          lSz = guardL.sz + (startHero.arms[0].sz - guardL.sz) * k;
+          lEx = guardL.ex + (startHero.arms[0].ex - guardL.ex) * k;
+
+          foeRSx = -1.20 + (startFoe.arms[1].sx - (-1.20)) * k;
+          foeRSy = -0.15 + (startFoe.arms[1].sy - (-0.15)) * k;
+          foeRSz = 0.25 + (startFoe.arms[1].sz - 0.25) * k;
+          foeREx = -1.60 + (startFoe.arms[1].ex - (-1.60)) * k;
+
+          foeLSx = guardL.sx + (startFoe.arms[0].sx - guardL.sx) * k;
+          foeLSy = guardL.sy + (startFoe.arms[0].sy - guardL.sy) * k;
+          foeLSz = guardL.sz + (startFoe.arms[0].sz - guardL.sz) * k;
+          foeLEx = guardL.ex + (startFoe.arms[0].ex - guardL.ex) * k;
+        } else {
+          rSx = startHero.arms[1].sx; rSy = startHero.arms[1].sy; rSz = startHero.arms[1].sz; rEx = startHero.arms[1].ex;
+          lSx = startHero.arms[0].sx; lSy = startHero.arms[0].sy; lSz = startHero.arms[0].sz; lEx = startHero.arms[0].ex;
+          foeRSx = startFoe.arms[1].sx; foeRSy = startFoe.arms[1].sy; foeRSz = startFoe.arms[1].sz; foeREx = startFoe.arms[1].ex;
+          foeLSx = startFoe.arms[0].sx; foeLSy = startFoe.arms[0].sy; foeLSz = startFoe.arms[0].sz; foeLEx = startFoe.arms[0].ex;
+        }
+
+        const heroState: AnimState = {
+          arms: [{ sx: lSx, sy: lSy, sz: lSz, ex: lEx }, { sx: rSx, sy: rSy, sz: rSz, ex: rEx }],
+          twist: twist,
+          lean: lean,
+          lunge: 0,
+          dip: dip,
+          roll: 0,
+          vf: 0, vl: 0, af: 0, al: 0, yawRate: 0, air: 0, hit: 0, hitSign: 1, hitUp: 0, fall: 0,
+          time: ct,
+          glow: ct >= H && ct <= 1.87 ? 1.2 : 0.5,
+          flash: ct >= H && ct <= H + 0.14 ? 1.0 : 0,
+          tilt: 0, dash: 0, dashF: 0, dashL: 0, idleBounce: 0,
+          lookX: -0.4, lookY: 0.1, headYaw: -twist * 0.4,
+          strike: ct >= H ? 1 : Math.min(0.99, ct / H),
+          strikePow: 1.0,
+        };
+
+        const foeState: AnimState = {
+          arms: [{ sx: foeLSx, sy: foeLSy, sz: foeLSz, ex: foeLEx }, { sx: foeRSx, sy: foeRSy, sz: foeRSz, ex: foeREx }],
+          twist: foeTwist,
+          lean: foeLean,
+          lunge: 0,
+          dip: foeDip,
+          roll: 0,
+          vf: 0, vl: 0, af: 0, al: 0, yawRate: 0, air: 0, hit: 0, hitSign: 1, hitUp: 0, fall: 0,
+          time: ct,
+          glow: ct >= H && ct <= 1.87 ? 1.2 : 0.5,
+          flash: ct >= H && ct <= H + 0.14 ? 1.0 : 0,
+          tilt: 0, dash: 0, dashF: 0, dashL: 0, idleBounce: 0,
+          lookX: 0.4, lookY: 0.1, headYaw: -foeTwist * 0.4,
+          strike: ct >= H ? 1 : Math.min(0.99, ct / H),
+          strikePow: 1.0,
+        };
+
+        // Position both fighters dynamically on stage maintaining calibrated distance
+        this.menuHero.root.position.set(heroX - rootDist, 0, heroZ);
+        this.menuHero.root.rotation.y = baseHeroYaw;
+        this.menuHero.root.visible = true;
 
         if (this.vsFoe) {
-          this.vsFoe.robot.root.position.set(heroX + sep, 0, heroZ);
-          this.vsFoe.robot.root.rotation.y = -(VS_PLAYER_YAW + cf.yaw);
+          if (this.vsFoe.robot.root.parent !== this.scene) {
+            this.scene.add(this.vsFoe.robot.root);
+          }
+          this.vsFoe.robot.root.position.set(heroX + rootDist, 0, heroZ);
+          this.vsFoe.robot.root.rotation.y = baseFoeYaw;
+          this.vsFoe.robot.root.visible = true;
+          this.vsFoe.robot.head.visible = true;
+          this.vsFoe.robot.floorY = 0;
         }
         if (this.vsFoe2) {
           this.vsFoe2.robot.root.visible = false;
         }
 
-        const heroState = this.clashAnimState(ch, ct);
-        const foeState = this.clashAnimState(cf, ct);
         this.menuHero.animate(heroState, dt);
         if (this.vsFoe) this.vsFoe.robot.animate(foeState, dt);
 
-        // Update real fist contact point in world coordinates
         this.menuHero.root.updateMatrixWorld(true);
         if (this.vsFoe) this.vsFoe.robot.root.updateMatrixWorld(true);
 
@@ -7334,13 +7613,12 @@ export class Game {
         if (this.vsFoe) {
           this.vsFoe.robot.fists[1].getWorldPosition(pFoe);
         } else {
-          pFoe.copy(pHero);
-          pFoe.x = heroX + VS_CLASH_POINT.x;
+          pFoe.set(heroX, 5.85, heroZ);
         }
 
         const contactP = pHero.clone().lerp(pFoe, 0.5);
         if (contactP.y < 2.0) {
-          contactP.set(heroX + VS_CLASH_POINT.x, HANGAR_POS.y + VS_CLASH_POINT.y, heroZ + VS_CLASH_POINT.z);
+          contactP.set(heroX, 5.85, heroZ);
         }
         this.vsClashContact.copy(contactP);
 
@@ -7350,12 +7628,12 @@ export class Game {
           this.sfx.whoosh(1.3);
         }
 
-        // 2. KNUCKLE COLLISION IMPACT (at VS_CLASH_HIT = 1.18)
-        if (!this.vsClashHitPlayed && ct >= VS_CLASH_HIT) {
+        // 2. KNUCKLE COLLISION IMPACT (at H = 1.32)
+        if (!this.vsClashHitPlayed && ct >= H) {
           this.vsClashHitPlayed = true;
-          this.fovKick = 8.0;
-          this.trauma = 0.85;
-          this.camBump = 0.65;
+          this.fovKick = 5.0;
+          this.trauma = 0.95;
+          this.camBump = 0.75;
           this.sfx.overdriveHit(1.5);
           this.sfx.crackle(1.2);
 
@@ -7372,12 +7650,12 @@ export class Game {
           this.fx.flash(contactP, 5.2, 0xfff0c0, 0.28);
 
           // Dust at both feet driving into the ground
-          this.fx.spark(new THREE.Vector3(heroX - sep * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
-          this.fx.spark(new THREE.Vector3(heroX + sep * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
+          this.fx.spark(new THREE.Vector3(heroX - rootDist * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
+          this.fx.spark(new THREE.Vector3(heroX + rootDist * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
         }
 
         // 3. Grinding sparks & servo tension while fists are locked
-        if (ct >= VS_CLASH_HIT + 0.04 && ct <= VS_CLASH_HIT + 0.44) {
+        if (ct >= H + 0.04 && ct <= 1.87) {
           this.vsClashGrindTimer += dt;
           if (this.vsClashGrindTimer >= 0.055) {
             this.vsClashGrindTimer = 0;
@@ -7386,8 +7664,8 @@ export class Game {
           }
         }
 
-        // 4. Push-off release & separation
-        if (!this.vsClashReleasePlayed && ct >= VS_CLASH_HIT + 0.46) {
+        // 4. Push-off release & separation (at REL = 1.92)
+        if (!this.vsClashReleasePlayed && ct >= REL) {
           this.vsClashReleasePlayed = true;
           this.fx.spark(contactP, 24, 10, 0xfff0aa, new THREE.Vector3(0, 0.8, 0), 0.6, 0.8, 14);
           this.sfx.cornerPadHit();
@@ -8289,18 +8567,22 @@ export class Game {
       this.player.robot.root.visible = true;
       this.enemy.robot.root.visible = true;
       if (showHero) {
-        this.player.robot.root.position.y = -200;
-        this.enemy.robot.root.position.y = -200;
+        if (!this.vs || (this.player.robot !== this.menuHero && (!this.vsFoe || this.player !== this.vsFoe))) {
+          this.player.robot.root.position.y = -200;
+        }
+        if (!this.vs || (this.enemy !== this.vsFoe && this.enemy !== this.vsFoe2)) {
+          this.enemy.robot.root.position.y = -200;
+        }
       }
       if (this.menuHero) {
         this.menuHero.root.visible = showHero;
-        this.menuHeroPedestal.visible = showHero;
-        this.menuScrimPlane.visible = showHero;
         this.menuHeroPedestal.visible = false;
         this.menuScrimPlane.visible = false;
-        this.menuHero.root.position.set(heroX, 0, heroZ);
-        this.menuHeroPedestal.position.set(heroX, 0, heroZ);
-        this.menuScrimPlane.position.set(heroX, camCenterY + 1.0, heroZ - 3.0);
+        if (!this.vs) {
+          this.menuHero.root.position.set(heroX, 0, heroZ);
+          this.menuHeroPedestal.position.set(heroX, 0, heroZ);
+          this.menuScrimPlane.position.set(heroX, camCenterY + 1.0, heroZ - 3.0);
+        }
       }
 
       if (this.menuCamMode !== 'arena') {
@@ -8320,21 +8602,33 @@ export class Game {
 
           if (inClash) {
             const ct = this.vsClashTime;
-            const H = VS_CLASH_HIT;
-            const contactP = this.vsClashContact.lengthSq() > 10 ? this.vsClashContact : new THREE.Vector3(heroX + VS_CLASH_POINT.x, HANGAR_POS.y + VS_CLASH_POINT.y, heroZ + VS_CLASH_POINT.z);
-            const cX = contactP.x;
-            const cY = contactP.y;
-            const cZ = contactP.z;
+            const H = 1.32;
 
-            // Camera keyframes matching Clash Simulation (src/sim/engine.ts cinematicCam):
-            // Dynamic diagonal low-angle looking up into the colliding right gloves, pushing into extreme close-up during knuckle lock
+            // Ensure both fighters are 100% visible during clash
+            this.menuHero.root.visible = true;
+            if (this.vsFoe) {
+              if (this.vsFoe.robot.root.parent !== this.scene) this.scene.add(this.vsFoe.robot.root);
+              this.vsFoe.robot.root.visible = true;
+              this.vsFoe.robot.head.visible = true;
+              this.vsFoe.robot.floorY = 0;
+            }
+            if (this.vsFoe2) this.vsFoe2.robot.root.visible = false;
+
+            // Camera keyframes 100% calibrated to Real Steel Simulator (src/sim/engine.ts cinematicCam):
+            // Multiplier = 4.0 matching stage dimensions
             const CINE_VS: { t: number; pos: [number, number, number]; look: [number, number, number] }[] = [
-              { t: 0, pos: [heroX, 5.55, heroZ + 9.6 * fit], look: [heroX, 5.45, heroZ] },
-              { t: H - 0.75, pos: [cX + 3.8 * fit, 5.65, cZ + 5.2 * fit], look: [cX, cY - 0.35, cZ] },
-              { t: H - 0.02, pos: [cX + 1.85 * fit, 5.75, cZ + 3.4 * fit], look: [cX, cY, cZ] },
-              { t: H + 0.55, pos: [cX + 0.95 * fit, 5.80, cZ + 2.85 * fit], look: [cX, cY, cZ] },
-              { t: H + 1.10, pos: [cX + 0.40 * fit, 5.90, cZ + 5.6 * fit], look: [cX, cY - 0.5, cZ] },
-              { t: H + 1.90, pos: [heroX, 5.55, heroZ + 9.6 * fit], look: [heroX, 5.45, heroZ] },
+              // 0. t = 0: Wide broadcast profile shot of both fighters facing each other
+              { t: 0, pos: [heroX + 1.60 * fit, 6.40, heroZ + 18.40 * fit], look: [heroX, 3.40, heroZ] },
+              // 1. t = H - 0.75 (0.57s): Over-the-shoulder dynamic camera looking past right fighter as both wind up
+              { t: H - 0.75, pos: [heroX + 8.00 * fit, 4.80, heroZ + 11.60 * fit], look: [heroX, 4.20, heroZ] },
+              // 2. t = H - 0.02 (1.30s): Dynamic low-angle close-up right at fist collision, fists smash in center!
+              { t: H - 0.02, pos: [heroX + 2.80 * fit, 4.80, heroZ + 6.20 * fit], look: [heroX, 5.44, heroZ] },
+              // 3. t = H + 0.55 (1.87s): Locked knuckle grind & slow-mo sparks tension shot
+              { t: H + 0.55, pos: [heroX + 1.40 * fit, 4.72, heroZ + 5.60 * fit], look: [heroX, 5.44, heroZ] },
+              // 4. t = H + 1.10 (2.42s): Camera pulls back as fighters shove off and spring apart
+              { t: H + 1.10, pos: [heroX + 0.40 * fit, 5.60, heroZ + 10.40 * fit], look: [heroX, 4.40, heroZ] },
+              // 5. t = H + 2.00 (3.32s): Returns to wide broadcast shot as both recover to guard
+              { t: H + 2.00, pos: [heroX + 1.60 * fit, 6.40, heroZ + 18.40 * fit], look: [heroX, 3.40, heroZ] },
             ];
 
             let cIdx = 0;
@@ -8361,10 +8655,13 @@ export class Game {
             const foes = [this.vsFoe, this.vsFoe2];
             foes.forEach((f, i) => {
               if (!f) return;
+              if (f.robot.root.parent !== this.scene) this.scene.add(f.robot.root);
               const second = i === 1;
               f.robot.root.position.set(heroX + sep + (second ? 2.4 : 0), 0, heroZ - (second ? 2.6 : 0));
               f.robot.root.rotation.y = VS_OPPONENT_YAW - (second ? 0.15 : 0);
               f.robot.root.visible = this.vs!.stage !== 'search';
+              f.robot.head.visible = true;
+              f.robot.floorY = 0;
             });
             const camDist = 9.6 * fit * (1 - punch * 0.07);
             tp = new THREE.Vector3(heroX, 5.55 - punch * 0.12, heroZ + camDist);
@@ -8518,8 +8815,8 @@ export class Game {
     const gameFov = cineK > 0 || this.cine ? this.cineFov : this.baseFov;
     const clampedKick = this.phase === 'fight' ? Math.max(-4.5, this.fovKick) : this.fovKick;
     const inClash = this.vs?.stage === 'clash';
-    const clashZoom = inClash ? (this.vsClashTime >= VS_CLASH_HIT - 0.25 && this.vsClashTime <= VS_CLASH_HIT + 0.85 ? -3.0 : 0) : 0;
-    cam.fov = (this.phase === 'menu' ? (this.menuCamMode !== 'arena' ? (this.vs ? 30 + clashZoom : 38) : this.shot.fov) : gameFov) + clampedKick + (cineK > 0 ? 0 : this.runFov);
+    const vsFov = inClash ? 42 : 30;
+    cam.fov = (this.phase === 'menu' ? (this.menuCamMode !== 'arena' ? (this.vs ? vsFov : 38) : this.shot.fov) : gameFov) + clampedKick + (cineK > 0 ? 0 : this.runFov);
 
     // ---- PRE-LERP OMNIDIRECTIONAL FRAMING: fit target shot (tp, tl) BEFORE smoothing so the camera NEVER jitters or clips! ----
     const safeFov = Math.max(28, cam.fov - 5.5);

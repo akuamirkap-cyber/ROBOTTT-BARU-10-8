@@ -153,16 +153,16 @@ export function Matchmaking({
           enterPhase('clash');
         }
       } else if (phase === 'clash') {
-        // Clash Straight sequence plays with dynamic camera angle (matched to Clash Simulation)
-        // Impact occurs at ~1.18s of animation time (approx 1.25s of real time)
-        // Fists locked and grinding until ~3.1s real time
-        // Separation push-off finishes at ~3.5s real time
-        const isClashDone = game?.isVsClashComplete() || ph >= 3.6;
+        // Clash Straight sequence plays with dynamic camera angle (100% matched to Real Steel Simulator)
+        // Impact occurs at ~1.32s of animation time
+        // Fists locked and grinding until push-off at ~1.92s
+        // Full sequence finishes at ~3.25s animation time (approx 4.6s real time with deep slow-mo)
+        const isClashDone = game?.isVsClashComplete() || ph >= 4.75;
         if (isClashDone && !transitionSent) {
           transitionSent = true;
           transitionRef.current?.();
         }
-        if ((ph >= 4.2 || (transitionSent && ph >= 3.9)) && !readySent) {
+        if ((ph >= 5.1 || (transitionSent && ph >= 4.8)) && !readySent) {
           readySent = true;
           game?.uiCue('go');
           window.clearInterval(id);
@@ -214,7 +214,7 @@ export function Matchmaking({
       <div className="pointer-events-none absolute inset-0 z-30">
         <div className="absolute left-0 right-0 top-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
         <div className="absolute bottom-0 left-0 right-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
-        {phase === 'clash' && pt >= 1.0 && pt <= 3.3 && (
+        {phase === 'clash' && pt >= 1.0 && pt <= 4.2 && (
           <div className="absolute left-1/2 top-[11.5vh] -translate-x-1/2 rounded border border-red-500/70 bg-black/70 px-3.5 py-0.5 font-mono text-xs tracking-[0.3em] text-red-400 drop-shadow">
             ● SLOW-MO CLASH
           </div>
@@ -222,7 +222,7 @@ export function Matchmaking({
       </div>
 
       {/* Screen flash on knuckle impact */}
-      {phase === 'clash' && pt >= 1.22 && pt <= 1.48 && (
+      {phase === 'clash' && pt >= 1.25 && pt <= 1.55 && (
         <div className="flash-clash pointer-events-none absolute inset-0 z-50" />
       )}
 
