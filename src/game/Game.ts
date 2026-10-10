@@ -1002,7 +1002,7 @@ const DODGE_CANCEL_AT = 0.6; // you may cancel out of a dodge once this much of 
  * Beats run on WORLD time, so when the game slows down for the impact the camera slows down with it.
  */
 type CineKind = 'od' | 'hit' | 'rip';
-const CINE_DUR: Record<CineKind, number> = { od: 0.8, hit: 0.55, rip: RIP_DUR };
+const CINE_DUR: Record<CineKind, number> = { od: 0.35, hit: 0.28, rip: RIP_DUR };
 
 /** STAMINA: a fight is about reading, not about running dry — strikes cost 40% less and everything recovers faster */
 const STAM_SCALE = 0.6;
@@ -1411,11 +1411,11 @@ export interface QualityTier {
   bloomScale: number;
 }
 export const QUALITY_TIERS: QualityTier[] = [
-  { key: 'max', name: 'MAKSIMAL', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.45 },
-  { key: 'high', name: 'TINGGI', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.45 },
-  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.40 },
-  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.35 },
-  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.88, shadow: 512, bloom: true, bloomScale: 0.30 },
+  { key: 'max', name: 'MAKSIMAL', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.40 },
+  { key: 'high', name: 'TINGGI', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.38 },
+  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.32 },
+  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.90, shadow: 512, bloom: true, bloomScale: 0.28 },
+  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.85, shadow: 512, bloom: false, bloomScale: 0.25 },
 ];
 
 export type GfxMode = 'auto' | 'max' | 'balanced' | 'performance';
@@ -1430,9 +1430,10 @@ const LS_BRIGHT = 'steel-titans-brightness-v1';
 const LS_SAT = 'steel-titans-saturation-v1';
 const LS_TEX = 'steel-titans-textures-v1';
 const LS_BLOOM = 'steel-titans-bloom-v1';
-const LS_BLOOM_PCT = 'steel-titans-bloom-percent-v2';
+const LS_BLOOM_PCT = 'steel-titans-bloom-percent-v3';
 
-export const DEFAULT_BLOOM_PCT = 18; // 18% default bloom (sinematik lembut & stabil)
+export const DEFAULT_BLOOM_PCT = 2; // 2% default bloom preset
+export const DEFAULT_BRIGHTNESS = 1.50; // 150% default brightness preset
 
 export type BloomMode = 'smooth' | 'normal' | 'off';
 export const BLOOM_MODES: { id: BloomMode; name: string; hint: string }[] = [
@@ -1488,9 +1489,9 @@ export const BRIGHTNESS_STEPS = [0.70, 0.85, 1.0, 1.15, 1.30, 1.50] as const;
 export const loadBrightness = (): number => {
   try {
     const v = Number(localStorage.getItem(LS_BRIGHT));
-    return Number.isFinite(v) && v >= 0.5 && v <= 1.6 ? v : 1.0;
+    return Number.isFinite(v) && v >= 0.5 && v <= 1.6 ? v : DEFAULT_BRIGHTNESS;
   } catch {
-    return 1.0;
+    return DEFAULT_BRIGHTNESS;
   }
 };
 /** the pinned graphics mode from last time ('auto' = let the governor hold 60 by itself) */
@@ -2855,10 +2856,9 @@ export class Game {
         this.vsFoe2.robot.floorY = 0;
         this.vsFoe2.robot.snapFeet();
       }
-      // Prime the menu's current selected pose on all VS rigs before the next rendered frame. They match the lobby
-      // silhouette, then simply square up toward each other with no visible rise into the pose.
-      const heroStagePose = this.heroAnimState(this.heroPose, this.time, 0, 0, false, true);
-      const opponentStagePose = this.heroAnimState(this.heroPose, this.time, 0, 0, true, true);
+      // Prime the menu's current selected pose on all VS rigs before the next rendered frame with breathing life.
+      const heroStagePose = this.heroAnimState(this.heroPose, this.time, 0, 0, false, false);
+      const opponentStagePose = this.heroAnimState(this.heroPose, this.time + 1.25, 0, 0, true, false);
       for (let i = 0; i < 60; i++) {
         this.menuHero.animate(heroStagePose, 1 / 60);
         this.vsFoe?.robot.animate(opponentStagePose, 1 / 60);
@@ -3723,10 +3723,10 @@ export class Game {
       const dpr = window.devicePixelRatio || 1;
       const w = window.innerWidth || 1280;
       const h = window.innerHeight || 720;
-      const budget = 2.4e6; // ~2065 × 1160 pixels: HD+ detail without feeding excess pixels into every post-process pass
-      return Math.max(0.75, Math.min(dpr, 2, Math.sqrt(budget / Math.max(1, w * h))));
+      const budget = 2.0e6; // ensure frame easily hits rock-solid 60 FPS even on integrated/mobile GPU
+      return Math.max(0.75, Math.min(dpr, 1.5, Math.sqrt(budget / Math.max(1, w * h))));
     } catch {
-      return 1.5;
+      return 1.25;
     }
   }
 
@@ -3856,10 +3856,10 @@ export class Game {
 
   /**
    * Reset all visual configurations back to standard neutral defaults:
-   * Normal Saturation (1.15), Normal Brightness (1.0), Standard Textures, Normal Bloom (18%), Auto 60 FPS
+   * Normal Saturation (1.15), Preset Brightness (150% / 1.5), Standard Textures, Preset Bloom (2%), Auto 60 FPS
    */
   resetVisualsToNormal() {
-    this.setBrightness(1.0);
+    this.setBrightness(DEFAULT_BRIGHTNESS);
     this.setSaturation(NORMAL_SAT);
     this.setTextureEnhance(false);
     this.setBloomPercent(DEFAULT_BLOOM_PCT);
@@ -3964,8 +3964,9 @@ export class Game {
     }
     this.grade.uniforms.time.value = this.time;
     this.grade.uniforms.sat.value = this.sat;
-    // The 1×1 meter pass only runs when a fresh exposure sample is due, not on every full-resolution frame.
-    this.meter.enabled = !this.aeDead && !this.aePending && this.aeFrames >= 23;
+    // The 1×1 meter pass only runs when a fresh exposure sample is due outside intense combat
+    const canSample = !this.aeDead && !this.aePending && this.phase !== 'fight';
+    this.meter.enabled = canSample && this.aeFrames >= 23;
     this.composer.render();
     // the iris runs on world time so it never counts a paused frame, and the flash hold keeps a strobe a strobe
     this.aeHold = Math.max(this.aeHold, this.flashAmt * 0.5 + (this.phase === 'intro' || this.phase === 'matchEnd' ? 0.3 : 0));
@@ -3973,7 +3974,7 @@ export class Game {
     this.aeFrames++;
     if (this.aeFrames >= 24) {
       this.aeFrames = 0;
-      this.sampleScene();
+      if (canSample) this.sampleScene();
     }
     this.grade.uniforms.exposure.value = 1.0 * this.aeGain * this.bright;
     // ...and the top-end limiter rides along with it: the hotter the frame, the harder the ceiling
@@ -6944,11 +6945,11 @@ export class Game {
 
     // feedback — heavy mechanical hitstop + 3D spring-damper camera punch so every 2-ton robot blow feels massive and solid!
     // Solid mechanical hitstop (freeze frames on contact): creates crushing punch weight without sluggish time-dilation!
-    this.freeze = 0.055 + big * 0.075 + (launched ? 0.02 : 0);
+    this.freeze = isOD(m.id) ? 0.038 : (0.055 + big * 0.075 + (launched ? 0.02 : 0));
     if (isOD(m.id)) {
-      // OVERDRIVE: Cinematic slow motion exclusively for Overdrive impact
-      this.slowT = 0.28;
-      this.slowScale = 0.52;
+      // OVERDRIVE: Keep at fluid, crisp 60 FPS (zero sluggish slow-mo drag or lag feeling!)
+      this.slowT = 0;
+      this.timeScale = 1.0;
     } else if (launched && d.hp <= 0) {
       // MATCH-ENDING KO KNOCKDOWN: Slow-motion impact punctuation
       this.slowT = 0.65;
@@ -7044,12 +7045,12 @@ export class Game {
         this.stats.time = ROUND_TIME - this.roundTime;
       }
       if (isOD(m.id) && !launched) {
-        this.slowT = 0.28;
-        this.slowScale = 0.52;
+        this.slowT = 0;
+        this.timeScale = 1.0;
       }
       if (isOD(m.id)) {
         this.flashEl.style.background = 'radial-gradient(ellipse at center, rgba(255,230,180,0.25) 0%, rgba(255,200,120,0.55) 100%)';
-        this.flashAmt = 0.85;
+        this.flashAmt = 0.45;
       }
       this.popup(hitPos, Math.round(dmg).toString(), big >= 0.6 ? 'pop-big' : 'pop-dmg');
       if (label) this.popup(new THREE.Vector3(hitPos.x, hitPos.y + 1.4, hitPos.z), label, 'pop-crit');
@@ -7072,11 +7073,11 @@ export class Game {
       this.fx.spark(hitPos, 28, 15, 0x9fe6ff, dirAD, 1.3, 0.9, 10);
       this.popup(new THREE.Vector3(d.pos.x, 7.4 * d.scale, d.pos.y), 'HEAD RIP!', 'pop-crit');
       this.popup(hitPos, 'KEPALA TERPENTAL!', 'pop-big');
-      this.slowT = 0.52;
-      this.slowScale = 0.46;
-      this.flashAmt = 0.9;
+      this.slowT = this.noSlowMoNormal ? 0 : 0.22;
+      this.slowScale = 0.72;
+      this.flashAmt = 0.8;
       this.flashEl.style.background = 'radial-gradient(ellipse at center, rgba(255,255,255,0.1) 20%, rgba(150,230,255,0.75) 100%)';
-      this.freeze = 0.07;
+      this.freeze = 0.025;
       this.trauma = 0.85;
       this.camPush += 0.55;
       this.camBump = 0.45;
@@ -7157,72 +7158,73 @@ export class Game {
     for (const f of this.fighters()) this.animateFighter(f, this.foeOf(f), dt);
   }
 
-  /** the lobby poses (arms + body channels) — shared by the hero stage and the portrait studio */
+  /** the lobby poses (arms + body channels) — shared by the hero stage, matchmaking, and the portrait studio */
   private heroArms(pose: HeroPose, t: number, mx: number, my: number) {
     let a0: Pose;
     let a1: Pose;
-    let dp = 0.12;
+    const breathWave = Math.sin(t * 1.6); // living respiratory cycle (~3.9s per breath)
+    let dp = 0.12 + breathWave * 0.035;
     let tw = Math.sin(t * 0.8) * 0.02 + mx * 0.08;
-    let ln = 0.03 + my * 0.04;
+    let ln = 0.06 + breathWave * 0.028 + my * 0.04;
     const rl = Math.sin(t * 1.2) * 0.015;
     switch (pose) {
       case 'ready': {
         // THE STARE-DOWN (boxing promo stance): the lead glove raised beside the cheek, the rear glove at the
         // chest, elbows in, shoulders a quarter turn to the lens, chin down behind the lead fist — the face stays
-        // clear between the gloves. A heavy slow breath, the lead fist slowly rolling its knuckles, nothing else
-        // moves. (measured on the rig: lead fist 1.5 m beside / 0.9 m ahead of the head at cheek height, rear
-        // fist on the sternum line)
-        const br = Math.sin(t * 1.3) * 0.016;
+        // clear between the gloves. A heavy slow breath, the lead fist slowly rolling its knuckles.
+        const br = breathWave * 0.045;
         const roll = Math.sin(t * 0.7) * 0.03;
-        a0 = { sx: -0.8 + br, sy: -0.1 + roll, sz: 0.25 - roll, ex: -2.4 - br };
-        a1 = { sx: -0.55 + br * 0.7, sy: -0.4, sz: 0.0, ex: -1.8 - br };
+        a0 = { sx: -0.8 + br, sy: -0.1 + roll, sz: 0.25 - roll, ex: -2.4 - br * 1.2 };
+        a1 = { sx: -0.55 + br * 0.75, sy: -0.4, sz: 0.0, ex: -1.8 - br };
         tw = 0.22 + Math.sin(t * 0.8) * 0.01 + mx * 0.08;
-        ln = 0.1 + my * 0.03;
-        dp = 0.11 + br * 0.5;
+        ln = 0.1 + breathWave * 0.03 + my * 0.03;
+        dp = 0.11 + breathWave * 0.036;
         break;
       }
       case 'vs': {
         // THE CALL-OUT (VS screen, opponent revealed): the lead fist driven straight out at the lens and HELD
         // there, the rear fist on the chest, the shoulder behind the thrust — "you're next"
-        const br = Math.sin(t * 1.6) * 0.015;
+        const br = breathWave * 0.04;
         a0 = { sx: -1.52 + br, sy: -0.3, sz: 0.1, ex: -0.26 };
-        a1 = { sx: -0.92 + br, sy: -0.5, sz: -0.2, ex: -1.76 };
+        a1 = { sx: -0.92 + br * 0.7, sy: -0.5, sz: -0.2, ex: -1.76 };
         tw = 0.34 + mx * 0.05;
-        ln = 0.15 + my * 0.03;
-        dp = 0.11 + br * 0.5;
+        ln = 0.15 + breathWave * 0.028 + my * 0.03;
+        dp = 0.11 + breathWave * 0.035;
         break;
       }
       case 'menace': {
         // THE PREDATOR (the opponent on the VS screen): hunched forward, the arms hanging wide and loaded, fists
         // clenched, a slow roll of the shoulders — a machine sizing you up
         const sway = Math.sin(t * 1.1) * 0.05;
-        a0 = { sx: -0.42 + sway, sy: -0.1, sz: 0.16, ex: -1.25 };
-        a1 = { sx: -0.42 - sway, sy: -0.1, sz: 0.16, ex: -1.25 };
+        a0 = { sx: -0.42 + sway + breathWave * 0.035, sy: -0.1, sz: 0.16, ex: -1.25 };
+        a1 = { sx: -0.42 - sway + breathWave * 0.035, sy: -0.1, sz: 0.16, ex: -1.25 };
         tw = Math.sin(t * 0.55) * 0.09 + mx * 0.05;
-        ln = 0.24 + my * 0.03;
-        dp = 0.2 + Math.sin(t * 1.1) * 0.012;
+        ln = 0.24 + breathWave * 0.032 + my * 0.03;
+        dp = 0.2 + breathWave * 0.038;
         break;
       }
       case 'guard': {
         const sw = Math.sin(t * 3.2) * 0.03;
-        a0 = { sx: -0.74 + sw, sy: -0.45, sz: 0.06, ex: -1.98 };
-        a1 = { sx: -0.74 - sw, sy: 0.45, sz: 0.06, ex: -1.98 };
-        dp = 0.14 + Math.abs(Math.sin(t * 3.5)) * 0.04;
+        a0 = { sx: -0.74 + sw + breathWave * 0.035, sy: -0.45, sz: 0.06, ex: -1.98 };
+        a1 = { sx: -0.74 - sw + breathWave * 0.035, sy: 0.45, sz: 0.06, ex: -1.98 };
+        ln = 0.08 + breathWave * 0.025 + my * 0.03;
+        dp = 0.14 + breathWave * 0.036;
         break;
       }
       case 'victory': {
         const pump = Math.sin(t * 3.5) * 0.08;
         a0 = { sx: -2.85 + pump, sy: -0.08, sz: 0.52, ex: -0.38 };
         a1 = { sx: -2.85 + pump, sy: 0.08, sz: 0.52, ex: -0.38 };
-        ln = -0.08;
-        dp = 0.08;
+        ln = -0.08 + breathWave * 0.022;
+        dp = 0.08 + breathWave * 0.03;
         break;
       }
       case 'taunt': {
         const p = Math.sin(t * 4.5) * 0.5 + 0.5;
         a0 = { sx: -0.4 - p * 0.42, sy: -0.18, sz: 1.1, ex: -2.1 + p * 0.4 };
         a1 = { sx: -0.4 - p * 0.42, sy: 0.18, sz: 1.1, ex: -2.1 + p * 0.4 };
-        dp = 0.14 + p * 0.03;
+        ln = 0.04 + breathWave * 0.025;
+        dp = 0.14 + p * 0.03 + breathWave * 0.03;
         break;
       }
       case 'sombong': {
@@ -7235,16 +7237,17 @@ export class Game {
           : { sx: 0.05, sy: -0.18, sz: 0.32, ex: -0.38 };
         a1 = { sx: 0.08, sy: 0.2, sz: 0.35, ex: -0.45 };
         tw = Math.sin(t * 0.5) * 0.08 + mx * 0.06;
-        ln = -0.16 + my * 0.02; // dada dibusungkan bangga
-        dp = 0.015 + Math.sin(t * 1.5) * 0.01;
+        ln = -0.16 + breathWave * 0.035 + my * 0.02; // dada dibusungkan bernafas bangga
+        dp = 0.02 + breathWave * 0.032;
         break;
       }
       case 'stand':
       default: {
-        const breath = Math.sin(t * 1.8) * 0.025;
+        const breath = breathWave * 0.05;
         a0 = { sx: -0.22 + breath, sy: -0.14, sz: 0.24, ex: -0.92 - breath * 1.6 };
         a1 = { sx: -0.16 + breath, sy: 0.16, sz: 0.26, ex: -0.78 - breath * 1.6 };
-        dp = 0.04 + breath * 0.6;
+        ln = 0.04 + breathWave * 0.028;
+        dp = 0.04 + breathWave * 0.038;
         break;
       }
     }
@@ -7302,10 +7305,11 @@ export class Game {
         const heroZ = HANGAR_POS.z;
         const H = 0.85;
         const REL = 1.65;
+        const WIND = 0.44; // Authentic heavyweight hook wind-up (ancang-ancang ngehook mantap)
 
-        // Base/Selected starting pose to continue and blend smoothly from
-        const startHero = this.heroAnimState(this.heroPose, 0, 0, 0, false, true);
-        const startFoe = this.heroAnimState(this.heroPose, 0, 0, 0, true, true);
+        // Base/Selected starting pose with live breathing motion to blend smoothly from
+        const startHero = this.heroAnimState(this.heroPose, this.time, 0, 0, false, false);
+        const startFoe = this.heroAnimState(this.heroPose, this.time + 0.65, 0, 0, true, false);
 
         // 1. Continuous facing rotation: smoothly transition from diagonal stage facing
         // to square face-to-face (+X and -X) and back on recovery
@@ -7313,8 +7317,8 @@ export class Game {
         const foeFacing = -1.545;
         let baseHeroYaw = heroFacing;
         let baseFoeYaw = foeFacing;
-        if (ct < 0.28) {
-          const u = ct / 0.28;
+        if (ct < WIND) {
+          const u = ct / WIND;
           const k = u * u * (3 - 2 * u);
           baseHeroYaw = VS_PLAYER_YAW + (heroFacing - VS_PLAYER_YAW) * k;
           baseFoeYaw = VS_OPPONENT_YAW + (foeFacing - VS_OPPONENT_YAW) * k;
@@ -7325,30 +7329,31 @@ export class Game {
           baseFoeYaw = foeFacing + (VS_OPPONENT_YAW - foeFacing) * k;
         }
 
-        // 2. Torso twist (coiling hips into rear chamber, accelerating into cross, locked torque, and recoil)
+        // 2. Torso twist: deep hook coil (rotasi pinggul & bahu ke belakang), explosive forward snap, and recoil
+        const hookTwist = -0.62; // Deep -35.5° torso coil for a devastating power hook
         let twist = 0;
         let foeTwist = 0;
-        if (ct < 0.28) {
-          const u = ct / 0.28;
+        if (ct < WIND) {
+          const u = ct / WIND;
           const k = u * u * (3 - 2 * u);
-          twist = startHero.twist + (-0.35 - startHero.twist) * k;
-          foeTwist = startFoe.twist + (-0.35 - startFoe.twist) * k;
+          twist = startHero.twist + (hookTwist - startHero.twist) * k;
+          foeTwist = startFoe.twist + (hookTwist - startFoe.twist) * k;
         } else if (ct < H) {
-          const u = (ct - 0.28) / (H - 0.28);
+          const u = (ct - WIND) / (H - WIND);
           const k = u * u * (3 - 2 * u);
-          twist = -0.35 + (0.45 - (-0.35)) * k;
+          twist = hookTwist + (0.52 - hookTwist) * k;
           foeTwist = twist;
         } else if (ct < REL) {
           const shudder = Math.sin(ct * 65) * 0.008;
-          twist = 0.45 + shudder;
+          twist = 0.52 + shudder;
           foeTwist = twist;
-        } else if (ct < 2.05) {
-          const u = (ct - REL) / 0.40;
+        } else if (ct < 2.10) {
+          const u = (ct - REL) / 0.45;
           const k = u * u * (3 - 2 * u);
-          twist = 0.45 + (-0.15 - 0.45) * k;
+          twist = 0.52 + (-0.15 - 0.52) * k;
           foeTwist = twist;
         } else if (ct < 2.70) {
-          const u = (ct - 2.05) / 0.65;
+          const u = (ct - 2.10) / 0.60;
           const k = u * u * (3 - 2 * u);
           twist = -0.15 + (startHero.twist - (-0.15)) * k;
           foeTwist = -0.15 + (startFoe.twist - (-0.15)) * k;
@@ -7357,133 +7362,161 @@ export class Game {
           foeTwist = startFoe.twist;
         }
 
-        // 3. Torso lean & dip: aggressive forward drive into the clash
+        // 3. Torso lean & dip: sinking into stance during hook chamber, then forward drive into collision
+        const hookLean = -0.16; // Weight loaded onto rear leg for hook leverage
         let lean = 0;
         let foeLean = 0;
-        if (ct < 0.28) {
-          const u = ct / 0.28;
+        if (ct < WIND) {
+          const u = ct / WIND;
           const k = u * u * (3 - 2 * u);
-          lean = startHero.lean + (-0.08 - startHero.lean) * k;
-          foeLean = startFoe.lean + (-0.08 - startFoe.lean) * k;
+          lean = startHero.lean + (hookLean - startHero.lean) * k;
+          foeLean = startFoe.lean + (hookLean - startFoe.lean) * k;
         } else if (ct < H) {
-          const u = (ct - 0.28) / (H - 0.28);
+          const u = (ct - WIND) / (H - WIND);
           const k = u * u * (3 - 2 * u);
-          lean = -0.08 + (0.25 - (-0.08)) * k;
+          lean = hookLean + (0.30 - hookLean) * k;
           foeLean = lean;
         } else if (ct < REL) {
-          lean = 0.25;
+          lean = 0.30;
           foeLean = lean;
-        } else if (ct < 2.05) {
-          const u = (ct - REL) / 0.40;
+        } else if (ct < 2.10) {
+          const u = (ct - REL) / 0.45;
           const k = u * u * (3 - 2 * u);
-          lean = 0.25 + (-0.15 - 0.25) * k;
+          lean = 0.30 + (-0.14 - 0.30) * k;
           foeLean = lean;
         } else if (ct < 2.70) {
-          const u = (ct - 2.05) / 0.65;
+          const u = (ct - 2.10) / 0.60;
           const k = u * u * (3 - 2 * u);
-          lean = -0.15 + (startHero.lean - (-0.15)) * k;
-          foeLean = -0.15 + (startFoe.lean - (-0.15)) * k;
+          lean = -0.14 + (startHero.lean - (-0.14)) * k;
+          foeLean = -0.14 + (startFoe.lean - (-0.14)) * k;
         } else {
           lean = startHero.lean;
           foeLean = startFoe.lean;
         }
 
+        const hookDip = 0.22; // Knees bend deep into solid boxing stance
         let dip = 0;
         let foeDip = 0;
-        if (ct < 0.28) {
-          const u = ct / 0.28;
+        if (ct < WIND) {
+          const u = ct / WIND;
           const k = u * u * (3 - 2 * u);
-          dip = startHero.dip + (0.08 - startHero.dip) * k;
-          foeDip = startFoe.dip + (0.08 - startFoe.dip) * k;
+          dip = startHero.dip + (hookDip - startHero.dip) * k;
+          foeDip = startFoe.dip + (hookDip - startFoe.dip) * k;
         } else if (ct < H) {
-          const u = (ct - 0.28) / (H - 0.28);
+          const u = (ct - WIND) / (H - WIND);
           const k = u * u * (3 - 2 * u);
-          dip = 0.08 + (0.05 - 0.08) * k;
+          dip = hookDip + (0.05 - hookDip) * k;
           foeDip = dip;
         } else if (ct < REL) {
           dip = 0.05;
           foeDip = dip;
-        } else if (ct < 2.70) {
-          const u = (ct - REL) / (2.70 - REL);
+        } else if (ct < 2.10) {
+          const u = (ct - REL) / 0.45;
           const k = u * u * (3 - 2 * u);
-          dip = 0.05 + (startHero.dip - 0.05) * k;
+          dip = 0.05 + (0.08 - 0.05) * k;
+          foeDip = dip;
+        } else if (ct < 2.70) {
+          const u = (ct - 2.10) / 0.60;
+          const k = u * u * (3 - 2 * u);
+          dip = 0.08 + (startHero.dip - 0.08) * k;
           foeDip = dip;
         } else {
           dip = startHero.dip;
           foeDip = startFoe.dip;
         }
 
-        // 4. Arms: Calibrated Real Steel cross punches clashing precisely at center with ZERO penetration
-        const coilR = { sx: -0.30, sy: 0.60, sz: 0.35, ex: -2.40 };
-        const clashR = { sx: -1.25, sy: 0.15, sz: 0.15, ex: -0.55 };
-        const guardL = { sx: -0.80, sy: -0.35, sz: 0.32, ex: -2.30 };
+        // 4. Arms: Arm-to-Arm Clash (Naruto vs Sasuke style) — forearms collide crosswise in high-tension lock
+        // Upper arms drive forward and across, elbows bent at ~96° (-1.68 rad),
+        // forearms horizontal across the chest, colliding and locking at the forearms/wrists!
+        const hookCoilR = { sx: -0.38, sy: 0.74, sz: 0.68, ex: -1.78 }; // Menacing high hook chamber
+        const clashHeroR = { sx: -1.30, sy: 0.38, sz: 0.52, ex: -1.68 }; // Hero forearm crossing horizontally
+        const clashFoeR = { sx: -1.28, sy: 0.38, sz: 0.46, ex: -1.68 }; // Foe forearm crossing horizontally, interlocking
+        const guardL = { sx: -1.05, sy: -0.28, sz: 0.38, ex: -2.35 }; // Rock-solid chin/cheek guard
 
-        let rSx = clashR.sx, rSy = clashR.sy, rSz = clashR.sz, rEx = clashR.ex;
+        let rSx = clashHeroR.sx, rSy = clashHeroR.sy, rSz = clashHeroR.sz, rEx = clashHeroR.ex;
         let lSx = guardL.sx, lSy = guardL.sy, lSz = guardL.sz, lEx = guardL.ex;
-        let foeRSx = clashR.sx, foeRSy = clashR.sy, foeRSz = clashR.sz, foeREx = clashR.ex;
+        let foeRSx = clashFoeR.sx, foeRSy = clashFoeR.sy, foeRSz = clashFoeR.sz, foeREx = clashFoeR.ex;
         let foeLSx = guardL.sx, foeLSy = guardL.sy, foeLSz = guardL.sz, foeLEx = guardL.ex;
 
-        if (ct < 0.28) {
-          const u = ct / 0.28;
+        if (ct < WIND) {
+          // Phase 1: From selected pose smoothly wind up into heavy hook chamber
+          const u = ct / WIND;
           const k = u * u * (3 - 2 * u);
-          rSx = startHero.arms[1].sx + (coilR.sx - startHero.arms[1].sx) * k;
-          rSy = startHero.arms[1].sy + (coilR.sy - startHero.arms[1].sy) * k;
-          rSz = startHero.arms[1].sz + (coilR.sz - startHero.arms[1].sz) * k;
-          rEx = startHero.arms[1].ex + (coilR.ex - startHero.arms[1].ex) * k;
+          rSx = startHero.arms[1].sx + (hookCoilR.sx - startHero.arms[1].sx) * k;
+          rSy = startHero.arms[1].sy + (hookCoilR.sy - startHero.arms[1].sy) * k;
+          rSz = startHero.arms[1].sz + (hookCoilR.sz - startHero.arms[1].sz) * k;
+          rEx = startHero.arms[1].ex + (hookCoilR.ex - startHero.arms[1].ex) * k;
 
           lSx = startHero.arms[0].sx + (guardL.sx - startHero.arms[0].sx) * k;
           lSy = startHero.arms[0].sy + (guardL.sy - startHero.arms[0].sy) * k;
           lSz = startHero.arms[0].sz + (guardL.sz - startHero.arms[0].sz) * k;
           lEx = startHero.arms[0].ex + (guardL.ex - startHero.arms[0].ex) * k;
 
-          foeRSx = startFoe.arms[1].sx + (coilR.sx - startFoe.arms[1].sx) * k;
-          foeRSy = startFoe.arms[1].sy + (coilR.sy - startFoe.arms[1].sy) * k;
-          foeRSz = startFoe.arms[1].sz + (coilR.sz - startFoe.arms[1].sz) * k;
-          foeREx = startFoe.arms[1].ex + (coilR.ex - startFoe.arms[1].ex) * k;
+          foeRSx = startFoe.arms[1].sx + (hookCoilR.sx - startFoe.arms[1].sx) * k;
+          foeRSy = startFoe.arms[1].sy + (hookCoilR.sy - startFoe.arms[1].sy) * k;
+          foeRSz = startFoe.arms[1].sz + (hookCoilR.sz - startFoe.arms[1].sz) * k;
+          foeREx = startFoe.arms[1].ex + (hookCoilR.ex - startFoe.arms[1].ex) * k;
 
           foeLSx = startFoe.arms[0].sx + (guardL.sx - startFoe.arms[0].sx) * k;
           foeLSy = startFoe.arms[0].sy + (guardL.sy - startFoe.arms[0].sy) * k;
           foeLSz = startFoe.arms[0].sz + (guardL.sz - startFoe.arms[0].sz) * k;
           foeLEx = startFoe.arms[0].ex + (guardL.ex - startFoe.arms[0].ex) * k;
         } else if (ct < H) {
-          const u = (ct - 0.28) / (H - 0.28);
+          // Phase 2: Explosive rotational hook whip into Arm-to-Arm collision with dynamic arc
+          const u = (ct - WIND) / (H - WIND);
           const k = u * u * (3 - 2 * u);
-          rSx = coilR.sx + (clashR.sx - coilR.sx) * k;
-          rSy = coilR.sy + (clashR.sy - coilR.sy) * k;
-          rSz = coilR.sz + (clashR.sz - coilR.sz) * k;
-          rEx = coilR.ex + (clashR.ex - coilR.ex) * k;
+          const arcLift = Math.sin(u * Math.PI) * 0.10; // Dynamic hook elbow arc
+          rSx = hookCoilR.sx + (clashHeroR.sx - hookCoilR.sx) * k;
+          rSy = hookCoilR.sy + (clashHeroR.sy - hookCoilR.sy) * k;
+          rSz = hookCoilR.sz + (clashHeroR.sz - hookCoilR.sz) * k + arcLift;
+          rEx = hookCoilR.ex + (clashHeroR.ex - hookCoilR.ex) * k;
+
+          foeRSx = hookCoilR.sx + (clashFoeR.sx - hookCoilR.sx) * k;
+          foeRSy = hookCoilR.sy + (clashFoeR.sy - hookCoilR.sy) * k;
+          foeRSz = hookCoilR.sz + (clashFoeR.sz - hookCoilR.sz) * k + arcLift;
+          foeREx = hookCoilR.ex + (clashFoeR.ex - hookCoilR.ex) * k;
 
           lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
-          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
           foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
         } else if (ct < REL) {
-          const shudder = Math.sin(ct * 65) * 0.005;
-          rSx = clashR.sx + shudder;
-          rSy = clashR.sy;
-          rSz = clashR.sz;
-          rEx = clashR.ex;
+          // Phase 3: Arm-to-Arm lock — forearms locked in ferocious power struggle, hydraulic vibration
+          const shudder = Math.sin(ct * 70) * 0.006;
+          rSx = clashHeroR.sx + shudder;
+          rSy = clashHeroR.sy;
+          rSz = clashHeroR.sz;
+          rEx = clashHeroR.ex;
+
+          foeRSx = clashFoeR.sx - shudder;
+          foeRSy = clashFoeR.sy;
+          foeRSz = clashFoeR.sz;
+          foeREx = clashFoeR.ex;
 
           lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
-          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
           foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
-        } else if (ct < 2.05) {
-          const u = (ct - REL) / 0.40;
+        } else if (ct < 2.10) {
+          // Phase 4: Push-off spring recoil
+          const u = (ct - REL) / 0.45;
           const k = u * u * (3 - 2 * u);
-          rSx = clashR.sx + (-1.10 - clashR.sx) * k;
-          rSy = clashR.sy + (-0.10 - clashR.sy) * k;
-          rSz = clashR.sz + (0.20 - clashR.sz) * k;
-          rEx = clashR.ex + (-1.50 - clashR.ex) * k;
+          rSx = clashHeroR.sx + (-1.10 - clashHeroR.sx) * k;
+          rSy = clashHeroR.sy + (-0.10 - clashHeroR.sy) * k;
+          rSz = clashHeroR.sz + (0.20 - clashHeroR.sz) * k;
+          rEx = clashHeroR.ex + (-1.55 - clashHeroR.ex) * k;
+
+          foeRSx = clashFoeR.sx + (-1.10 - clashFoeR.sx) * k;
+          foeRSy = clashFoeR.sy + (-0.10 - clashFoeR.sy) * k;
+          foeRSz = clashFoeR.sz + (0.20 - clashFoeR.sz) * k;
+          foeREx = clashFoeR.ex + (-1.55 - clashFoeR.ex) * k;
 
           lSx = guardL.sx; lSy = guardL.sy; lSz = guardL.sz; lEx = guardL.ex;
-          foeRSx = rSx; foeRSy = rSy; foeRSz = rSz; foeREx = rEx;
           foeLSx = lSx; foeLSy = lSy; foeLSz = lSz; foeLEx = lEx;
         } else if (ct < 2.70) {
-          const u = (ct - 2.05) / 0.65;
+          // Phase 5: Smooth settle back to staging stance
+          const u = (ct - 2.10) / 0.60;
           const k = u * u * (3 - 2 * u);
           rSx = -1.10 + (startHero.arms[1].sx - (-1.10)) * k;
           rSy = -0.10 + (startHero.arms[1].sy - (-0.10)) * k;
           rSz = 0.20 + (startHero.arms[1].sz - 0.20) * k;
-          rEx = -1.50 + (startHero.arms[1].ex - (-1.50)) * k;
+          rEx = -1.55 + (startHero.arms[1].ex - (-1.55)) * k;
 
           lSx = guardL.sx + (startHero.arms[0].sx - guardL.sx) * k;
           lSy = guardL.sy + (startHero.arms[0].sy - guardL.sy) * k;
@@ -7493,7 +7526,7 @@ export class Game {
           foeRSx = -1.10 + (startFoe.arms[1].sx - (-1.10)) * k;
           foeRSy = -0.10 + (startFoe.arms[1].sy - (-0.10)) * k;
           foeRSz = 0.20 + (startFoe.arms[1].sz - 0.20) * k;
-          foeREx = -1.50 + (startFoe.arms[1].ex - (-1.50)) * k;
+          foeREx = -1.55 + (startFoe.arms[1].ex - (-1.55)) * k;
 
           foeLSx = guardL.sx + (startFoe.arms[0].sx - guardL.sx) * k;
           foeLSy = guardL.sy + (startFoe.arms[0].sy - guardL.sy) * k;
@@ -7565,16 +7598,17 @@ export class Game {
           this.vsFoe2.robot.root.visible = false;
         }
 
-        // Knuckle tip calculation: exact tip-to-tip alignment with ZERO penetration
-        const tipLocal = new THREE.Vector3(0, -1.00, 0.30);
-        const hFistRel = this.menuHero.fists[1].localToWorld(tipLocal.clone()).sub(this.menuHero.root.position);
-        const fFistRel = this.vsFoe
-          ? this.vsFoe.robot.fists[1].localToWorld(tipLocal.clone()).sub(this.vsFoe.robot.root.position)
-          : new THREE.Vector3(-hFistRel.x, hFistRel.y, hFistRel.z);
+        // Arm-to-Arm Clash: Forearm-to-Forearm crossing contact (Naruto vs Sasuke style)
+        // Instead of knuckle tip vs knuckle tip, the two forearms intersect and collide right at the forearm/wrist
+        const armLocal = new THREE.Vector3(0, 0.08, 0.16); // Forearm / wrist crossing contact point
+        const hArmRel = this.menuHero.fists[1].localToWorld(armLocal.clone()).sub(this.menuHero.root.position);
+        const fArmRel = this.vsFoe
+          ? this.vsFoe.robot.fists[1].localToWorld(armLocal.clone()).sub(this.vsFoe.robot.root.position)
+          : new THREE.Vector3(-hArmRel.x, hArmRel.y, hArmRel.z);
 
-        // Calculate exact contact root positions where knuckle tips meet at (heroX, Y, heroZ)
-        const heroContactPos = new THREE.Vector3(heroX - hFistRel.x, 0, heroZ - hFistRel.z);
-        const foeContactPos = new THREE.Vector3(heroX - fFistRel.x, 0, heroZ - fFistRel.z);
+        // Calculate exact contact root positions where forearms meet and brace at (heroX, Y, heroZ)
+        const heroContactPos = new THREE.Vector3(heroX - hArmRel.x, 0, heroZ - hArmRel.z);
+        const foeContactPos = new THREE.Vector3(heroX - fArmRel.x, 0, heroZ - fArmRel.z);
 
         const heroStagingPos = new THREE.Vector3(heroX - VS_STAGE_SEP, 0, heroZ);
         const foeStagingPos = new THREE.Vector3(heroX + VS_STAGE_SEP, 0, heroZ);
@@ -7589,7 +7623,7 @@ export class Game {
           this.menuHero.root.position.lerpVectors(heroStagingPos, heroContactPos, k);
           if (this.vsFoe) this.vsFoe.robot.root.position.lerpVectors(foeStagingPos, foeContactPos, k);
         } else if (ct <= REL) {
-          const shudder = Math.sin(ct * 65) * 0.003;
+          const shudder = Math.sin(ct * 70) * 0.0035;
           this.menuHero.root.position.set(heroContactPos.x - shudder, 0, heroContactPos.z);
           if (this.vsFoe) this.vsFoe.robot.root.position.set(foeContactPos.x + shudder, 0, foeContactPos.z);
         } else if (ct <= 2.40) {
@@ -7605,42 +7639,48 @@ export class Game {
         this.menuHero.root.updateMatrixWorld(true);
         if (this.vsFoe) this.vsFoe.robot.root.updateMatrixWorld(true);
 
-        const pHero = this.menuHero.fists[1].localToWorld(tipLocal.clone());
-        const pFoe = this.vsFoe ? this.vsFoe.robot.fists[1].localToWorld(tipLocal.clone()) : new THREE.Vector3(heroX, 5.15, heroZ);
+        const pHero = this.menuHero.fists[1].localToWorld(armLocal.clone());
+        const pFoe = this.vsFoe ? this.vsFoe.robot.fists[1].localToWorld(armLocal.clone()) : new THREE.Vector3(heroX, 5.35, heroZ);
         const contactP = pHero.clone().lerp(pFoe, 0.5);
-        if (contactP.y < 2.0) contactP.set(heroX, 5.15, heroZ);
+        if (contactP.y < 2.0) contactP.set(heroX, 5.35, heroZ);
         this.vsClashContact.copy(contactP);
 
-        // 1. Whoosh as fists swing forward
-        if (!this.vsClashWhooshPlayed && ct >= 0.42) {
+        // 1. Whoosh as fists swing forward in hook arc
+        if (!this.vsClashWhooshPlayed && ct >= 0.44) {
           this.vsClashWhooshPlayed = true;
-          this.sfx.whoosh(1.2);
+          this.sfx.whoosh(1.3);
         }
 
-        // 2. KNUCKLE COLLISION IMPACT (at H = 0.85) - punchy, heavy, clean, zero blinding flash
+        // 2. ARM-TO-ARM IMPACT (at H = 0.85) — "KERASA JOS SAMA SAMA KUAT!"
         if (!this.vsClashHitPlayed && ct >= H) {
           this.vsClashHitPlayed = true;
-          this.fovKick = 0.8;
-          this.trauma = 0.28;
-          this.camBump = 0.20;
-          this.sfx.overdriveHit(1.35);
-          this.sfx.crackle(0.95);
+          this.fovKick = 1.35;
+          this.trauma = 0.42;
+          this.camBump = 0.35;
+          this.sfx.overdriveHit(1.5);
+          this.sfx.hit(1.0);
+          this.sfx.block(1.0);
+          this.sfx.guardBreak();
+          this.sfx.bell(1);
+          this.sfx.cheer(0.85);
+          this.sfx.crackle(1.2);
+          this.fx.flash(contactP, 3.2, 0xffe080, 0.20);
 
-          // Punchy sparks disc right at the knuckle collision point
-          this.fx.spark(contactP, 36, 12, 0xffd27a, new THREE.Vector3(0, 1.2, 0), 0.42, 1.2, 14);
-          this.fx.spark(contactP, 22, 8, 0xffffff, new THREE.Vector3(0, 1.0, 0), 0.32, 1.0, 12);
+          // Punchy sparks disc right at the arm-to-arm collision point
+          this.fx.spark(contactP, 48, 14, 0xffe070, new THREE.Vector3(0, 1.4, 0), 0.45, 1.3, 16);
+          this.fx.spark(contactP, 28, 10, 0xffffff, new THREE.Vector3(0, 1.2, 0), 0.35, 1.1, 14);
           const colHero = this.menuHero.ctx?.style?.glow ?? 0x38bdf8;
           const colFoe = this.vsFoe?.robot.ctx?.style?.glow ?? 0xef4444;
-          this.fx.spark(contactP, 18, 10, colHero, new THREE.Vector3(1, 0.4, 0), 0.32, 0.9, 10);
-          this.fx.spark(contactP, 18, 10, colFoe, new THREE.Vector3(-1, 0.4, 0), 0.32, 0.9, 10);
+          this.fx.spark(contactP, 24, 12, colHero, new THREE.Vector3(1, 0.5, 0), 0.35, 1.0, 12);
+          this.fx.spark(contactP, 24, 12, colFoe, new THREE.Vector3(-1, 0.5, 0), 0.35, 1.0, 12);
 
-          // 3D Sonic Shockwave Ring at knuckle collision (clean, crisp, no blinding flash)
-          this.fx.impactWave(contactP, new THREE.Vector3(1, 0, 0), 0xffffff, 3.2, 0.22, 0.28);
+          // 3D Sonic Shockwave Ring at forearm collision
+          this.fx.impactWave(contactP, new THREE.Vector3(1, 0, 0), 0xffffff, 3.6, 0.24, 0.32);
 
           // Dust at both feet driving into the ground
-          this.fx.spark(new THREE.Vector3(this.menuHero.root.position.x, 0.05, heroZ), 10, 2.2, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.6, 0.4, 5);
+          this.fx.spark(new THREE.Vector3(this.menuHero.root.position.x, 0.05, heroZ), 14, 2.5, 0x999999, new THREE.Vector3(0, 0.9, 0), 0.65, 0.45, 6);
           if (this.vsFoe) {
-            this.fx.spark(new THREE.Vector3(this.vsFoe.robot.root.position.x, 0.05, heroZ), 10, 2.2, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.6, 0.4, 5);
+            this.fx.spark(new THREE.Vector3(this.vsFoe.robot.root.position.x, 0.05, heroZ), 14, 2.5, 0x999999, new THREE.Vector3(0, 0.9, 0), 0.65, 0.45, 6);
           }
         }
 
@@ -7663,10 +7703,10 @@ export class Game {
 
         return;
       }
-      // Reuse the menu's currently selected pose, freeze it to one frame, and mirror it across the centre line.
-      // Opposite root yaws make the player face right and the opponent face left without any idle body bob.
-      const playerPose = this.heroAnimState(this.heroPose, t, 0, 0, false, true);
-      const opponentPose = this.heroAnimState(this.heroPose, t, 0, 0, true, true);
+      // Reuse the menu's currently selected pose with breathing animation, mirrored across the centre line.
+      // Both fighters breathe naturally just like in the main menu, with a subtle phase offset so they feel alive!
+      const playerPose = this.heroAnimState(this.heroPose, t, 0, 0, false, false);
+      const opponentPose = this.heroAnimState(this.heroPose, t + 1.25, 0, 0, true, false);
       this.vsPunch = Math.max(0, this.vsPunch - dt * 2.2);
       if (this.vsFoe) this.vsFoe.robot.animate(opponentPose, dt);
       if (this.vsFoe2) this.vsFoe2.robot.animate(opponentPose, dt);
@@ -8331,17 +8371,17 @@ export class Game {
         m!.power > 0.45 &&
         !f.whooshed &&
         (f.moveT >= m!.strikeAt - 0.1 || isWindmill) &&
-        Math.random() < (isWindmill ? 0.35 : 0.45)
+        Math.random() < (isWindmill ? 0.08 : 0.30)
       ) {
         this.fx.spark(
           tmp,
-          isWindmill ? 2 : 2,
-          2.5 + m!.power * 4,
+          1,
+          2.5 + m!.power * 3.5,
           isWindmill ? 0xffb830 : f.isPlayer ? 0x8fd0ff : 0xffb040,
           new THREE.Vector3(0, 0.25, 0),
-          0.7,
-          0.28,
-          2,
+          0.6,
+          0.22,
+          1,
         );
       }
       f.trails[i].update(tmp, emit, dt, this.camera);
@@ -8607,17 +8647,17 @@ export class Game {
             }
             if (this.vsFoe2) this.vsFoe2.robot.root.visible = false;
 
-            // Camera track during clash: starts EXACTLY at the initial staging shot (no jump, no zoom-out),
-            // moves into an intense, punchy medium-profile shot focusing right on the knuckle clash at center!
+            // Camera track during clash: starts at staging framing, moves into an intense, punchy
+            // close-medium profile shot capturing both fighters and the arm-to-arm cross clash!
             const CINE_VS: { t: number; pos: [number, number, number]; look: [number, number, number] }[] = [
               // 0. t = 0: Seamlessly matches the matchmaking staging camera (pos: [heroX, 5.55, heroZ + 9.60 * fit])
               { t: 0, pos: [heroX, 5.55, heroZ + 9.60 * fit], look: [heroX, 5.45, heroZ] },
               // 1. t = H - 0.35 (0.50s): Smooth tracking shot forward as fighters lunge into punch
-              { t: H - 0.35, pos: [heroX + 0.35 * fit, 5.46, heroZ + 9.15 * fit], look: [heroX, 5.38, heroZ] },
-              // 2. t = H - 0.02 (0.83s): Crisp medium shot right at knuckle collision point! No zoom out!
-              { t: H - 0.02, pos: [heroX + 0.65 * fit, 5.38, heroZ + 8.70 * fit], look: [heroX, 5.28, heroZ] },
-              // 3. t = REL (1.65s): Holding on locked knuckle tension and sparks
-              { t: REL, pos: [heroX + 0.55 * fit, 5.38, heroZ + 8.80 * fit], look: [heroX, 5.28, heroZ] },
+              { t: H - 0.35, pos: [heroX + 0.30 * fit, 5.42, heroZ + 8.90 * fit], look: [heroX, 5.38, heroZ] },
+              // 2. t = H - 0.02 (0.83s): Crisp close-medium shot framing the arm-to-arm clash and face-off
+              { t: H - 0.02, pos: [heroX + 0.45 * fit, 5.35, heroZ + 8.25 * fit], look: [heroX, 5.35, heroZ] },
+              // 3. t = REL (1.65s): Holding on locked arm-to-arm tension and sparks
+              { t: REL, pos: [heroX + 0.38 * fit, 5.35, heroZ + 8.35 * fit], look: [heroX, 5.35, heroZ] },
               // 4. t = REL + 0.45 (2.10s): Eases back to staging framing as fighters separate
               { t: REL + 0.45, pos: [heroX + 0.15 * fit, 5.48, heroZ + 9.35 * fit], look: [heroX, 5.40, heroZ] },
               // 5. t = 2.70: Settled cleanly in staging framing

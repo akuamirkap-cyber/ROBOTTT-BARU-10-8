@@ -245,6 +245,7 @@ export class Robot {
   private sUpperLift = new Spring();
 
   private tv = new THREE.Vector3();
+  private tgtW = new THREE.Vector3();
   private qk = new THREE.Quaternion();
   private qd = new THREE.Quaternion();
   private qf = new THREE.Quaternion();
@@ -1203,7 +1204,8 @@ export class Robot {
       riseYaw + lieSide * 0.22, // the lie is rolled a little onto one shoulder (about the spine = the log-roll axis)
       (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0),
     );
-    const breathe = Math.sin(t * 2.4) * 0.015;
+    // Living respiratory heave: rhythmic chest expansion & compression (~3.9s cycle)
+    const breathe = Math.sin(t * 1.6) * 0.038;
     // Core spinal dynamics: kurvatura tulang belakang saat jatuh (buckle & shock absorption) dan melengkung ke depan saat bangkit (eFold)
     const spineFallCurl = fs.buckle * 0.16;
     const spineImpactDecompress = fs.lay * 0.06;
@@ -1475,7 +1477,7 @@ export class Robot {
       const hipPos = this.hipJ[i].position;
       const baseFootY = Math.max(this.floorY, this.root.position.y);
       this.tv.set(f.curX, baseFootY + S * (ankleH + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0)), f.curZ);
-      const tgtW = this.tv.clone();
+      this.tgtW.copy(this.tv);
       this.pelvis.worldToLocal(this.tv);
       const xt = this.tv.x - hipPos.x;
       const yt = this.tv.y - hipPos.y;
@@ -1549,7 +1551,7 @@ export class Robot {
       this.footJ[i].quaternion.copy(this.qf);
       this.footJ[i].updateWorldMatrix(true, false);
       this.footJ[i].getWorldPosition(this.tv);
-      this.ikErr[i] = this.tv.distanceTo(tgtW) / S;
+      this.ikErr[i] = this.tv.distanceTo(this.tgtW) / S;
     }
 
     // last step: nothing may ever sink below the floor (falls, knock-downs, overshoot, odd poses)

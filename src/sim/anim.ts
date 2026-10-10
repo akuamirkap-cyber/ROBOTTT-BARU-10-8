@@ -593,51 +593,51 @@ export function makeClashPressOld(HIT: number, T: THREE.Vector3) {
 // momentum carries the bodies in, fists skid past each other, then separate
 // ================================================================
 function makeClashPress(HIT: number, T: THREE.Vector3) {
-  const crossBase = (z: number, yaw: number, lean: number, extra: J = {}): Pose => plant({
+  const armClashBase = (z: number, yaw: number, lean: number, extra: J = {}): Pose => plant({
     p: [0, 0.89, z], r: [0.09 + lean, yaw, 0],
     j: {
-      spine: [0.06 + lean * 0.4, 0, 0], chest: [0, 0.15, 0], head: [-0.12 - lean, -yaw, 0],
-      shoulderR: [-1.6, 0, 0.15], elbowR: [-0.04, 0, 0],
-      shoulderL: [-0.75, 0, 0.35], elbowL: [-2.3, 0, 0],
+      spine: [0.06 + lean * 0.4, 0, 0], chest: [0, 0.18, 0], head: [-0.12 - lean, -yaw, 0],
+      shoulderR: [-1.30, 0, 0.48], elbowR: [-1.68, 0, 0],
+      shoulderL: [-1.0, 0, 0.38], elbowL: [-2.3, 0, 0],
       hipL: [-0.75, 0, 0.1], kneeL: [0.62, 0, 0],
       hipR: [0.34 + lean * 0.5, 0, -0.1], kneeR: [0.18, 0, 0],
       ...extra,
     },
   });
-  const cross = aim(crossBase(0.35, 0.5, 0), 'R', T, { lockElbow: true, rootZ: true });
+  const cross = aim(armClashBase(0.35, 0.5, 0), 'R', T, { lockElbow: false, rootZ: true });
   const cz = cross.p[2];
 
-  // step-in with the lead foot while the right arm starts to swing back
+  // step-in with the lead foot into dip and hook wind-up
   const step = plant(merge(gUp(cz * 0.35), {
-    r: [0.05, -0.18, 0],
+    r: [0.06, -0.22, 0],
     j: {
-      chest: [0, -0.1, 0], head: [-0.08, 0.18, 0],
-      shoulderR: [-0.55, 0, -0.42], elbowR: [-2.3, 0, 0],
-      shoulderL: [-1.15, 0, 0.2], elbowL: [-1.6, 0, 0],
-      hipL: [-0.75, 0, 0.1], kneeL: [0.8, 0, 0], hipR: [0.08, 0, -0.1], kneeR: [0.35, 0, 0],
+      chest: [0, -0.14, 0], head: [-0.08, 0.22, 0],
+      shoulderR: [-0.48, 0.10, 0.50], elbowR: [-2.0, 0, 0],
+      shoulderL: [-1.15, 0, 0.25], elbowL: [-1.8, 0, 0],
+      hipL: [-0.78, 0, 0.1], kneeL: [0.82, 0, 0], hipR: [0.06, 0, -0.1], kneeR: [0.45, 0, 0],
     },
   }), ['R']);
-  // still moving forward while coiling the hips
+  // ancang-ancang hook mantap: deep hip & chest coil, dipped stance, right arm cocked high with flared elbow
   const load = plant(merge(guard, {
-    p: [0, 0.89, cz * 0.62], r: [0.07, -0.3, 0],
+    p: [0, 0.86, cz * 0.62], r: [0.08, -0.42, -0.05],
     j: {
-      chest: [0, -0.14, 0], head: [-0.08, 0.3, 0],
-      shoulderR: [-0.6, 0, -0.4], elbowR: [-2.25, 0, 0],
-      shoulderL: [-1.1, 0, 0.2], elbowL: [-1.7, 0, 0],
-      hipL: [-0.6, 0, 0.1], kneeL: [0.72, 0, 0], hipR: [-0.05, 0, -0.1], kneeR: [0.55, 0, 0],
+      chest: [0, -0.20, 0], head: [-0.08, 0.40, 0.05],
+      shoulderR: [-0.42, 0.18, 0.66], elbowR: [-1.75, 0, 0],
+      shoulderL: [-1.15, 0, 0.35], elbowL: [-2.1, 0, 0],
+      hipL: [-0.72, 0, 0.12], kneeL: [0.85, 0, 0], hipR: [-0.18, 0, -0.12], kneeR: [0.72, 0, 0],
     },
   }));
-  // momentum carries the body in; fist stays LOCKED dead-centre on the contact point (same yaw = no tilt)
-  const compress = aim(crossBase(cz + 0.07, 0.5, 0.1, { elbowR: [-0.6, 0, 0] }), 'R', T);
-  // HOLD: both stand their ground - weight forward, rear leg driving, fist still locked on T
-  const hold1 = aim(crossBase(cz + 0.09, 0.5, 0.13, { elbowR: [-0.75, 0, 0], head: [-0.3, -0.5, 0] }), 'R', T);
-  const hold2 = aim(crossBase(cz + 0.08, 0.5, 0.12, { elbowR: [-0.7, 0, 0], head: [-0.3, -0.5, 0] }), 'R', T);
-  // push-off: both drive through the locked fists and spring apart, staying square
+  // momentum carries the body in; forearms collide and cross over each other (Arm-to-Arm Clash)
+  const compress = aim(armClashBase(cz + 0.07, 0.5, 0.1, { shoulderR: [-1.30, 0, 0.48], elbowR: [-1.68, 0, 0] }), 'R', T);
+  // HOLD: both stand their ground - locked arm-to-arm tension, rear leg driving, equal power struggle
+  const hold1 = aim(armClashBase(cz + 0.09, 0.5, 0.13, { shoulderR: [-1.30, 0, 0.48], elbowR: [-1.68, 0, 0], head: [-0.3, -0.5, 0] }), 'R', T);
+  const hold2 = aim(armClashBase(cz + 0.08, 0.5, 0.12, { shoulderR: [-1.30, 0, 0.48], elbowR: [-1.68, 0, 0], head: [-0.3, -0.5, 0] }), 'R', T);
+  // push-off: both drive through the locked arms and spring apart, staying square
   const push = plant({
     p: [0, 0.9, cz - 0.2], r: [-0.04, 0.4, 0],
     j: {
       chest: [-0.03, 0.1, 0], head: [-0.08, -0.4, 0],
-      shoulderR: [-1.3, 0, -0.1], elbowR: [-0.5, 0, 0],
+      shoulderR: [-1.3, 0, -0.1], elbowR: [-1.5, 0, 0],
       shoulderL: [-1.0, 0, 0.32], elbowL: [-1.95, 0, 0],
       hipL: [-0.35, 0, 0.1], kneeL: [0.42, 0, 0], hipR: [0.28, 0, -0.1], kneeR: [0.48, 0, 0],
     },
@@ -651,7 +651,7 @@ function makeClashPress(HIT: number, T: THREE.Vector3) {
     { t: 0.64, pose: gDown(0.03) },
     { t: 0.86, pose: step },
     { t: 1.04, pose: load },
-    { t: 1.16, pose: chain(load, cross, 'R', 0.8, 0.4) },
+    { t: 1.16, pose: chain(load, cross, 'R', 0.82, 0.42) },
     { t: R0, sharp: true, pose: cross },
     { t: H0, pose: compress },
     { t: (H0 + H1) / 2, pose: hold1 },
@@ -664,10 +664,10 @@ function makeClashPress(HIT: number, T: THREE.Vector3) {
   ];
   const phases: Phase[] = [
     { t: 0, name: 'Bouncing - saling ukur', color: '#38bdf8' },
-    { t: 0.7, name: 'Maju sambil mengayun tangan kanan', color: '#a3e635' },
-    { t: 1.04, name: 'Pinggul memutar - CROSS!', color: '#f97316' },
-    { t: R0, name: '💥 TINJU KANAN BERTUMBUKAN!', color: '#ef4444' },
-    { t: R0 + 0.06, name: '🛡️ BERTAHAN - tinju terkunci di tengah', color: '#f43f5e' },
+    { t: 0.7, name: 'Step-in + ancang-ancang hook mantap', color: '#a3e635' },
+    { t: 1.04, name: 'Putaran pinggul & ayunan hook dahsyat!', color: '#f97316' },
+    { t: R0, name: '⚔️ ARM-TO-ARM CLASH! Lengan bertabrakan!', color: '#ef4444' },
+    { t: R0 + 0.06, name: '🛡️ TAHAN LENGAN - adu tenaga sama-sama kuat', color: '#f43f5e' },
     { t: REL, name: 'Saling dorong - memisah', color: '#fb923c' },
     { t: REL + 0.5, name: 'Kembali siaga', color: '#6366f1' },
   ];
@@ -2997,8 +2997,8 @@ const oh = makeOverhand();
 
 export const ATTACKS: Record<AttackId, Attack> = <Record<AttackId, Attack>>{
   clash: {
-    id: 'clash', kind: 'clash', name: 'Clash Straight', target: 'Tinju vs Tinju', icon: '⚔️', hand: 'R',
-    desc: 'Maju sambil mengayun - tinju kanan bertumbukan di tengah, keduanya bertahan dengan tinju terkunci, lalu saling dorong memisah.',
+    id: 'clash', kind: 'clash', name: 'Arm-to-Arm Clash', target: 'Lengan vs Lengan', icon: '⚔️', hand: 'R',
+    desc: 'Benturan lengan bawah vs lengan bawah (Arm-to-Arm Clash) khas duel legendaris — saling adu tenaga dan bertahan terkunci sama-sama kuat, lalu saling dorong memisah.',
     duration: cl.END, hitTime: cl.HIT, impactTime: cl.IMPACT, hitPart: 'fist', sparkDir: [0, 1, 0],
     impulse: { head: [-3.5, 0, 0], neck: [-1.5, 0, 0], shoulderL: [0, 0, 1.5] },
     recoil: { head: [-3.5, 0, 0], neck: [-1.5, 0, 0], shoulderL: [0, 0, 1.5] },

@@ -140,16 +140,23 @@ export function Matchmaking({
       } else if (phase === 'found' && ph >= 2.4) {
         enterPhase('lock');
       } else if (phase === 'lock') {
-        // Countdown 3-2-1: As soon as it counts to 1, clash animation starts immediately
+        // Countdown 3-2-1: Saat hitungan 1 dimulai, robot langsung berganti dari pose ke ancang-ancang!
         const c = Math.max(0, VS_LOCK_BEATS - Math.floor(ph / VS_LOCK_BEAT));
         if (c !== last) {
           last = c;
           if (c > 0) {
             setCount(c);
-            game?.uiCue('lock');
+            if (c === 1) {
+              // Hitungan 1 dimulai: robot segera ancang-ancang sebelum clash simulation
+              game?.uiCue('windup');
+              game?.setVsMode(oppIdx, opp2Idx, 'windup');
+            } else {
+              game?.uiCue('lock');
+            }
           }
         }
-        if (c <= 1 || ph >= VS_LOCK_BEAT * 2) {
+        // Setelah hitungan 1 (ancang-ancang) beres, langsung luncurkan clash simulation adu tinju!
+        if (ph >= VS_LOCK_BEAT * VS_LOCK_BEATS) {
           enterPhase('clash');
         }
       } else if (phase === 'clash') {
@@ -276,11 +283,22 @@ export function Matchmaking({
             <span className="tk-vs">VS</span>
           </div>
         )}
+        {phase === 'lock' && count === 1 && (
+          <div className="pointer-events-none absolute left-1/2 top-[24vh] -translate-x-1/2 z-50 flex items-center gap-2 rounded-full border border-amber-400/90 bg-black/85 px-5 py-1.5 text-xs md:text-sm font-mono tracking-widest text-amber-300 shadow-[0_0_24px_rgba(251,191,36,0.6)] animate-pulse">
+            <span className="text-amber-400 font-bold">⚡</span>
+            <span className="font-display font-black tracking-[0.2em] text-white">ANCANG-ANCANG BERTARUNG</span>
+            <span className="text-amber-400 font-bold">⚡</span>
+          </div>
+        )}
         {(phase === 'lock' || (phase === 'clash' && pt < 0.65)) && (
           <div className="tk-countdown" key={phase === 'clash' ? 1 : count}>
             <span className="tk-count-ring" />
-            <span className="tk-count">{phase === 'clash' ? 1 : count}</span>
-            <span className="tk-count-k">MASUK RING</span>
+            <span className={`tk-count ${count === 1 ? '!text-amber-300 !scale-110 drop-shadow-[0_0_35px_rgba(251,191,36,0.9)]' : ''}`}>
+              {phase === 'clash' ? 1 : count}
+            </span>
+            <span className={`tk-count-k ${count === 1 ? '!text-amber-300 font-black tracking-[0.25em]' : ''}`}>
+              {count === 1 ? '⚔️ ANCANG-ANCANG ⚔️' : 'MASUK RING'}
+            </span>
           </div>
         )}
 

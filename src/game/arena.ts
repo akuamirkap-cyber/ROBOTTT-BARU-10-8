@@ -698,13 +698,13 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
   const key = new THREE.DirectionalLight(0xfff0dc, 1.25);
   key.position.set(12, 40, 18);
   key.castShadow = true;
-  key.shadow.mapSize.set(1536, 1536);
-  key.shadow.radius = 2;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.radius = 1.5;
   const sc = key.shadow.camera;
-  sc.left = -20;
-  sc.right = 20;
-  sc.top = 20;
-  sc.bottom = -20;
+  sc.left = -12;
+  sc.right = 12;
+  sc.top = 12;
+  sc.bottom = -12;
   sc.near = 10;
   sc.far = 90;
   key.shadow.bias = -0.0005;
@@ -766,7 +766,7 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
   const platform = new THREE.Mesh(new THREE.BoxGeometry(31, 0.7, 31), [apronMat, apronMat, topMat, baseMat, apronMat, apronMat]);
   platform.position.y = -0.35;
   platform.receiveShadow = true;
-  platform.castShadow = true;
+  platform.castShadow = false;
   ring.add(platform);
 
   // LAYER 2 (BELOW MATRAS): Platform Dek Baja & Hazard Rim
@@ -797,7 +797,7 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
   );
   deckMesh.position.y = -1.05;
   deckMesh.receiveShadow = true;
-  deckMesh.castShadow = true;
+  deckMesh.castShadow = false;
   ring.add(deckMesh);
 
   // Heavy steel corner reinforcements
@@ -981,7 +981,7 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
     // Main heavy steel corner post
     const postMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 7.2, 16), postMat);
     postMesh.position.set(x, 3.6, z);
-    postMesh.castShadow = true;
+    postMesh.castShadow = false;
     markReflect(postMesh);
     ring.add(postMesh);
 
@@ -1030,7 +1030,7 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
     const PAD_D = 1.05; // depth protruding toward ring center
     const padMesh = new THREE.Mesh(new THREE.BoxGeometry(PAD_W, PAD_H, PAD_D), padMaterials);
     padMesh.position.set(0, 3.6, 0.54);
-    padMesh.castShadow = true;
+    padMesh.castShadow = false;
     markReflect(padMesh);
     padGroup.add(padMesh);
 
@@ -1550,7 +1550,7 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
     const wg = new THREE.Mesh(new THREE.ExtrudeGeometry(wedge, { depth: W, bevelEnabled: false }), deck);
     wg.rotation.y = Math.PI / 2; // shape x → −z, extrusion → +x
     wg.position.x = -W / 2;
-    wg.castShadow = true;
+    wg.castShadow = false;
     wg.receiveShadow = true;
     g.add(wg);
     const slope = Math.atan2(rise, Z0 - Z1);

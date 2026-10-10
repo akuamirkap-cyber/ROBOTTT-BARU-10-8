@@ -195,7 +195,7 @@ export function buildProps(scene: THREE.Scene): Props {
     rig.add(head);
     put(RB(0.6, 0.16, 0.9, 0.04), metal, head, 0, 0.0, 0.0); // the sliding plate
     const body = put(RB(0.78, 0.74, 1.5, 0.08), camBody, head, 0, 0.48, -0.15);
-    body.castShadow = true;
+    body.castShadow = false;
     for (const sx of [-1, 1]) put(new THREE.PlaneGeometry(1.1, 0.5).rotateY(sx * Math.PI / 2), camLabelMat, head, sx * 0.395, 0.5, -0.15);
     put(RB(0.5, 0.1, 1.0, 0.03), camRubber, head, 0, 0.9, -0.2); // the top handle
     put(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6).rotateX(Math.PI / 2), metal2, head, 0, 0.85, -0.2);

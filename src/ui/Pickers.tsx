@@ -184,7 +184,7 @@ export function SlowMoModePicker({ noSlowMoNormal, onPick }: { noSlowMoNormal: b
             </span>
           </div>
           <div className="mt-1 font-tech text-[8.5px] leading-tight tracking-wider text-amber-200/80">
-            Serangan biasa &amp; counter jalan tanpa slow-mo (FPS kencang). Slow-mo hanya aktif saat OVERDRIVE [R] &amp; K.O.!
+            Serangan &amp; Overdrive jalan lancar (FPS kencang tanpa lag). Slow-mo sinematik hanya aktif saat K.O.!
           </div>
         </button>
         <button
@@ -393,7 +393,7 @@ export function GfxPicker({ value, onPick, fps, tier }: { value: GfxMode; onPick
   );
 }
 
-const BRIGHT_LABEL: Record<number, string> = { 0.7: 'GELAP', 0.85: 'LEMBUT', 1: 'NORMAL', 1.15: 'TERANG', 1.3: 'SILAU', 1.5: 'MAKS' };
+const BRIGHT_LABEL: Record<number, string> = { 0.7: 'GELAP', 0.85: 'LEMBUT', 1: '100%', 1.15: '115%', 1.3: '130%', 1.5: '150% MAKS' };
 
 /**
  * THE EXPOSURE / LIGHT LEVEL. Adjusts the brightness of the scene and game world.
@@ -607,12 +607,12 @@ export function BloomPicker({
       <div className="grid grid-cols-5 gap-1.5">
         {[
           { p: 0, label: '0%', sub: 'MATI' },
+          { p: 2, label: '2%', sub: 'PRESET 2%' },
           { p: 15, label: '15%', sub: 'LEMBUT' },
           { p: 25, label: '25%', sub: 'STANDAR' },
-          { p: 35, label: '35%', sub: 'TERANG' },
-          { p: 50, label: '50%', sub: 'MAKS 50%' },
+          { p: 50, label: '50%', sub: 'MAKS' },
         ].map((item) => {
-          const on = Math.abs(pct - item.p) < 4;
+          const on = Math.abs(pct - item.p) < (item.p === 2 ? 2 : 4);
           const col = item.p === 0 ? '#94a3b8' : item.p <= 20 ? '#34d399' : '#fbbf24';
           return (
             <button

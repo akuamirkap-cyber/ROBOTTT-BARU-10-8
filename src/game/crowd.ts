@@ -379,9 +379,9 @@ export function buildCrowd(scene: THREE.Scene, spots: Spot[], phoneCount: number
       }
 
       // 2. Staggered sector animation cadence:
-      // Interleaves visible sectors across frames, cutting per-frame GPU buffer uploads in half
-      // while keeping animations completely smooth.
-      const shouldUpdateSector = frameTick <= 2 || ((sIdx + frameTick) % 2 === 0) || hype > 0.8;
+      // Spreads sector updates across frames (round-robin), preventing massive multi-megabyte
+      // buffer uploads on a single frame while keeping stadium animations lively and smooth.
+      const shouldUpdateSector = frameTick <= 2 || (sIdx === (frameTick % sectors.length)) || (hype > 0.8 && ((sIdx + frameTick) % 3 === 0));
       if (!shouldUpdateSector) continue;
 
       const people = sec.people;

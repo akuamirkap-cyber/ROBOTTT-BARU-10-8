@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAM_MODES, DEFAULT_BLOOM_PCT, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
+import { CAM_MODES, DEFAULT_BLOOM_PCT, DEFAULT_BRIGHTNESS, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
 import { loadSfxProfile, loadAllOverdrivePunch, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
@@ -108,7 +108,7 @@ export default function App() {
 
   const resetVisuals = () => {
     gameRef.current?.resetVisualsToNormal();
-    setBrightLocal(1.0);
+    setBrightLocal(DEFAULT_BRIGHTNESS);
     setSatLocal(NORMAL_SAT);
     setTexLocal(false);
     setBloomLocal(DEFAULT_BLOOM_PCT);

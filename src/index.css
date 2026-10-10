@@ -480,10 +480,13 @@ body,
   to { background-position: -200% 0; }
 }
 @keyframes pulseGlow {
-  0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 200, 60, 0.5)); }
-  50% { filter: drop-shadow(0 0 20px rgba(255, 200, 60, 1)); }
+  0%, 100% { opacity: 0.88; }
+  50% { opacity: 1; }
 }
-.meter-ready { animation: pulseGlow 0.7s infinite; }
+.meter-ready {
+  animation: pulseGlow 0.7s infinite ease-in-out;
+  will-change: opacity;
+}
 
 @keyframes comboPop {
   0% { transform: scale(1.8); }
