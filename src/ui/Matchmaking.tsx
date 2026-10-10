@@ -14,7 +14,7 @@ const TIPS = [
   'Taunt (M / N / 4) mengisi Overdrive — jangan pamer saat lawan dekat.',
 ];
 
-type Phase = 'search' | 'found' | 'lock';
+type Phase = 'search' | 'found' | 'lock' | 'clash';
 
 interface Stats {
   power: number;
@@ -140,32 +140,36 @@ export function Matchmaking({
       } else if (phase === 'found' && ph >= 2.4) {
         enterPhase('lock');
       } else if (phase === 'lock') {
-        // A brisk 3–2–1 plays over one clock; the final number starts the ring transition, not a fist clash.
+        // A brisk 3–2–1 plays over one clock, then transitions into the Clash Straight animation
         const c = Math.max(0, VS_LOCK_BEATS - Math.floor(ph / VS_LOCK_BEAT));
         if (c !== last) {
           last = c;
           if (c > 0) {
             setCount(c);
             game?.uiCue('lock');
-            if (c === 1 && !transitionSent) {
-              transitionSent = true;
-              transitionRef.current?.();
-            }
-          } else if (!readySent) {
-            readySent = true;
-            game?.uiCue('go');
-            window.clearInterval(id);
-            readyRef.current();
           }
         }
-        if (ph >= VS_LOCK_DUR && !readySent) {
+        if (ph >= VS_LOCK_DUR) {
+          enterPhase('clash');
+        }
+      } else if (phase === 'clash') {
+        // Clash Straight sequence plays with dynamic camera angle (matched to Clash Simulation)
+        // Impact occurs at ~1.18s of animation time (approx 1.25s of real time)
+        // Fists locked and grinding until ~3.1s real time
+        // Separation push-off finishes at ~3.5s real time
+        const isClashDone = game?.isVsClashComplete() || ph >= 3.6;
+        if (isClashDone && !transitionSent) {
+          transitionSent = true;
+          transitionRef.current?.();
+        }
+        if ((ph >= 4.2 || (transitionSent && ph >= 3.9)) && !readySent) {
           readySent = true;
           game?.uiCue('go');
           window.clearInterval(id);
           readyRef.current();
         }
       }
-    }, phase === 'lock' ? 16 : 60);
+    }, phase === 'lock' || phase === 'clash' ? 16 : 60);
     return () => window.clearInterval(id);
   }, [phase, searchFor, game]);
 
@@ -206,19 +210,49 @@ export function Matchmaking({
       )}
       {phase === 'lock' && <div className="tk-lockwash" />}
 
+      {/* Cinematic letterbox during clash slow-mo */}
+      <div className="pointer-events-none absolute inset-0 z-30">
+        <div className="absolute left-0 right-0 top-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
+        <div className="absolute bottom-0 left-0 right-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
+        {phase === 'clash' && pt >= 1.0 && pt <= 3.3 && (
+          <div className="absolute left-1/2 top-[11.5vh] -translate-x-1/2 rounded border border-red-500/70 bg-black/70 px-3.5 py-0.5 font-mono text-xs tracking-[0.3em] text-red-400 drop-shadow">
+            ● SLOW-MO CLASH
+          </div>
+        )}
+      </div>
+
+      {/* Screen flash on knuckle impact */}
+      {phase === 'clash' && pt >= 1.22 && pt <= 1.48 && (
+        <div className="flash-clash pointer-events-none absolute inset-0 z-50" />
+      )}
+
+      {/* Clash Straight banner */}
+      {phase === 'clash' && (
+        <div className="pointer-events-none absolute left-1/2 top-[16vh] z-50 flex -translate-x-1/2 flex-col items-center gap-1.5 transition-all duration-300">
+          <div className="phase-pop flex items-center gap-3 rounded-full border border-yellow-200 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 px-7 py-2 font-display text-2xl tracking-widest text-white shadow-[0_0_40px_rgba(239,68,68,0.8)] md:text-3xl">
+            <span>⚔️</span>
+            <span className="font-black drop-shadow">CLASH STRAIGHT!</span>
+            <span>⚔️</span>
+          </div>
+          <div className="font-tech text-xs font-black tracking-[0.3em] text-yellow-300 uppercase drop-shadow md:text-sm">
+            KNUCKLE IMPACT · ADU TINJU
+          </div>
+        </div>
+      )}
+
       {/* top: mode readout + net */}
-      <div className="tk-top">
+      <div className={`tk-top transition-opacity duration-300 ${phase === 'clash' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <span className="tk-top-mode">{meta.name}</span>
         <span className="tk-top-sub">{stage}{ultra ? ' · ULTRA' : ''}</span>
       </div>
-      <div className="tk-net">
+      <div className={`tk-net transition-opacity duration-300 ${phase === 'clash' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <span className="tk-net-dot" />
         {ACCOUNT_REGION} · PING {ping}MS
       </div>
 
       <div className="tk-stage">
         {/* the names beside the fighters */}
-        <div className="tk-name tk-name-l">
+        <div className={`tk-name tk-name-l transition-opacity duration-300 ${phase === 'clash' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <span className="tk-name-t" data-text={ACCOUNT_NAME}>
             {ACCOUNT_NAME}
           </span>
@@ -232,7 +266,7 @@ export function Matchmaking({
             <span className="tk-reticle-k">SCANNING · {Math.round(prog * 100)}%</span>
           </div>
         )}
-        <div className={`tk-name tk-name-r ${found ? 'tk-name-in' : 'tk-name-scan'}`} key={found ? 'f' : 's'}>
+        <div className={`tk-name tk-name-r ${found ? 'tk-name-in' : 'tk-name-scan'} transition-opacity duration-300 ${phase === 'clash' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`} key={found ? 'f' : 's'}>
           <span className="tk-name-t" data-text={foeName} style={found ? { color: '#fff' } : undefined}>
             {foeName}
           </span>
@@ -241,10 +275,12 @@ export function Matchmaking({
         </div>
 
         {/* the VS */}
-        <div className={`tk-vs-wrap ${found ? 'tk-vs-on' : ''}`}>
-          <span className="tk-vs-flare" />
-          <span className="tk-vs">VS</span>
-        </div>
+        {phase !== 'clash' && (
+          <div className={`tk-vs-wrap ${found ? 'tk-vs-on' : ''}`}>
+            <span className="tk-vs-flare" />
+            <span className="tk-vs">VS</span>
+          </div>
+        )}
         {phase === 'lock' && (
           <div className="tk-countdown" key={count}>
             <span className="tk-count-ring" />
@@ -254,46 +290,48 @@ export function Matchmaking({
         )}
 
         {/* the scouting panels along the foot */}
-        <div className="tk-foot">
-          <Panel side="l" title={isTeam ? 'TIM KAMU' : 'PILOT WRC'} top={myTop} power={PWR(me)} area={ACCOUNT_REGION} badge={`${tier.name} ${['', 'I', 'II', 'III'][division]}`} badgeColor={tier.color} sub={`LV.${lv.level} · ${PLAYER_NAME}`} ready />
-          <div className="tk-stagecard">
-            <div className="tk-stagecard-k">STAGE</div>
-            <div className="tk-stagecard-t">STEEL TITANS ARENA</div>
-            <div className="tk-stagecard-img">{stageImg ? <img src={stageImg} alt="" draggable={false} /> : null}</div>
-            <div className="tk-stagecard-act">
-              {phase === 'search' && (
-                <>
-                  <button onClick={onCancel} className="tk-btn tk-btn-ghost">
-                    BATAL
+        {phase !== 'clash' && (
+          <div className="tk-foot">
+            <Panel side="l" title={isTeam ? 'TIM KAMU' : 'PILOT WRC'} top={myTop} power={PWR(me)} area={ACCOUNT_REGION} badge={`${tier.name} ${['', 'I', 'II', 'III'][division]}`} badgeColor={tier.color} sub={`LV.${lv.level} · ${PLAYER_NAME}`} ready />
+            <div className="tk-stagecard">
+              <div className="tk-stagecard-k">STAGE</div>
+              <div className="tk-stagecard-t">STEEL TITANS ARENA</div>
+              <div className="tk-stagecard-img">{stageImg ? <img src={stageImg} alt="" draggable={false} /> : null}</div>
+              <div className="tk-stagecard-act">
+                {phase === 'search' && (
+                  <>
+                    <button onClick={onCancel} className="tk-btn tk-btn-ghost">
+                      BATAL
+                    </button>
+                    <button
+                      onClick={() => {
+                        enterPhase('found');
+                        game?.uiCue('found');
+                      }}
+                      className="tk-btn"
+                    >
+                      PERCEPAT
+                    </button>
+                  </>
+                )}
+                {phase === 'found' && (
+                  <button onClick={() => enterPhase('lock')} className="tk-btn tk-btn-go">
+                    MASUK RING · ENTER
                   </button>
-                  <button
-                    onClick={() => {
-                      enterPhase('found');
-                      game?.uiCue('found');
-                    }}
-                    className="tk-btn"
-                  >
-                    PERCEPAT
-                  </button>
-                </>
-              )}
-              {phase === 'found' && (
-                <button onClick={() => enterPhase('lock')} className="tk-btn tk-btn-go">
-                  MASUK RING · ENTER
-                </button>
-              )}
-              {phase === 'lock' && (
-                <div className="tk-lock">
-                  MASUK RING <span className="tk-lock-bar" style={{ width: `${lockFrac * 100}%` }} />
-                </div>
-              )}
+                )}
+                {phase === 'lock' && (
+                  <div className="tk-lock">
+                    MASUK RING <span className="tk-lock-bar" style={{ width: `${lockFrac * 100}%` }} />
+                  </div>
+                )}
+              </div>
             </div>
+            <Panel side="r" title={found ? (isTourney ? `LAWAN · ${stage}` : isTeam ? 'TIM LAWAN' : 'PENANTANG') : 'MENCARI LAWAN'} top={found ? foeTop : null} power={found ? PWR(foe) : 0} area={found ? 'WRC CIRCUIT' : '—'} badge={found ? (ultra ? 'ULTRA' : opp.title) : '—'} badgeColor={found ? oppCol : '#6b7280'} sub={found ? `${opp.title}${opp2 ? ` · + ${opp2.name}` : ''}` : 'MENCOCOKKAN TIER & PING'} ready={found} />
           </div>
-          <Panel side="r" title={found ? (isTourney ? `LAWAN · ${stage}` : isTeam ? 'TIM LAWAN' : 'PENANTANG') : 'MENCARI LAWAN'} top={found ? foeTop : null} power={found ? PWR(foe) : 0} area={found ? 'WRC CIRCUIT' : '—'} badge={found ? (ultra ? 'ULTRA' : opp.title) : '—'} badgeColor={found ? oppCol : '#6b7280'} sub={found ? `${opp.title}${opp2 ? ` · + ${opp2.name}` : ''}` : 'MENCOCOKKAN TIER & PING'} ready={found} />
-        </div>
+        )}
       </div>
 
-      <div className="tk-tip">{TIPS[tip]}</div>
+      {phase !== 'clash' && <div className="tk-tip">{TIPS[tip]}</div>}
       <div className="tk-emblem">
         <Emblem size={44} />
       </div>

@@ -2195,3 +2195,63 @@ button.mw-ico:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
   45% { opacity: 0.0; }
   100% { opacity: 0; }
 }
+
+/* ====================================================================== REAL STEEL SIMULATOR (UNTUK REAL STELL BLM DI UPDATE) */
+.joint-label {
+  font: 600 10px/1 ui-sans-serif, system-ui, sans-serif;
+  color: #e0f2fe;
+  background: rgba(8, 47, 73, 0.82);
+  border: 1px solid rgba(34, 211, 238, 0.6);
+  padding: 2px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.phase-pop { animation: phasePopAnim 0.35s ease-out; }
+@keyframes phasePopAnim {
+  0% { transform: scale(0.7); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #22d3ee;
+  box-shadow: 0 0 10px #22d3ee;
+}
+.timeline::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #22d3ee;
+}
+.timeline::-webkit-slider-runnable-track { background: transparent; }
+.flash-hit {
+  background: radial-gradient(circle, transparent 55%, rgba(255, 255, 255, 0.08) 100%);
+  animation: flashOut 0.18s ease-out forwards;
+}
+.flash-clash {
+  background: radial-gradient(circle, transparent 50%, rgba(255, 255, 255, 0.12) 100%);
+  animation: flashOut 0.2s ease-out forwards;
+}
+@keyframes flashOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.clash-text span {
+  text-shadow: 0 0 20px #38bdf8, 0 0 40px #f97316, 4px 4px 0 #0f172a;
+  -webkit-text-stroke: 2px #0f172a;
+}
+.clash-text { animation: clashPop 1.6s ease-out forwards; }
+@keyframes clashPop {
+  0% { transform: scale(2.6) rotate(-8deg); opacity: 0; }
+  12% { transform: scale(0.9) rotate(-4deg); opacity: 1; }
+  20% { transform: scale(1.05) rotate(-4deg); }
+  75% { transform: scale(1) rotate(-4deg); opacity: 1; }
+  100% { transform: scale(1.15) rotate(-4deg); opacity: 0; }
+}
+

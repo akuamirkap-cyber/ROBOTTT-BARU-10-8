@@ -76,6 +76,7 @@ export interface MenuProps {
   allOverdrivePunch?: boolean;
   onAllOverdrivePunch?: (on: boolean) => void;
   onShowZeus?: () => void;
+  onShowRealSteelSim?: () => void;
 }
 
 const act = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => {
@@ -373,6 +374,7 @@ export function Menu({
   allOverdrivePunch = false,
   onAllOverdrivePunch,
   onShowZeus,
+  onShowRealSteelSim,
 }: MenuProps) {
   const [tab, setTab] = useState<MenuTab>('lobby');
   const [showProfile, setShowProfile] = useState(false);
@@ -562,6 +564,16 @@ export function Menu({
           </button>
 
           <div className="pointer-events-auto mw-icons">
+            {onShowRealSteelSim && (
+              <button
+                onClick={act(onShowRealSteelSim)}
+                className="mw-ico !w-auto !px-3.5 !bg-gradient-to-r !from-cyan-950 !via-sky-900 !to-cyan-950 border !border-cyan-400 text-cyan-300 hover:text-white hover:border-cyan-300 shadow-[0_0_16px_rgba(6,182,212,0.45)] flex items-center gap-1.5 font-display text-xs tracking-wider cursor-pointer"
+                title="Masuk ke Game Real Steel 3D (UNIT-A vs UNIT-B) - UNTUK REAL STELL BLM DI UPDATE.zip"
+              >
+                <span className="text-cyan-400 text-sm font-bold">🤖</span>
+                <span className="font-black text-sm">REAL STEEL SIMULATOR</span>
+              </button>
+            )}
             {onShowZeus && (
               <button
                 onClick={act(onShowZeus)}
@@ -648,6 +660,16 @@ export function Menu({
               </button>
             );
           })}
+          {onShowRealSteelSim && (
+            <button
+              onClick={act(onShowRealSteelSim)}
+              className="aaa-tab font-display border !border-cyan-400/80 !bg-cyan-950/80 text-cyan-300 hover:text-white hover:!bg-cyan-900 shadow-[0_0_15px_rgba(6,182,212,0.35)] flex items-center gap-1.5 px-3 cursor-pointer"
+              title="Masuk ke Game Real Steel 3D (UNTUK REAL STELL BLM DI UPDATE.zip)"
+            >
+              <span className="text-cyan-400">🤖</span>
+              <span className="font-black">REAL STEEL SIM</span>
+            </button>
+          )}
           {onShowZeus && (
             <button
               onClick={act(onShowZeus)}
@@ -662,6 +684,16 @@ export function Menu({
 
         {/* Zone 3: League Points, Camera Toggle, Difficulty & Integrated Sound Button */}
         <div className="pointer-events-auto flex items-center gap-2">
+          {onShowRealSteelSim && (
+            <button
+              onClick={act(onShowRealSteelSim)}
+              className="aaa-pill border-cyan-400/80 bg-cyan-950/80 text-cyan-300 hover:text-white hover:bg-cyan-900 shadow-[0_0_15px_rgba(6,182,212,0.3)] font-display tracking-wider cursor-pointer hidden lg:flex"
+              title="Masuk ke Game Real Steel 3D (UNTUK REAL STELL BLM DI UPDATE.zip)"
+            >
+              <span className="text-cyan-400 font-bold">🤖</span>
+              <span className="font-black">REAL STEEL SIM</span>
+            </button>
+          )}
           {onShowZeus && (
             <button
               onClick={act(onShowZeus)}
@@ -754,6 +786,15 @@ export function Menu({
             {t === 'arena' ? 'ARENA' : t === 'titan' ? 'GARASI' : t === 'controls' ? 'JURUS' : 'OPSI'}
           </button>
         ))}
+        {onShowRealSteelSim && (
+          <button
+            onClick={act(onShowRealSteelSim)}
+            className="aaa-tab font-display text-center border !border-cyan-400/80 !bg-cyan-950/80 text-cyan-300 font-black"
+            title="Buka Game Real Steel 3D (UNIT-A vs UNIT-B)"
+          >
+            🤖 REAL STEEL
+          </button>
+        )}
         {onShowZeus && (
           <button
             onClick={act(onShowZeus)}
@@ -799,6 +840,18 @@ export function Menu({
               );
             })}
             <div className="mw-sec font-display">BARAK</div>
+            {onShowRealSteelSim && (
+              <button
+                className="mw-item font-display !text-cyan-300 border-l-2 !border-cyan-400 hover:!text-cyan-100 hover:!bg-cyan-950/60 transition-all cursor-pointer"
+                onClick={act(onShowRealSteelSim)}
+                title="Buka Game Real Steel Robot Boxing 3D (UNTUK REAL STELL BLM DI UPDATE.zip)"
+              >
+                <span className="mw-item-t flex items-center gap-2">
+                  <span>🤖 REAL STEEL SIMULATOR</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/25 text-cyan-200 border border-cyan-400/30 font-mono">GAME BARU</span>
+                </span>
+              </button>
+            )}
             {onShowZeus && (
               <button
                 className="mw-item font-display !text-emerald-300 border-l-2 !border-emerald-400 hover:!text-emerald-100 hover:!bg-emerald-950/60 transition-all cursor-pointer"
@@ -873,6 +926,19 @@ export function Menu({
                 onStartMode(m);
               }}
             />
+            {onShowRealSteelSim && (
+              <button
+                onClick={act(onShowRealSteelSim)}
+                className="aaa-link !bg-gradient-to-r !from-cyan-950/90 !via-slate-900/90 !to-cyan-950/90 !border !border-cyan-400/80 !text-cyan-200 hover:!text-white hover:!border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.35)] cursor-pointer"
+                title="Buka Game Real Steel Robot Boxing 3D (UNTUK REAL STELL BLM DI UPDATE.zip)"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-cyan-400 font-bold text-base">🤖</span>
+                  <span className="font-display font-black tracking-wider">GAME REAL STEEL 3D (UNIT-A vs UNIT-B)</span>
+                </span>
+                <span className="aaa-link-arrow text-cyan-400">›</span>
+              </button>
+            )}
             <button onClick={act(() => setTab('arena'))} className="aaa-link">
               <span>ROSTER LAWAN &amp; TUNING AI</span>
               <span className="aaa-link-arrow">›</span>

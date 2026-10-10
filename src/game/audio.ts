@@ -326,6 +326,10 @@ export class Sfx {
     this.noise(0.75 + 0.35 * power, 'lowpass', 420, 45, 0.65 * power, 0.02, 0.85, pb);
   }
 
+  odPunch(p = 1.0) {
+    this.overdriveHit(p);
+  }
+
   hit(p: number) {
     if (this.allOverdrivePunch) {
       this.overdriveHit(p);

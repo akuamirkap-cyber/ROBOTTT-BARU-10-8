@@ -9,6 +9,7 @@ import { Matchmaking } from './ui/Matchmaking';
 import { Bracket } from './ui/Bracket';
 import { usePortrait } from './ui/Profile';
 import ZeusViewer from './zeus/ZeusViewer';
+import RealSteelGame from './sim/RealSteelGame';
 
 const LS_KEY = 'steel-titans-unlocked';
 
@@ -202,6 +203,7 @@ export default function App() {
   const [stage, setStage] = useState<null | 'bracket' | 'matchmaking'>(null);
   const portrait = usePortrait(game, hud?.helmetSkin ?? 0, hud?.gloveSkin ?? 0, hud?.armorSkin ?? 0);
   const [showZeus, setShowZeus] = useState(false);
+  const [showRealSteelSim, setShowRealSteelSim] = useState(false);
 
   const openZeus = () => {
     gameRef.current?.setMuted(true);
@@ -214,6 +216,18 @@ export default function App() {
       gameRef.current?.setMuted(false);
     }
     gameRef.current?.reloadZeus();
+  };
+
+  const openRealSteelSim = () => {
+    gameRef.current?.setMuted(true);
+    setShowRealSteelSim(true);
+  };
+
+  const closeRealSteelSim = () => {
+    setShowRealSteelSim(false);
+    if (!muted) {
+      gameRef.current?.setMuted(false);
+    }
   };
 
   /** drop the bell: the current bout of a series goes into the ring */
@@ -346,6 +360,7 @@ export default function App() {
           allOverdrivePunch={allOdNow}
           onAllOverdrivePunch={pickAllOd}
           onShowZeus={openZeus}
+          onShowRealSteelSim={openRealSteelSim}
           game={game}
           hud={hud}
         />
@@ -466,6 +481,7 @@ export default function App() {
           allOverdrivePunch={allOdNow}
           onAllOverdrivePunch={pickAllOd}
           onShowZeus={openZeus}
+          onShowRealSteelSim={openRealSteelSim}
           onResume={() => game?.togglePause()}
           onMenu={() => {
             game?.togglePause();
@@ -595,6 +611,12 @@ export default function App() {
       {showZeus && (
         <div className="fixed inset-0 z-50">
           <ZeusViewer onBack={closeZeus} />
+        </div>
+      )}
+
+      {showRealSteelSim && (
+        <div className="fixed inset-0 z-50">
+          <RealSteelGame onBack={closeRealSteelSim} />
         </div>
       )}
     </div>

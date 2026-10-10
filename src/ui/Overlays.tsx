@@ -40,10 +40,12 @@ export function PauseMenu({
   allOverdrivePunch,
   onAllOverdrivePunch,
   onShowZeus,
+  onShowRealSteelSim,
 }: {
   onResume: () => void;
   onMenu: () => void;
   onShowZeus?: () => void;
+  onShowRealSteelSim?: () => void;
   sfx: SfxProfile;
   onSfx: (id: SfxProfile) => void;
   fw: number;
@@ -122,10 +124,18 @@ export function PauseMenu({
         <div className="mt-4">
           <TransitionPicker value={trans} onPick={onTrans} />
         </div>
+        {onShowRealSteelSim && (
+          <button
+            onClick={onShowRealSteelSim}
+            className="w-full cut mt-4 px-4 py-2.5 font-display text-lg tracking-[0.14em] border border-cyan-400/80 bg-gradient-to-r from-cyan-950 via-sky-900 to-cyan-950 text-cyan-200 hover:text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>🤖 REAL STEEL SIMULATOR (UNTUK REAL STEEL BLM UPDATE)</span>
+          </button>
+        )}
         {onShowZeus && (
           <button
             onClick={onShowZeus}
-            className="w-full cut mt-4 px-4 py-2.5 font-display text-lg tracking-[0.14em] border border-emerald-400/80 bg-gradient-to-r from-emerald-950 via-green-900 to-emerald-950 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(34,255,68,0.3)] flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full cut mt-2.5 px-4 py-2.5 font-display text-lg tracking-[0.14em] border border-emerald-400/80 bg-gradient-to-r from-emerald-950 via-green-900 to-emerald-950 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(34,255,68,0.3)] flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>⚡ TAMPILKAN ZEUS (3D ASSET & EDITOR)</span>
           </button>

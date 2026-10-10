@@ -820,6 +820,31 @@ export const vsClashState = (side: 'hero' | 'foe', t: number, seq = 1): ClashPos
 /** Measured contact point retained for the offline rig diagnostics; the live matchmaking face-off has no impact FX. */
 export const VS_CLASH_POINT = { x: 0.16, y: 5.92, z: 1.37 };
 
+/**
+ * Cinematic slow-motion time-scale curve for Clash Straight, matching Robot Boxing 3D Clash Simulation:
+ * Full speed on windup, deep slow-down into impact (0.13x speed), slow-mo locked grind, and smooth push-off return.
+ */
+export const vsClashTimeScale = (t: number): number => {
+  const H = VS_CLASH_HIT; // 1.18
+  if (t < H - 0.12) return 1.0;
+  if (t < H + 0.02) {
+    const u = (t - (H - 0.12)) / 0.14;
+    return 1.0 + (0.13 - 1.0) * (u * u * (3 - 2 * u));
+  }
+  if (t < H + 0.14) {
+    return 0.13; // Super slow-mo right at knuckle collision
+  }
+  if (t < H + 0.44) {
+    const u = (t - (H + 0.14)) / 0.30;
+    return 0.13 + 0.10 * u; // Locked knuckle grind & sparks
+  }
+  if (t < H + 0.70) {
+    const u = (t - (H + 0.44)) / 0.26;
+    return 0.23 + (1.0 - 0.23) * (u * u * (3 - 2 * u)); // Smooth ramp up on push-off
+  }
+  return 1.0;
+};
+
 // ------------------------------------------------------------------ THE TRANSITION (menu → ring) SETTING
 /**
  * HOW THE LOBBY HANDS OVER TO THE RING. The short VS countdown ends with the selected transition; it covers the
@@ -1637,8 +1662,14 @@ export class Game {
   private menuHero: Robot;
   private hangar: Hangar;
   /** the VS screen: the opponent (and the 2v2 partner) standing opposite the hero in the hangar */
-  private vs: { idx: number; idx2: number; stage: 'search' | 'found' | 'lock' } | null = null;
+  private vs: { idx: number; idx2: number; stage: 'search' | 'found' | 'lock' | 'clash' } | null = null;
   private vsPunch = 0; // brief lens punch-in on the opponent reveal, decays before the countdown
+  private vsClashTime = 0; // playback clock for the matchmaking Clash Straight
+  private vsClashHitPlayed = false; // one-shot impact sound and spark burst
+  private vsClashWhooshPlayed = false;
+  private vsClashReleasePlayed = false;
+  private vsClashGrindTimer = 0;
+  private vsClashContact = new THREE.Vector3();
   /** Preserve each opponent's selected chassis scale while it stands on the neutral VS stage portrait. */
   private vsScaleBackup = new Map<Robot, number>();
   private vsFoe: Fighter | null = null;
@@ -2733,7 +2764,7 @@ export class Game {
    * THE MATCHMAKING STAGE: the player takes the left mark, the opponent (and in 2v2 the second Titan) takes the
    * right mark, and both keep the selected menu pose while facing inward. `found` reveals the opponent; null exits.
    */
-  setVsMode(idx: number | null, idx2 = -1, stage: 'search' | 'found' | 'lock' = 'search') {
+  setVsMode(idx: number | null, idx2 = -1, stage: 'search' | 'found' | 'lock' | 'clash' = 'search') {
     if (idx === null) {
       for (const f of [this.vsFoe, this.vsFoe2]) {
         if (!f) continue;
@@ -2822,9 +2853,25 @@ export class Game {
       } else if (stage === 'lock') {
         this.vsPunch = 0.7;
         this.sfx.ready();
+      } else if (stage === 'clash') {
+        this.vsClashTime = 0;
+        this.vsClashHitPlayed = false;
+        this.vsClashWhooshPlayed = false;
+        this.vsClashReleasePlayed = false;
+        this.vsClashGrindTimer = 0;
+        this.vsClashContact.set(0, 0, 0);
+        this.vsPunch = 1.0;
       }
     }
     this.vs = { idx, idx2, stage };
+  }
+
+  getVsClashTime(): number {
+    return this.vsClashTime;
+  }
+
+  isVsClashComplete(): boolean {
+    return this.vs?.stage === 'clash' && this.vsClashTime >= 2.05;
   }
 
   getMenuCamMode() {
@@ -7205,11 +7252,149 @@ export class Game {
     };
   }
 
+  private clashAnimState(c: ClashPose, t: number) {
+    return {
+      arms: c.arms,
+      twist: c.twist,
+      lean: c.lean,
+      lunge: c.lunge,
+      dip: c.dip,
+      roll: c.roll,
+      vf: 0,
+      vl: 0,
+      af: 0,
+      al: 0,
+      yawRate: 0,
+      air: 0,
+      hit: 0,
+      hitSign: 1,
+      hitUp: 0,
+      fall: 0,
+      time: t,
+      glow: c.glow,
+      flash: c.shock,
+      tilt: 0,
+      dash: 0,
+      dashF: 0,
+      dashL: 1,
+      lookX: c.lookX,
+      lookY: c.lookY,
+      headYaw: c.head,
+      strike: c.strike,
+      strikePow: c.pow,
+      punchFoot: c.punch,
+      punchSeq: c.punchSeq,
+      punchZ: c.punchZ,
+      punchX: c.punchX,
+      punchDur: c.punchDur,
+    };
+  }
+
   private animateMenuHero(dt: number) {
     if (!this.menuHero || this.phase !== 'menu') return;
     const t = this.time;
     this.hangar.update(t);
     if (this.vs) {
+      if (this.vs.stage === 'clash') {
+        const ct = this.vsClashTime;
+        const timeScale = vsClashTimeScale(ct);
+        this.vsClashTime += dt * timeScale;
+
+        const ch = vsClashState('hero', ct);
+        const cf = vsClashState('foe', ct);
+
+        const heroX = HANGAR_POS.x;
+        const heroZ = HANGAR_POS.z;
+        const sep = VS_STAGE_SEP;
+
+        // Position both fighters on the VS stage and rotate to face each other squarely into the punch
+        this.menuHero.root.position.set(heroX - sep, 0, heroZ);
+        this.menuHero.root.rotation.y = VS_PLAYER_YAW + ch.yaw;
+
+        if (this.vsFoe) {
+          this.vsFoe.robot.root.position.set(heroX + sep, 0, heroZ);
+          this.vsFoe.robot.root.rotation.y = -(VS_PLAYER_YAW + cf.yaw);
+        }
+        if (this.vsFoe2) {
+          this.vsFoe2.robot.root.visible = false;
+        }
+
+        const heroState = this.clashAnimState(ch, ct);
+        const foeState = this.clashAnimState(cf, ct);
+        this.menuHero.animate(heroState, dt);
+        if (this.vsFoe) this.vsFoe.robot.animate(foeState, dt);
+
+        // Update real fist contact point in world coordinates
+        this.menuHero.root.updateMatrixWorld(true);
+        if (this.vsFoe) this.vsFoe.robot.root.updateMatrixWorld(true);
+
+        const pHero = new THREE.Vector3();
+        const pFoe = new THREE.Vector3();
+        this.menuHero.fists[1].getWorldPosition(pHero);
+        if (this.vsFoe) {
+          this.vsFoe.robot.fists[1].getWorldPosition(pFoe);
+        } else {
+          pFoe.copy(pHero);
+          pFoe.x = heroX + VS_CLASH_POINT.x;
+        }
+
+        const contactP = pHero.clone().lerp(pFoe, 0.5);
+        if (contactP.y < 2.0) {
+          contactP.set(heroX + VS_CLASH_POINT.x, HANGAR_POS.y + VS_CLASH_POINT.y, heroZ + VS_CLASH_POINT.z);
+        }
+        this.vsClashContact.copy(contactP);
+
+        // 1. Whoosh as fists swing forward
+        if (!this.vsClashWhooshPlayed && ct >= 0.76) {
+          this.vsClashWhooshPlayed = true;
+          this.sfx.whoosh(1.3);
+        }
+
+        // 2. KNUCKLE COLLISION IMPACT (at VS_CLASH_HIT = 1.18)
+        if (!this.vsClashHitPlayed && ct >= VS_CLASH_HIT) {
+          this.vsClashHitPlayed = true;
+          this.fovKick = 8.0;
+          this.trauma = 0.85;
+          this.camBump = 0.65;
+          this.sfx.overdriveHit(1.5);
+          this.sfx.crackle(1.2);
+
+          // Massive sparks disc perpendicular to the punch line
+          this.fx.spark(contactP, 60, 16, 0xffd27a, new THREE.Vector3(0, 1.2, 0), 0.5, 1.8, 16);
+          this.fx.spark(contactP, 40, 12, 0xffffff, new THREE.Vector3(0, 1.0, 0), 0.4, 1.4, 14);
+          const colHero = this.menuHero.ctx?.style?.glow ?? 0x38bdf8;
+          const colFoe = this.vsFoe?.robot.ctx?.style?.glow ?? 0xef4444;
+          this.fx.spark(contactP, 25, 14, colHero, new THREE.Vector3(1, 0.4, 0), 0.4, 1.2, 14);
+          this.fx.spark(contactP, 25, 14, colFoe, new THREE.Vector3(-1, 0.4, 0), 0.4, 1.2, 14);
+
+          // 3D Sonic Shockwave Ring + 4-Point Starburst Flare right at the knuckle collision
+          this.fx.impactWave(contactP, new THREE.Vector3(1, 0, 0), 0xffffff, 4.4, 0.35, 0.45);
+          this.fx.flash(contactP, 5.2, 0xfff0c0, 0.28);
+
+          // Dust at both feet driving into the ground
+          this.fx.spark(new THREE.Vector3(heroX - sep * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
+          this.fx.spark(new THREE.Vector3(heroX + sep * 0.7, 0.1, heroZ), 15, 3.5, 0x999999, new THREE.Vector3(0, 0.8, 0), 0.9, 0.6, 6);
+        }
+
+        // 3. Grinding sparks & servo tension while fists are locked
+        if (ct >= VS_CLASH_HIT + 0.04 && ct <= VS_CLASH_HIT + 0.44) {
+          this.vsClashGrindTimer += dt;
+          if (this.vsClashGrindTimer >= 0.055) {
+            this.vsClashGrindTimer = 0;
+            this.fx.spark(contactP, 5, 8 + Math.random() * 4, 0xffe27a, new THREE.Vector3((Math.random() - 0.5) * 0.5, 1.2, (Math.random() - 0.5) * 0.8), 0.5, 0.28, 12);
+            if (Math.random() < 0.35) this.sfx.crackle(0.6);
+          }
+        }
+
+        // 4. Push-off release & separation
+        if (!this.vsClashReleasePlayed && ct >= VS_CLASH_HIT + 0.46) {
+          this.vsClashReleasePlayed = true;
+          this.fx.spark(contactP, 24, 10, 0xfff0aa, new THREE.Vector3(0, 0.8, 0), 0.6, 0.8, 14);
+          this.sfx.cornerPadHit();
+        }
+
+        return;
+      }
       // Reuse the menu's currently selected pose, freeze it to one frame, and mirror it across the centre line.
       // Opposite root yaws make the player face right and the opponent face left without any idle body bob.
       const playerPose = this.heroAnimState(this.heroPose, t, 0, 0, false, true);
@@ -8119,32 +8304,73 @@ export class Game {
       }
 
       if (this.menuCamMode !== 'arena') {
-        // THE HANGAR SHOWCASE — zero shake. 'hero' = the lobby: waist up, the machine filling the frame;
-        // 'full' = the garage: head to boots; the VS stage: both Titans chest-up, facing inward over the menu pose.
-        this.trauma = 0;
-        this.camBump = 0;
-        this.camPush = 0;
-        this.camRoll = 0;
-        this.fovKick = 0;
+        const inClash = this.vs?.stage === 'clash';
+        if (!inClash) {
+          this.trauma = 0;
+          this.camBump = 0;
+          this.camPush = 0;
+          this.camRoll = 0;
+          this.fovKick = 0;
+        }
         const distScale = aspect < 0.75 ? Math.min(1.28, 0.75 / aspect) : 1.0;
         if (this.vs) {
           const sep = VS_STAGE_SEP;
           const fit = aspect < 1.5 ? 1.5 / Math.max(0.6, aspect) : 1;
           const punch = this.vsPunch * this.vsPunch;
-          // Hold a steady two-fighter portrait through the shorter 3–2–1 countdown; the ring transition handles the cut.
-          const camDist = 9.6 * fit * (1 - punch * 0.07);
-          this.menuHero.root.position.set(heroX - sep, 0, heroZ);
-          this.menuHero.root.rotation.y = VS_PLAYER_YAW;
-          const foes = [this.vsFoe, this.vsFoe2];
-          foes.forEach((f, i) => {
-            if (!f) return;
-            const second = i === 1;
-            f.robot.root.position.set(heroX + sep + (second ? 2.4 : 0), 0, heroZ - (second ? 2.6 : 0));
-            f.robot.root.rotation.y = VS_OPPONENT_YAW - (second ? 0.15 : 0);
-            f.robot.root.visible = this.vs!.stage !== 'search';
-          });
-          tp = new THREE.Vector3(heroX, 5.55 - punch * 0.12, heroZ + camDist);
-          tl = new THREE.Vector3(heroX, 5.45, heroZ);
+
+          if (inClash) {
+            const ct = this.vsClashTime;
+            const H = VS_CLASH_HIT;
+            const contactP = this.vsClashContact.lengthSq() > 10 ? this.vsClashContact : new THREE.Vector3(heroX + VS_CLASH_POINT.x, HANGAR_POS.y + VS_CLASH_POINT.y, heroZ + VS_CLASH_POINT.z);
+            const cX = contactP.x;
+            const cY = contactP.y;
+            const cZ = contactP.z;
+
+            // Camera keyframes matching Clash Simulation (src/sim/engine.ts cinematicCam):
+            // Dynamic diagonal low-angle looking up into the colliding right gloves, pushing into extreme close-up during knuckle lock
+            const CINE_VS: { t: number; pos: [number, number, number]; look: [number, number, number] }[] = [
+              { t: 0, pos: [heroX, 5.55, heroZ + 9.6 * fit], look: [heroX, 5.45, heroZ] },
+              { t: H - 0.75, pos: [cX + 3.8 * fit, 5.65, cZ + 5.2 * fit], look: [cX, cY - 0.35, cZ] },
+              { t: H - 0.02, pos: [cX + 1.85 * fit, 5.75, cZ + 3.4 * fit], look: [cX, cY, cZ] },
+              { t: H + 0.55, pos: [cX + 0.95 * fit, 5.80, cZ + 2.85 * fit], look: [cX, cY, cZ] },
+              { t: H + 1.10, pos: [cX + 0.40 * fit, 5.90, cZ + 5.6 * fit], look: [cX, cY - 0.5, cZ] },
+              { t: H + 1.90, pos: [heroX, 5.55, heroZ + 9.6 * fit], look: [heroX, 5.45, heroZ] },
+            ];
+
+            let cIdx = 0;
+            while (cIdx < CINE_VS.length - 2 && ct > CINE_VS[cIdx + 1].t) cIdx++;
+            const A = CINE_VS[cIdx];
+            const B = CINE_VS[cIdx + 1];
+            const k = Math.max(0, Math.min(1, (ct - A.t) / Math.max(0.001, B.t - A.t)));
+            const smoothK = k * k * (3 - 2 * k);
+
+            tp = new THREE.Vector3(
+              A.pos[0] + (B.pos[0] - A.pos[0]) * smoothK,
+              A.pos[1] + (B.pos[1] - A.pos[1]) * smoothK,
+              A.pos[2] + (B.pos[2] - A.pos[2]) * smoothK
+            );
+            tl = new THREE.Vector3(
+              A.look[0] + (B.look[0] - A.look[0]) * smoothK,
+              A.look[1] + (B.look[1] - A.look[1]) * smoothK,
+              A.look[2] + (B.look[2] - A.look[2]) * smoothK
+            );
+            direct = false; // butter-smooth cinematic operator camera
+          } else {
+            this.menuHero.root.position.set(heroX - sep, 0, heroZ);
+            this.menuHero.root.rotation.y = VS_PLAYER_YAW;
+            const foes = [this.vsFoe, this.vsFoe2];
+            foes.forEach((f, i) => {
+              if (!f) return;
+              const second = i === 1;
+              f.robot.root.position.set(heroX + sep + (second ? 2.4 : 0), 0, heroZ - (second ? 2.6 : 0));
+              f.robot.root.rotation.y = VS_OPPONENT_YAW - (second ? 0.15 : 0);
+              f.robot.root.visible = this.vs!.stage !== 'search';
+            });
+            const camDist = 9.6 * fit * (1 - punch * 0.07);
+            tp = new THREE.Vector3(heroX, 5.55 - punch * 0.12, heroZ + camDist);
+            tl = new THREE.Vector3(heroX, 5.45, heroZ);
+            direct = true;
+          }
         } else if (this.menuCamMode === 'full') {
           const zMul = this.menuHero?.isZeus ? 1.12 : 1.0;
           const camDist = 13.0 * distScale * zMul;
@@ -8161,8 +8387,10 @@ export class Game {
           tp = new THREE.Vector3(heroX + 0.15 + drift, 5.25 + yOff + Math.sin(t * 0.17) * 0.06, heroZ + camDist);
           tl = new THREE.Vector3(heroX + 0.15 + drift * 0.4, 5.65 + yOff, heroZ);
         }
-        direct = true;
-        this.camRoll = 0;
+        if (!inClash) {
+          direct = true;
+          this.camRoll = 0;
+        }
       } else {
         // Arena Action Camera: director cuts between cinematic shots of the demo fight
         this.shotT += raw;
@@ -8289,7 +8517,9 @@ export class Game {
     if (!this.cine && Math.abs(this.cineFov - this.baseFov) < 0.2) this.cineFov = this.baseFov; // fully handed back
     const gameFov = cineK > 0 || this.cine ? this.cineFov : this.baseFov;
     const clampedKick = this.phase === 'fight' ? Math.max(-4.5, this.fovKick) : this.fovKick;
-    cam.fov = (this.phase === 'menu' ? (this.menuCamMode !== 'arena' ? (this.vs ? 30 : 38) : this.shot.fov) : gameFov) + clampedKick + (cineK > 0 ? 0 : this.runFov);
+    const inClash = this.vs?.stage === 'clash';
+    const clashZoom = inClash ? (this.vsClashTime >= VS_CLASH_HIT - 0.25 && this.vsClashTime <= VS_CLASH_HIT + 0.85 ? -3.0 : 0) : 0;
+    cam.fov = (this.phase === 'menu' ? (this.menuCamMode !== 'arena' ? (this.vs ? 30 + clashZoom : 38) : this.shot.fov) : gameFov) + clampedKick + (cineK > 0 ? 0 : this.runFov);
 
     // ---- PRE-LERP OMNIDIRECTIONAL FRAMING: fit target shot (tp, tl) BEFORE smoothing so the camera NEVER jitters or clips! ----
     const safeFov = Math.max(28, cam.fov - 5.5);
@@ -8348,6 +8578,9 @@ export class Game {
       this.camPos.copy(tp);
       this.camLook.copy(tl);
       if (this.phase !== 'intro') this.camInit = true;
+    } else if (inClash) {
+      this.camPos.lerp(tp, 1 - Math.exp(-14 * raw));
+      this.camLook.lerp(tl, 1 - Math.exp(-14 * raw));
     } else if (cineK > 0) {
       // a real operator grabbing the moment: fast, but never a teleport
       this.camPos.lerp(tp, 1 - Math.exp(-16 * raw));
@@ -8383,7 +8616,7 @@ export class Game {
     }
 
     cam.position.copy(this.camPos);
-    if (this.phase !== 'menu' || this.menuCamMode === 'arena') {
+    if (this.phase !== 'menu' || this.menuCamMode === 'arena' || inClash) {
       // 3D Critically-Damped Spring-Damper for Heavy Robot Impact Recoil (100% smooth, ZERO random jitter!)
       const stepDt = Math.min(0.033, raw);
       const springK = 185;
