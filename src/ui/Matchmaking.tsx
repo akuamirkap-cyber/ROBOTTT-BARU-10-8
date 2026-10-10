@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, VS_LOCK_BEAT, VS_LOCK_BEATS, VS_LOCK_DUR, smartDef, ultraDef, type Game, type OpponentDef } from '../game/Game';
+import { OPPONENTS, PLAYER_NAME, ULTRA_COLOR, VS_LOCK_BEAT, VS_LOCK_BEATS, smartDef, ultraDef, type Game, type OpponentDef } from '../game/Game';
 import { ACCOUNT_NAME, ACCOUNT_REGION, TOURNEY_STAGES, levelOf, modeOf, tierOf, type Profile, type Series } from '../game/progress';
 import { Emblem } from './Emblem';
 
@@ -140,7 +140,7 @@ export function Matchmaking({
       } else if (phase === 'found' && ph >= 2.4) {
         enterPhase('lock');
       } else if (phase === 'lock') {
-        // A brisk 3–2–1 plays over one clock, then transitions into the Clash Straight animation
+        // Countdown 3-2-1: As soon as it counts to 1, clash animation starts immediately
         const c = Math.max(0, VS_LOCK_BEATS - Math.floor(ph / VS_LOCK_BEAT));
         if (c !== last) {
           last = c;
@@ -149,20 +149,20 @@ export function Matchmaking({
             game?.uiCue('lock');
           }
         }
-        if (ph >= VS_LOCK_DUR) {
+        if (c <= 1 || ph >= VS_LOCK_BEAT * 2) {
           enterPhase('clash');
         }
       } else if (phase === 'clash') {
         // Clash Straight sequence plays with dynamic camera angle (100% matched to Real Steel Simulator)
-        // Impact occurs at ~1.32s of animation time
-        // Fists locked and grinding until push-off at ~1.92s
-        // Full sequence finishes at ~3.25s animation time (approx 4.6s real time with deep slow-mo)
-        const isClashDone = game?.isVsClashComplete() || ph >= 4.75;
+        // Impact occurs at ~0.85s of animation time
+        // Fists locked and grinding until push-off at ~1.65s
+        // Full sequence finishes cleanly with zero flash and smooth cinematic framing
+        const isClashDone = game?.isVsClashComplete() || ph >= 3.8;
         if (isClashDone && !transitionSent) {
           transitionSent = true;
           transitionRef.current?.();
         }
-        if ((ph >= 5.1 || (transitionSent && ph >= 4.8)) && !readySent) {
+        if ((ph >= 4.0 || (transitionSent && ph >= 3.6)) && !readySent) {
           readySent = true;
           game?.uiCue('go');
           window.clearInterval(id);
@@ -199,7 +199,7 @@ export function Matchmaking({
     <div className={`tk-root pointer-events-auto absolute inset-0 z-40 overflow-hidden text-white tk-${phase}`}>
       <div className="tk-speed" />
       <div className="tk-grid" />
-      {found && <div className="tk-flash" key={`fl-${phase}`} />}
+      {phase === 'found' && <div className="tk-flash" key="fl-found" />}
       {phase === 'found' && (
         <>
           <div className="tk-split tk-split-l" />
@@ -214,22 +214,17 @@ export function Matchmaking({
       <div className="pointer-events-none absolute inset-0 z-30">
         <div className="absolute left-0 right-0 top-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
         <div className="absolute bottom-0 left-0 right-0 bg-black transition-all duration-500 ease-out" style={{ height: phase === 'clash' ? '9.5vh' : 0 }} />
-        {phase === 'clash' && pt >= 1.0 && pt <= 4.2 && (
+        {phase === 'clash' && pt >= 0.7 && pt <= 3.2 && (
           <div className="absolute left-1/2 top-[11.5vh] -translate-x-1/2 rounded border border-red-500/70 bg-black/70 px-3.5 py-0.5 font-mono text-xs tracking-[0.3em] text-red-400 drop-shadow">
             ● SLOW-MO CLASH
           </div>
         )}
       </div>
 
-      {/* Screen flash on knuckle impact */}
-      {phase === 'clash' && pt >= 1.25 && pt <= 1.55 && (
-        <div className="flash-clash pointer-events-none absolute inset-0 z-50" />
-      )}
-
       {/* Clash Straight banner */}
-      {phase === 'clash' && (
+      {phase === 'clash' && pt >= 0.50 && (
         <div className="pointer-events-none absolute left-1/2 top-[16vh] z-50 flex -translate-x-1/2 flex-col items-center gap-1.5 transition-all duration-300">
-          <div className="phase-pop flex items-center gap-3 rounded-full border border-yellow-200 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 px-7 py-2 font-display text-2xl tracking-widest text-white shadow-[0_0_40px_rgba(239,68,68,0.8)] md:text-3xl">
+          <div className="phase-pop flex items-center gap-3 rounded-full border border-yellow-200 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 px-7 py-2 font-display text-2xl tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.6)] md:text-3xl">
             <span>⚔️</span>
             <span className="font-black drop-shadow">CLASH STRAIGHT!</span>
             <span>⚔️</span>
@@ -281,10 +276,10 @@ export function Matchmaking({
             <span className="tk-vs">VS</span>
           </div>
         )}
-        {phase === 'lock' && (
-          <div className="tk-countdown" key={count}>
+        {(phase === 'lock' || (phase === 'clash' && pt < 0.65)) && (
+          <div className="tk-countdown" key={phase === 'clash' ? 1 : count}>
             <span className="tk-count-ring" />
-            <span className="tk-count">{count}</span>
+            <span className="tk-count">{phase === 'clash' ? 1 : count}</span>
             <span className="tk-count-k">MASUK RING</span>
           </div>
         )}

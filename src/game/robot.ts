@@ -401,10 +401,19 @@ export class Robot {
       if (this.tv.y < minY) minY = this.tv.y;
     }
     const margin = this.floorY + 0.04;
+    // Check boot soles so feet never penetrate or sink below the floor surface
+    if (!floorPose && !lying) {
+      const soleThick = S * (this.root.userData.zeusMetrics?.SOLE ?? SOLE);
+      for (let i = 0; i < 2; i++) {
+        this.footJ[i].getWorldPosition(this.tv);
+        const bootBottomY = this.tv.y - soleThick;
+        if (bootBottomY < minY) minY = bootBottomY;
+      }
+    }
     // The lift itself is filtered: it comes up instantly (nothing ever shows through the canvas) but it comes
     // DOWN slowly. A falling / lying body's lowest point jumps between a fist, an elbow, a shoulder and the
     // head as the limbs settle — applied raw, every one of those jumps hopped the whole machine up and down (the
-    // "shivering" knock-down). Standing, the IK plants the feet and this never engages.
+    // "shivering" knock-down).
     const want = minY < margin ? (margin - minY) / S : 0;
     if (dt <= 0 || want > this.groundLift) this.groundLift = want; // up: hard (nothing ever goes through the canvas)
     else this.groundLift += (want - this.groundLift) * (1 - Math.exp(-9 * dt)); // down: eased
@@ -1464,7 +1473,8 @@ export class Robot {
       const s = i === 0 ? 1 : -1;
       const f = this.feet[i];
       const hipPos = this.hipJ[i].position;
-      this.tv.set(f.curX, this.root.position.y + S * (ankleH + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0)), f.curZ);
+      const baseFootY = Math.max(this.floorY, this.root.position.y);
+      this.tv.set(f.curX, baseFootY + S * (ankleH + ankleLift(f.pitch) + (f.stepping ? swingArc(f.u) * f.lift : 0)), f.curZ);
       const tgtW = this.tv.clone();
       this.pelvis.worldToLocal(this.tv);
       const xt = this.tv.x - hipPos.x;
