@@ -2,9 +2,8 @@ import * as THREE from 'three';
 import { buildShow, type Show } from './arenaShow';
 import { buildCrowd, type Spot } from './crowd';
 import { buildProps } from './arenaProps';
-import { buildSheen } from './mirror';
 import { buildSpotRig } from './spotlights';
-import { markReflect, REFLECT_LIGHTS_LAYER } from './layers';
+import { markReflect } from './layers';
 import { AtmosphereEffects } from './AtmosphereEffects';
 import {
   ROWS_PER_TIER,

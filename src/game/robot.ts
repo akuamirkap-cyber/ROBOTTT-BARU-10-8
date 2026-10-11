@@ -118,6 +118,8 @@ interface Foot {
   dur: number;
   lift: number;
   err: number;
+  flx: number;
+  flz: number;
   pitch: number;
   curX: number;
   curZ: number; // current (possibly mid-step) world position
@@ -177,7 +179,7 @@ export class Robot {
   readonly stride = { arm: 0, swing: 0 };
 
   // procedural footwork
-  private feet: Foot[] = [0, 1].map(() => ({ x: 0, z: 0, fx: 0, fz: 0, stepping: false, u: 0, dur: 0.2, lift: 0, err: 0, pitch: 0, curX: 0, curZ: 0, lag: 0, yawOff: 0, stT: 0, gaitStep: false, shuffle: false, punchStep: false, tx: 0, tz: 0, p0: 0, follow: 0 }));
+  private feet: Foot[] = [0, 1].map(() => ({ x: 0, z: 0, fx: 0, fz: 0, flx: 0, flz: 0, stepping: false, u: 0, dur: 0.2, lift: 0, err: 0, pitch: 0, curX: 0, curZ: 0, lag: 0, yawOff: 0, stT: 0, gaitStep: false, shuffle: false, punchStep: false, tx: 0, tz: 0, p0: 0, follow: 0 }));
   private needSnap = true;
   private ikW = 1;
   private airW = 0; // smoothed 'airborne' weight so leg poses blend instead of snapping
@@ -255,6 +257,14 @@ export class Robot {
 
   get isZeus() {
     return !!(this.ctx?.style?.isZeus100 || (this.ctx?.style?.helmetSkin === 1 && this.ctx?.style?.armorSkin === 1));
+  }
+
+  get isAtlas() {
+    return !this.isZeus;
+  }
+
+  get isAtom() {
+    return this.isAtlas;
   }
 
   /** the base armour colour (used to tint the chips a blow knocks off the plating) */
@@ -517,6 +527,14 @@ export class Robot {
     this.runK += (runU * runU * (3 - 2 * runU) - this.runK) * (1 - Math.exp(-10 * dt));
     const run = this.runK;
 
+    // Step length grows with speed (pro boxer gait: agile, grounded, never sliding)
+    const walkStride = clamp((0.5 + 0.34 * spdRaw) * (this.back ? 0.88 : 1), 0.9, 2.5);
+    const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
+    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.2, 6.0), run);
+    const HALF_MAX = 1.85;
+    const duty = clamp(Math.min(lerp(0.6, 0.38, run) - clamp((spdRaw - 11.5) / 45, 0, 0.1), HALF_MAX / strideL), 0.2, 0.66);
+    const half = duty * strideL;
+
     // boxing stance (used when standing still / skidding). dip and lunge are filtered first: a punch or a landing
     // spikes both of them, and letting that through would jerk the stance the planted feet are measured against.
     this.dipK += (a.dip - this.dipK) * (1 - Math.exp(-14 * dt));
@@ -546,6 +564,8 @@ export class Robot {
         const w = toW(ideal[i].x, ideal[i].z);
         f.x = f.curX = w.x;
         f.z = f.curZ = w.z;
+        f.flx = ideal[i].x;
+        f.flz = ideal[i].z;
         f.stepping = false;
         f.lift = 0;
         f.pitch = restP[i];
@@ -565,6 +585,7 @@ export class Robot {
     }
 
     // ---- boxing dash: a low, committed lead step followed by the rear foot ----
+    // ---- boxing dash: a swift, athletic lead step followed by the rear foot ----
     const dashing = a.dash > 0.5 && this.ikW > 0.5;
     if (dashing && !this.dashOn) {
       this.dashOn = true;
@@ -577,73 +598,73 @@ export class Robot {
       this.dashGo = [false, false];
     } else if (!dashing && this.dashOn) {
       this.dashOn = false;
-      this.postDashT = 0.4;
+      this.postDashT = 0.12;
+      if (spdRaw > 0.3) {
+        this.gait = true;
+        this.firstStep = true;
+        this.stepDist = strideL * 0.9;
+      }
     }
     if (this.dashOn) this.dashT += dt;
     this.postDashT = Math.max(0, this.postDashT - dt);
 
-    // ---- movement-burst tracking: a very short tap of A/D must not read as a full stride ----
-    if (spdRaw > 0.9) {
+    // ---- movement-burst tracking: short taps stay agile and calm ----
+    if (spdRaw > 0.8) {
       this.moveT += dt;
       this.movePeak = Math.max(this.movePeak, spdRaw);
     } else {
-      // the key was only flicked: remember it so the next steps stay small and calm
-      if (this.moveT > 0.02 && this.moveT < 0.17 && this.movePeak > 0.8) this.tapT = 0.45;
+      if (this.moveT > 0.02 && this.moveT < 0.17 && this.movePeak > 0.8) this.tapT = 0.35;
       this.moveT = 0;
       this.movePeak = 0;
     }
     this.tapT = Math.max(0, this.tapT - dt);
 
-    // ---- gait mode hysteresis ----
+    // ---- responsive gait mode hysteresis ----
     const wasGait = this.gait;
-    // A key that was only flicked must not fire a full first stride: the walk cycle starts only once the body has
-    // really been moving (moveT) AND is still being driven (not already braking → the key is gone). The tap then
-    // glides over the stance with a small shuffle instead of a long, exaggerated step.
-    // (the raw frame-to-frame speed drop reacts at once; the smoothed af/al lags by a few frames)
     const dv = dt > 0 ? (spdRaw - this.prevSpd) / dt : 0;
     this.prevSpd = spdRaw;
     const accAlong = (a.vf * a.af + a.vl * a.al) / Math.max(0.5, spdRaw);
-    const braking = dv < -4 || accAlong < -1.5;
+    const braking = dv < -4.5 || accAlong < -2.0;
     if (this.dashOn) this.gait = false;
-    else if (!this.gait && !braking && spdRaw > 0.9 && spdRaw < 90 && this.moveT > 0.12) this.gait = true;
-    else if (this.gait && (spdRaw < 0.5 || spdRaw > 100)) this.gait = false;
-    this.gaitW += ((this.gait ? 1 : 0) - this.gaitW) * (1 - Math.exp(-7 * dt));
-
-    // Step length grows with speed (like a person: slow = short steps, fast = long steps), which keeps the
-    // cadence natural (~1.7–2.3 steps/s) instead of a scurrying 3 steps/s.
-    const walkStride = clamp((0.5 + 0.34 * spdRaw) * (this.back ? 0.88 : 1), 0.9, 2.5);
-    // running: ~2.9 footfalls per second, so the stride keeps growing with speed instead of capping out
-    // (longer than before: ~2.7 footfalls per second at full speed, so a sprint covers real ground per stride)
-    // Cadence rises gently above sprint speed, so very fast footwork (2×, 3×) stays readable.
-    const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
-    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.2, 6.0), run);
-    // Duty factor = the share of its 2-step cycle a foot spends on the ground: walk 0.6 → run 0.38 → faster = more flight.
-    // The foot lands `half` ahead of the hips and leaves `half` behind them (half = duty × step length). Capping `half`
-    // keeps the legs inside their reach, so the hips never have to dive to make a long stride possible.
-    const HALF_MAX = 1.85;
-    const duty = clamp(Math.min(lerp(0.6, 0.38, run) - clamp((spdRaw - 11.5) / 45, 0, 0.1), HALF_MAX / strideL), 0.2, 0.66);
-    const half = duty * strideL;
+    else if (!this.gait && !braking && spdRaw > 0.35 && spdRaw < 90) {
+      // Instant footwork response: steps initiate immediately without sluggish lag
+      this.gait = true;
+      this.firstStep = true;
+    } else if (this.gait && (spdRaw < 0.25 || spdRaw > 100)) {
+      this.gait = false;
+    }
+    this.gaitW += ((this.gait ? 1 : 0) - this.gaitW) * (1 - Math.exp(-9 * dt));
 
     if (this.gait && !wasGait) {
-      // start walking: the foot that is further behind (along the travel direction) steps first
+      // start walking: the foot that is further behind steps first
       const l0 = toL(this.feet[0].x, this.feet[0].z);
       const l1 = toL(this.feet[1].x, this.feet[1].z);
       this.nextFoot = l0.x * dirx + l0.z * dirz <= l1.x * dirx + l1.z * dirz ? 0 : 1;
       if (this.feet[this.nextFoot].stepping) this.nextFoot = 1 - this.nextFoot;
       this.stepDist = strideL * 0.9;
-      this.firstStep = true; // the first step fires on the very next frame → responsive
+      this.firstStep = true;
     }
 
-    // planted-foot error against the boxing stance (used by the standing / skid logic)
+    // Dynamic foot compliance: prevent planted feet from being dragged behind during dashes & moves
     for (let i = 0; i < 2; i++) {
       const f = this.feet[i];
       if (f.stepping) continue;
       const l = toL(f.x, f.z);
       const ex = l.x - ideal[i].x;
       const ez = l.z - ideal[i].z;
-      // A foot that stays planted is NEVER dragged sideways to fake a correction — that is what made the feet
-      // skate. A real imbalance is answered the way a fighter answers it: with a quick recovery step (below).
       f.err = Math.hypot(ex, ez);
+      const maxAllowedLag = (dashing || this.dashOn || spdRaw > 3) ? 0.38 : 0.65;
+      if (f.err > maxAllowedLag) {
+        const pull = (f.err - maxAllowedLag) * 0.88;
+        l.x -= (ex / f.err) * pull;
+        l.z -= (ez / f.err) * pull;
+        const w = toW(l.x, l.z);
+        f.x = w.x;
+        f.z = w.z;
+        f.curX = w.x;
+        f.curZ = w.z;
+        f.err = Math.hypot(l.x - ideal[i].x, l.z - ideal[i].z);
+      }
     }
 
     // ---- start a new step ----
@@ -651,29 +672,35 @@ export class Robot {
       this.stepDist = 0;
       for (const i of [this.dashLead, 1 - this.dashLead]) {
         const f = this.feet[i];
-        if (this.dashGo[i] || this.dashT < (i === this.dashLead ? 0 : 0.055)) continue;
+        // Allow cycling follow-through steps while high-speed dash/dodge momentum is continuing
+        if (this.dashGo[i] && !f.stepping && this.dashT > 0.18 && spdRaw > 4) {
+          this.dashGo[i] = false;
+        }
+        if (this.dashGo[i] || this.dashT < (i === this.dashLead ? 0 : 0.04)) continue;
         this.dashGo[i] = true;
+        const curL = toL(f.stepping ? f.curX : f.x, f.stepping ? f.curZ : f.z);
+        f.flx = curL.x;
+        f.flz = curL.z;
         f.fx = f.stepping ? f.curX : f.x;
         f.fz = f.stepping ? f.curZ : f.z;
         f.stepping = true;
         f.gaitStep = false;
         f.shuffle = true;
         f.u = 0;
-        f.p0 = f.pitch; // swings blend out of the pitch the foot really has — no pop at step-off
-        f.dur = i === this.dashLead ? 0.19 : 0.23;
-        // Clean, athletic foot clearance across all dash directions so feet never drag or clip the canvas
-        f.lift = 0.16;
+        f.p0 = f.pitch;
+        f.dur = i === this.dashLead ? 0.18 : 0.21;
+        // Clean, athletic foot clearance so feet lift off mat and never drag or clip
+        f.lift = 0.25;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
       let trigger = this.firstStep || this.stepDist >= strideL;
-      // safety: a stance foot trailing far behind must go now
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         if (f.stepping) continue;
         const l = toL(f.x, f.z);
         const behind = -(l.x * dirx + l.z * dirz);
-        if (behind > half * 1.5 + 0.5) {
+        if (behind > half * 1.35 + 0.3) {
           this.nextFoot = i;
           trigger = true;
         }
@@ -682,25 +709,23 @@ export class Robot {
       if (trigger && !f.stepping) {
         this.stepDist = Math.max(0, this.stepDist - strideL);
         this.firstStep = false;
+        const curL = toL(f.x, f.z);
+        f.flx = curL.x;
+        f.flz = curL.z;
         f.stepping = true;
         f.gaitStep = true;
         f.u = 0;
         f.fx = f.x;
         f.fz = f.z;
-        // Swing time follows from the duty factor: a foot is airborne for (1 − duty) of its 2-step cycle. When duty < 0.5
-        // the two swings overlap → a real flight phase. (max(speed, 3.3) = a snappy first step when starting from rest.)
-        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.3), 0.13, 0.7);
-        f.lift = lerp(clamp(0.2 + spd * 0.04, 0.24, 0.46), 0.85, run); // walking: low clearance; running: high knee drive
-        f.p0 = f.pitch; // the swing blends from the pitch the foot actually has now (no pop at toe-off)
+        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.65);
+        f.lift = lerp(clamp(0.22 + spd * 0.04, 0.24, 0.48), 0.85, run);
+        f.p0 = f.pitch;
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
       }
     } else {
       this.stepDist = 0;
       // ---- PUNCH FOOTWORK: the foot on the punching side re-plants for every strike ----
-      // A strike throws the body forward (see beginStrike), and the leg answers it. Which leg comes from the hand:
-      // the lead (left) foot drives the left-hand strike, the rear (right) foot swings in behind the right hand.
-      // How far comes from the distance — a short, flat nudge at the clinch, a real step-in from out of range.
       const pf = this.dashOn ? -1 : Math.round(a.punchFoot ?? -1);
       const pSeq = a.punchSeq ?? -1;
       let planted = false;
@@ -710,6 +735,9 @@ export class Robot {
         if (!f.stepping) {
           const z = clamp(a.punchZ ?? 0.2, -0.25, 0.95);
           const x = clamp(a.punchX ?? 0, -0.5, 0.5);
+          const curL = toL(f.x, f.z);
+          f.flx = curL.x;
+          f.flz = curL.z;
           f.punchStep = true;
           f.gaitStep = false;
           f.shuffle = false;
@@ -720,9 +748,8 @@ export class Robot {
           f.fz = f.z;
           f.tx = ideal[pf].x + x;
           f.tz = ideal[pf].z + z;
-          // a re-plant is short and low: the step of a fighter, not of a marcher
           f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
-          f.lift = a.stepLift ?? 0.06 + Math.min(0.09, Math.abs(z) * 0.07);
+          f.lift = a.stepLift ?? 0.08 + Math.min(0.09, Math.abs(z) * 0.07);
           f.err = 0;
           this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
           planted = true;
@@ -731,16 +758,13 @@ export class Robot {
       if (!planted) {
         let pick = -1;
         let best = 0;
-        // while a flicked key is still cooling down, only a real imbalance may trigger a step.
-        // ON THE FLOOR the balance steps are OFF altogether: the feet stay exactly where the knock-down left them
-        // (a fighter does not shuffle his boots around while he is on his back) — the get-up re-plants them itself.
-        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.5 : 0.9) + this.tapT * 0.5;
-        const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.9; // badly off balance → step now, quietly
+        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.35 : 0.65) + this.tapT * 0.3;
+        const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           const o = this.feet[1 - i];
           if (f.stepping || f.err < thr) continue;
-          if (o.stepping && f.err < 1.7) continue;
+          if (o.stepping && f.err < 1.3) continue;
           const score = f.err + (i === 0 ? 0.05 : 0);
           if (score > best) {
             best = score;
@@ -749,6 +773,9 @@ export class Robot {
         }
         if (pick >= 0) {
           const f = this.feet[pick];
+          const curL = toL(f.x, f.z);
+          f.flx = curL.x;
+          f.flz = curL.z;
           f.punchStep = false;
           f.stepping = true;
           f.gaitStep = false;
@@ -756,10 +783,9 @@ export class Robot {
           f.p0 = f.pitch;
           f.fx = f.x;
           f.fz = f.z;
-          // a recovery step is quick and low so it reads as a shuffle, not as a lunge
           const rec = messy ? 0.78 : 1;
-          f.dur = clamp(0.25 - spd * 0.024, 0.1, 0.23) * (f.err > 1.5 ? 0.8 : 1) * (1 + this.tapT * 0.45) * rec;
-          f.lift = (0.09 + sp01 * 0.13) * (1 - this.tapT * 0.5) * (messy ? 0.8 : 1);
+          f.dur = clamp(0.22 - spd * 0.024, 0.1, 0.21) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
+          f.lift = (0.12 + sp01 * 0.13) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
         }
       }
     }
@@ -865,8 +891,20 @@ export class Robot {
       tw.z = clamp(tw.z, -this.footLimit, this.footLimit);
       // gait swings start and end with ~zero ground speed (no skidding on touch-down, no jerk at toe-off)
       const e = f.shuffle ? sm(u) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
-      f.curX = f.fx + (tw.x - f.fx) * e;
-      f.curZ = f.fz + (tw.z - f.fz) * e;
+      if (f.shuffle || f.gaitStep) {
+        // Interpolate in robot-local space so the foot moves actively WITH the moving body,
+        // rather than lagging far behind at an old world coordinate stuck to the mat!
+        const curLx = f.flx + (tl.x - f.flx) * e;
+        const curLz = f.flz + (tl.z - f.flz) * e;
+        const curW = toW(curLx, curLz);
+        curW.x = clamp(curW.x, -this.footLimit, this.footLimit);
+        curW.z = clamp(curW.z, -this.footLimit, this.footLimit);
+        f.curX = curW.x;
+        f.curZ = curW.z;
+      } else {
+        f.curX = f.fx + (tw.x - f.fx) * e;
+        f.curZ = f.fz + (tw.z - f.fz) * e;
+      }
       const w = Math.sin(Math.PI * u);
       if (f.shuffle) {
         // skimming the floor cleanly on the balls of the feet with natural compliance

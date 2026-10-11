@@ -623,7 +623,7 @@ const MOVE_EXTRA: Record<MoveId, { width: number; launch: boolean; unblock: bool
   jab: { width: 1.5, launch: false, unblock: false },
   cross: { width: 1.6, launch: false, unblock: false },
   hook: { width: 3.6, launch: false, unblock: false },
-  upper: { width: 2.2, launch: true, unblock: false },
+  upper: { width: 2.2, launch: false, unblock: false },
   slam: { width: 5.0, launch: true, unblock: false },
   bolt: { width: 1.55, launch: true, unblock: false },
   windmill: { width: 2.2, launch: true, unblock: true },
@@ -3013,8 +3013,8 @@ export class Game {
   press(code: string) {
     if (this.keys.has(code)) return;
     this.keys.add(code);
-    // KeyG dodges on the press (instant). Space is held to guard/block (reduces incoming attack damage by 90%).
-    if (code === 'KeyG' && this.phase === 'fight' && !this.paused) this.playerDodge();
+    // Space dodges on the press (instant). KeyG is held to guard/block (reduces incoming attack damage by 90%).
+    if (code === 'Space' && this.phase === 'fight' && !this.paused) this.playerDodge();
     this.onEdge(code);
   }
   release(code: string) {
@@ -4186,8 +4186,13 @@ export class Game {
     p.blocking = false;
     p.sprinting = false;
     p.ippo = false;
-    // Allow pressing SPACE (Berlindung) to cancel attack recovery or non-Overdrive swing when an enemy attack is incoming
-    const wantBlockKey = this.keys.has('Space') && p.stam > 0;
+    // Allow pressing KeyG (Berlindung) to cancel attack recovery, non-Overdrive swing, or recover into block from hit stagger
+    const wantBlockKey = this.keys.has('KeyG') && p.stam > 0;
+    if (wantBlockKey && p.state === 'stagger' && p.stunT <= 0.45) {
+      p.state = 'idle';
+      p.stunT = 0;
+      p.blocking = true;
+    }
     if (wantBlockKey && p.state === 'attack' && p.move) {
       const incomingAtk = this.enemy.state === 'attack' && !!this.enemy.move && !this.enemy.impacted;
       if (p.impacted || (!isOD(p.move.id) && incomingAtk)) {
@@ -4308,7 +4313,12 @@ export class Game {
       p.stam = Math.max(p.stam, 10);
       if (p.dodgeT > 0) p.dodgeT = 0; // allow re-dodging if an enemy chains into a deadly follow-up
     }
-    if (p.state !== 'idle' || p.dodgeT > 0) return;
+    if (p.state === 'stagger' && p.stunT <= 0.48) {
+      p.state = 'idle';
+      p.stunT = 0;
+    } else if (p.state !== 'idle' || p.dodgeT > 0) {
+      return;
+    }
     const { fwd, lat } = this.dirKeys();
     const f = this.toward(p, this.enemy);
     const r = new THREE.Vector2(-f.y, f.x);
@@ -4932,11 +4942,16 @@ export class Game {
    * or by cancelling any non-Overdrive attack for an unstoppable comeback!
    */
   private tryOverdrive(p: Fighter) {
-    if (p.state === 'stagger' || p.state === 'ko' || p.state === 'air' || p.state === 'down') return;
     if (p.meter < 100) {
       this.popup(new THREE.Vector3(p.pos.x, 5.8, p.pos.y), `OVERDRIVE ${Math.floor(p.meter)}%`, 'pop-info');
       return;
     }
+    if (p.state === 'stagger') {
+      p.state = 'idle';
+      p.stunT = 0;
+      this.popup(new THREE.Vector3(p.pos.x, 6.8, p.pos.y), '⚡ OVERDRIVE REVERSAL!', 'pop-crit');
+    }
+    if (p.state === 'ko' || p.state === 'air' || p.state === 'down') return;
     if (p.state === 'attack' && p.move && isOD(p.move.id)) return;
     const fromDodge = p.dodgeT > 0 || p.dodgeWinT > 0 || p.counterT > 0;
     p.dodgeT = 0; // cancel dodge velocity so Overdrive lunges straight into the enemy!
@@ -4957,13 +4972,31 @@ export class Game {
     p.invuln = Math.max(p.invuln, fromDodge ? 0.95 : 0.7); // invincible startup so Overdrive after a dodge is unstoppable!
     if (fromDodge || p.hp <= p.maxHp * 0.45) {
       p.winStrike = true;
-      p.atkSpd = Math.max(p.atkSpd, 1.24);
+      const atlasSpd = p.robot.isAtlas ? 1.19 : 1.0;
+      p.atkSpd = Math.max(p.atkSpd, 1.24 * atlasSpd);
       this.popup(new THREE.Vector3(p.pos.x, 7.1, p.pos.y), '🔥 OVERDRIVE COMEBACK!', 'pop-crit');
     }
   }
 
   private tryAttack(f: Fighter, id: MoveId) {
     const m = MOVES[id];
+    if (f.isPlayer && f.state === 'stagger') {
+      // RESPONSIF MEMBALAS PUKULAN SETELAH KENA PUKULAN:
+      // Pemain bisa membalas secara instan setelah fase impak awal (stunT <= 0.48s) atau dengan Counter (L)!
+      const canRetaliateNow = id === 'counter' || f.stunT <= 0.48;
+      if (canRetaliateNow) {
+        f.state = 'idle';
+        f.stunT = 0;
+        f.counterT = Math.max(f.counterT, 1.8);
+        this.popup(new THREE.Vector3(f.pos.x, 6.8, f.pos.y), '⚡ BALAS PUKULAN!', 'pop-crit');
+        this.startMove(f, id);
+        return;
+      } else {
+        f.queued = id;
+        f.queuedT = 0.55;
+        return;
+      }
+    }
     if (f.state === 'stagger' || f.state === 'ko' || f.state === 'air' || f.state === 'down') return;
     const e = this.enemy;
     const incoming = f.isPlayer && e.state === 'attack' && !!e.move && !e.impacted;
@@ -5099,7 +5132,8 @@ export class Game {
     // a jab also keeps a metronome-steady cadence: the rhythm jitter that keeps the big punches from looking
     // copy-pasted would read as sloppy on the one punch you are supposed to be able to repeat on beat
     const spamRhythm = id === 'jab' ? 1 : f.spamCount >= 2 ? 1 + ((f.strikeVar % 3) - 1) * 0.05 : 1;
-    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd;
+    const atlasSpd = f.robot.isAtlas ? 1.19 : 1.0; // GERAKAN PUKULAN ATLAS LEBIH CEPAT 19 PERSEN
+    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd * atlasSpd;
     if (f.isPlayer) {
       const tgtYaw = Math.atan2(this.enemy.pos.x - f.pos.x, this.enemy.pos.y - f.pos.y);
       f.yaw += wrapAngle(tgtYaw - f.yaw) * (id === 'counter' || f.winStrike ? 0.9 : 0.6);
@@ -6085,7 +6119,13 @@ export class Game {
       this.startMove(f, f.queued);
     } else if (f.state === 'stagger') {
       f.stunT -= dt;
-      if (f.stunT <= 0) {
+      if (f.isPlayer && f.queued && f.queuedT > 0 && f.stunT <= 0.38 && fighting) {
+        f.state = 'idle';
+        f.stunT = 0;
+        f.counterT = Math.max(f.counterT, 1.8);
+        this.popup(new THREE.Vector3(f.pos.x, 6.8, f.pos.y), '⚡ BALAS PUKULAN!', 'pop-crit');
+        this.startMove(f, f.queued);
+      } else if (f.stunT <= 0) {
         f.state = 'idle';
         f.softT = 0.7;
       }
@@ -6940,7 +6980,26 @@ export class Game {
     d.blocking = false;
 
     // ---------- clean hit ----------
-    d.hp = Math.max(0, d.hp - dmg);
+    const isOverdrive = isOD(m.id);
+    const hp30Pct = d.maxHp * 0.30;
+    const hpBeforeHit = d.hp;
+    const hadHpAbove30 = isOverdrive && hpBeforeHit > hp30Pct;
+
+    if (isOverdrive) {
+      if (hadHpAbove30) {
+        // OVERDRIVE JANGAN LANGSUNG MATI:
+        // Jika sisa nyawa masih > 30%, Overdrive memberikan kekuatan pukulan dahsyat
+        // (~25% HP bar atau nilai dmg murni), tetapi sisa nyawa dipertahankan minimal 30% (kritis).
+        const odDmg = Math.max(dmg, d.maxHp * 0.25);
+        d.hp = Math.max(Math.ceil(hp30Pct), d.hp - odDmg);
+      } else {
+        // OVERDRIVE HANYA BIKIN MATI KALO NYAWA SUDAH SISA 30% ATAU KURANG:
+        // Menjadi eksekusi pemungkas fatal (Finisher KO)!
+        d.hp = 0;
+      }
+    } else {
+      d.hp = Math.max(0, d.hp - dmg);
+    }
     d.hit = Math.min(1.4, 0.78 + dmg * 0.038);
     a.hitConfirmed = true;
     // ---- THE GEOMETRY OF THE HIT ----
@@ -6995,7 +7054,8 @@ export class Game {
       d.poise = d.poiseMax * 0.22; // rocked, not dropped — the next real punch can finish the job
       label = label || 'ROCKED!';
     }
-    const upperLaunch = m.id === 'upper' && (softened || crit || broken);
+    // Uppercut tidak mudah membuat robot terbang: hanya jika stabilitas/poise benar-benar pecah (broken) atau KO
+    const upperLaunch = m.id === 'upper' && (broken || d.hp <= 0);
     const launcher = isOD(m.id) || m.id === 'grab' || upperLaunch;
     const runLaunch = a.runStrike && m.id === 'cross' && (softened || crit);
     const ippoLaunch = a.ippoStrike && a.strikeCharge > 0.85 && m.id !== 'jab' && (softened || big >= 0.6);
@@ -7010,7 +7070,8 @@ export class Game {
           d.vy = -17;
           label = 'SPIKE!'; // (no slow-mo: the body is in the air — the fall plays in real time)
         } else {
-          const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : 10) * (d.juggle >= 3 ? 0.75 : 1);
+          // Uppercut di udara juga tidak melempar terlalu tinggi (pop rendah agar tidak terbang jauh)
+          const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : m.id === 'upper' ? 4.5 : 10) * (d.juggle >= 3 ? 0.75 : 1);
           d.vy = pop;
           d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? 0.833 : 1));
           label = label || `JUGGLE x${d.juggle}`;
@@ -7054,9 +7115,10 @@ export class Game {
         const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5);
         // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
         // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
-        const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
+        // Uppercut biasa yang menembus pertahanan saat broken/KO tidak melempar ke angkasa (vertikal rendah & realistis)
+        const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
         d.vy = vert;
-        d.kb.copy(dir).multiplyScalar(horiz);
+        d.kb.copy(dir).multiplyScalar(m.id === 'upper' ? Math.min(horiz, 6.5) : horiz);
         // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
         d.airSpin = m.kind === 'side' ? (m.arm === 0 ? -1 : 1) * (1.8 + big * 1.6) : (Math.random() - 0.5) * 0.5;
         // the limbs are thrown the way he is going (ragdoll kick side = the side the blow came across to)
@@ -7074,7 +7136,7 @@ export class Game {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));
       }
       // a smart AI shakes a hit off sooner, and where you hit him matters: head shots stun, body shots do not
-      const sc = Math.max(0.5, 1 - d.comboTaken * 0.08) * (d.isPlayer ? 0.9 : 1 / (1 + (this.iq - 1) * 0.07));
+      const sc = Math.max(0.35, 1 - d.comboTaken * 0.08) * (d.isPlayer ? 0.52 : 1 / (1 + (this.iq - 1) * 0.07));
       const stun = m.stun * sc * AIM_STUN[aim] * (brokenRaw ? 1.5 : 1);
       if (d.state === 'stagger') d.stunT = Math.max(d.stunT, stun);
       else {
@@ -7175,7 +7237,7 @@ export class Game {
     }
     // an Overdrive that connects gets the director's punch-in on the point of impact — unless this is the
     // one that takes the head off, in which case the long HEAD RIP shot takes over instead
-    const willRip = (a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && !d.decapitated && this.phase === 'fight';
+    const willRip = (a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && !d.decapitated && this.phase === 'fight' && !hadHpAbove30;
     if ((a.isPlayer || a.robot.isZeus) && isOD(m.id) && !willRip) this.startCine('hit', hitPos, m.id === 'bolt' || m.id === 'skyhook' ? toA : undefined);
     if (this.phase !== 'menu') {
       if (d.isPlayer) {
@@ -7192,7 +7254,7 @@ export class Game {
       if (this.phase === 'fight') {
         const who = a.isPlayer ? 0 : 1;
         this.stats.landed[who]++;
-        this.stats.dmg[who] += dmg;
+        this.stats.dmg[who] += (isOverdrive && hadHpAbove30 ? hpBeforeHit - d.hp : dmg);
         if (crit && a.isPlayer) this.stats.counters++;
         this.stats.time = ROUND_TIME - this.roundTime;
       }
@@ -7204,8 +7266,10 @@ export class Game {
         this.flashEl.style.background = 'radial-gradient(ellipse at center, rgba(255,230,180,0.25) 0%, rgba(255,200,120,0.55) 100%)';
         this.flashAmt = 0.45;
       }
-      this.popup(hitPos, Math.round(dmg).toString(), big >= 0.6 ? 'pop-big' : 'pop-dmg');
+      const actualDmg = isOverdrive && hadHpAbove30 ? Math.round(hpBeforeHit - d.hp) : Math.round(dmg);
+      this.popup(hitPos, actualDmg.toString(), big >= 0.6 ? 'pop-big' : 'pop-dmg');
       if (label) this.popup(new THREE.Vector3(hitPos.x, hitPos.y + 1.4, hitPos.z), label, 'pop-crit');
+      else if (isOverdrive && hadHpAbove30) this.popup(new THREE.Vector3(hitPos.x, hitPos.y + 1.4, hitPos.z), '💥 OVERDRIVE IMPACT!', 'pop-crit');
       if (a.isPlayer && this.combo >= 3) this.popup(new THREE.Vector3(a.pos.x, 6.3, a.pos.y), `${this.combo} HIT COMBO`, 'pop-info');
     }
 
@@ -7213,7 +7277,8 @@ export class Game {
     // An Overdrive that lands on a HEAD target does not just hurt: it tears the opponent's head clean off. The
     // helmet is launched away with the momentum of the blow and the neck is left as a stump with torn, sparking
     // cables hanging out of it. It is a finisher, so it ends the round on the spot.
-    if ((a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && isOD(m.id) && this.phase === 'fight' && !d.decapitated) {
+    // Hanya memenggal dan membunuh langsung jika nyawa lawan sudah sisa 30% atau kurang!
+    if ((a.isPlayer || a.robot.isZeus) && aim === AIM_HEAD && isOD(m.id) && this.phase === 'fight' && !d.decapitated && !hadHpAbove30) {
       this.ripVictim = d;
       d.decapitated = true;
       d.hp = 0;
@@ -8511,7 +8576,7 @@ export class Game {
         tilt: f.tilt,
         tiltZ: f.tiltZ,
         ragdoll: isAirRagdoll || ((f.state === 'down' || f.state === 'ko') && f.riseU <= 0.001 && e < 0.98) ? 1 : 0,
-        dash: f.dodgeT > 0 && f.state === 'idle' ? 1 : 0,
+        dash: (f.dodgeT > 0 || (f.dodgeTail > 0.05 && (f.vel.x * f.vel.x + f.vel.y * f.vel.y) > 4)) && f.state === 'idle' ? 1 : 0,
         dashF: f.dodgeDir.x * sy + f.dodgeDir.y * cy,
         dashL: f.dodgeDir.x * cy - f.dodgeDir.y * sy,
         sprint: f.sprinting ? 1 : 0,

@@ -357,9 +357,9 @@ export function TouchControls({ game }: { game: Game | null }) {
         <div className="absolute left-0 top-[72px]"><TouchBtn game={game} code="KeyP" label="GRAB" className="bg-pink-500/60 text-xs" size="h-14 w-14" /></div>
         <div className="absolute left-[76px] top-[72px]"><TouchBtn game={game} code="KeyL" label="CTR" className="bg-amber-500/60 text-sm" size="h-14 w-14" /></div>
         <div className="absolute left-[152px] top-[72px]"><TouchBtn game={game} code="KeyQ" label="TARGET" className="bg-rose-500/60 text-[9px]" size="h-14 w-14" /></div>
-        <div className="absolute left-0 -top-[68px]"><TouchBtn game={game} code="KeyG" label="DODGE (G)" className="bg-emerald-500/50 text-[9px]" size="h-14 w-14" /></div>
+        <div className="absolute left-0 -top-[68px]"><TouchBtn game={game} code="Space" label="DODGE (SPC)" className="bg-emerald-500/50 text-[9px]" size="h-14 w-14" /></div>
         <div className="absolute left-[76px] -top-[68px]"><TouchBtn game={game} code="KeyR" label="OD" className="bg-amber-400/60" size="h-14 w-14" /></div>
-        <div className="absolute left-[152px] -top-[68px]"><TouchBtn game={game} code="Space" label="BLOK (SPC)" className="bg-sky-400/60 text-[9px]" size="h-14 w-14" /></div>
+        <div className="absolute left-[152px] -top-[68px]"><TouchBtn game={game} code="KeyG" label="BLOK (G)" className="bg-sky-400/60 text-[9px]" size="h-14 w-14" /></div>
         <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyU" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
         <div className="absolute left-[62px] -top-[136px]"><TouchBtn game={game} code="KeyZ" label="SOMBONG" className="bg-emerald-600/70 border-emerald-300 text-[8px] font-bold" size="h-12 w-12" /></div>
         <div className="absolute left-[122px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>

@@ -298,11 +298,11 @@ const CONTROLS: { title: string; rows: [string[], string][] }[] = [
     ],
   },
   {
-    title: 'BERLINDUNG (SPACE) & MENGHINDAR / DODGE (G)',
+    title: 'MENGHINDAR / DODGE (SPACE) & BERTAHAN / BLOK (G)',
     rows: [
-      [['SPACE'], 'BERLINDUNG (BLOK): tahan SPACE untuk pasang perisai pelindung — mengurangi efek & kekuatan serangan lawan sebesar 90% (hanya 10% serangan yang masuk)!'],
-      [['G'], 'MENGHINDAR (DODGE) fluid gaya Muhammad Ali (slip kepala, weave bahu & pull-back). Tekan G saat ◎ muncul = Timed Dodge'],
-      [['G', '→', 'SERANG'], 'Counter / Dodge Strike: pukulan setelah menghindar keluar 38% lebih cepat & 22% lebih keras'],
+      [['SPACE'], 'MENGHINDAR (DODGE) fluid gaya Muhammad Ali (slip kepala, weave bahu & pull-back). Tekan SPACE saat ◎ muncul = Timed Dodge'],
+      [['SPACE', '→', 'SERANG'], 'Counter / Dodge Strike: pukulan setelah menghindar keluar 38% lebih cepat & 22% lebih keras'],
+      [['G'], 'BERTAHAN (BLOK): tahan G untuk pasang perisai pelindung — mengurangi efek & kekuatan serangan lawan sebesar 90% (hanya 10% serangan yang masuk)!'],
     ],
   },
   {
