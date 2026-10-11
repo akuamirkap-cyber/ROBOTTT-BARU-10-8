@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Robot } from './robot';
 import { ZEUS_PRESET } from '../zeus/zeusPreset';
 
@@ -10,8 +11,8 @@ type N3 = [number, number, number];
 type P2 = [number, number];
 type Adj = { p: N3; r: N3; s: N3; u: number; v?: N3; b?: [number, number] };
 
-export function blob(e = 0.5, seg = 48) {
-  const g = new THREE.SphereGeometry(1, seg, seg / 2);
+export function blob(e = 0.5, seg = 24) {
+  const g = new THREE.SphereGeometry(1, seg, Math.max(8, Math.floor(seg / 2)));
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const f = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), e);
@@ -33,7 +34,7 @@ export function panel(o: {
   tip?: number;
 }) {
   const { w, h, d = 0.2, bottom = 1, bendX = 0, bendY = 0, bulge = 0.08, skew = 0, tip = 0 } = o;
-  const g = new THREE.BoxGeometry(1, 1, 1, 32, 32, 2);
+  const g = new THREE.BoxGeometry(1, 1, 1, 14, 14, 2);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i);
@@ -90,8 +91,8 @@ export function front(pts: P2[], depth: number, bevel = 0.1, round = 0.15) {
     bevelEnabled: true,
     bevelThickness: bevel,
     bevelSize: bevel * 0.8,
-    bevelSegments: 5,
-    curveSegments: 8,
+    bevelSegments: 3,
+    curveSegments: 5,
   });
   g.translate(0, 0, -depth / 2);
   g.computeVertexNormals();
@@ -117,12 +118,12 @@ export function bend(g: THREE.BufferGeometry, R: number) {
   return g;
 }
 
-export function lathe(pts: P2[], seg = 40) {
-  return new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+export function lathe(pts: P2[], seg = 24) {
+  return new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), Math.min(seg, 24));
 }
 
-export function cyl(rt: number, rb: number, h: number, seg = 32) {
-  return new THREE.CylinderGeometry(rt, rb, h, seg);
+export function cyl(rt: number, rb: number, h: number, seg = 20) {
+  return new THREE.CylinderGeometry(rt, rb, h, Math.min(seg, 20));
 }
 
 // ============================================================================
@@ -132,28 +133,22 @@ export function cyl(rt: number, rb: number, h: number, seg = 32) {
 export function createZeusMaterials(themeColor = '#22ff44') {
   const themeCol = new THREE.Color(themeColor);
 
-  const gun = new THREE.MeshPhysicalMaterial({
+  const gun = new THREE.MeshStandardMaterial({
     color: 0x33373b,
     metalness: 0.9,
-    roughness: 0.24,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
+    roughness: 0.22,
     envMapIntensity: 1.5,
   });
-  const gunL = new THREE.MeshPhysicalMaterial({
+  const gunL = new THREE.MeshStandardMaterial({
     color: 0x50555a,
     metalness: 0.9,
-    roughness: 0.22,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
+    roughness: 0.2,
     envMapIntensity: 1.6,
   });
-  const blk = new THREE.MeshPhysicalMaterial({
+  const blk = new THREE.MeshStandardMaterial({
     color: 0x121314,
-    metalness: 0.6,
-    roughness: 0.3,
-    clearcoat: 1,
-    clearcoatRoughness: 0.08,
+    metalness: 0.65,
+    roughness: 0.28,
     envMapIntensity: 1.4,
   });
   const blkM = new THREE.MeshStandardMaterial({
@@ -161,7 +156,7 @@ export function createZeusMaterials(themeColor = '#22ff44') {
     metalness: 0.3,
     roughness: 0.6,
   });
-  const chrome = new THREE.MeshPhysicalMaterial({
+  const chrome = new THREE.MeshStandardMaterial({
     color: 0xd8dce0,
     metalness: 1,
     roughness: 0.08,
@@ -173,16 +168,14 @@ export function createZeusMaterials(themeColor = '#22ff44') {
     emissiveIntensity: 8,
     toneMapped: false,
   });
-  const crystal = new THREE.MeshPhysicalMaterial({
+  const crystal = new THREE.MeshStandardMaterial({
     color: themeCol.clone().multiplyScalar(0.6),
-    emissive: themeCol.clone().multiplyScalar(0.3),
-    emissiveIntensity: 0.6,
-    metalness: 0,
+    emissive: themeCol.clone().multiplyScalar(0.45),
+    emissiveIntensity: 0.85,
+    metalness: 0.15,
     roughness: 0.08,
-    transmission: 0.6,
-    thickness: 0.6,
-    ior: 1.5,
-    clearcoat: 1,
+    transparent: true,
+    opacity: 0.85,
   });
 
   [gun, gunL, blk, blkM, chrome, eye, crystal].forEach((m) => {
@@ -599,10 +592,6 @@ export function mount100PercentZeus(
       [1, 1, 1],
       g,
     );
-    const l = new THREE.PointLight(themeCol, 0.8, 1.2);
-    l.position.set(0.4, -0.22, 1.2);
-    l.userData.isZeus = true;
-    g.add(l);
     const sp = new THREE.Sprite(
       new THREE.SpriteMaterial({
         color: themeCol,
@@ -676,10 +665,6 @@ export function mount100PercentZeus(
     }
     crys([1.25, 8.4, 0.85], [0.2, 0.5, 1.1], [0.35, 1.0, 0.3], g);
   });
-  const coreLight = new THREE.PointLight(themeCol, 2.2, 3.5);
-  coreLight.position.set(0, 9.0, 1.8);
-  coreLight.userData.isZeus = true;
-  chest.add(coreLight);
 
   // p71..p78: V pec plate, inner bevel edge, upper collar plate, side black rib frame
   pair(chest, (g) => {
@@ -1168,6 +1153,82 @@ export function mount100PercentZeus(
     }
   } catch {
     // ignore invalid localStorage data
+  }
+
+  // 5) Bake cross-bone group links directly onto leader bone groups & merge static meshes per (boneGroup, material)
+  //    Reduces 208 individual draw calls per Zeus robot down to ~26 batched meshes for locked 60 FPS in Arena!
+  r.root.updateMatrixWorld(true);
+  const zl = r.root.userData.zeusLinks as ZeusRuntimeLink[] | undefined;
+  if (zl && zl.length > 0) {
+    for (const lk of zl) {
+      if (lk.f && lk.l && lk.l.parent) {
+        lk.l.parent.attach(lk.f);
+      }
+    }
+    delete r.root.userData.zeusLinks;
+  }
+
+  const allBoneGroups: THREE.Group[] = [
+    headMount.inner,
+    neckMount.inner,
+    chestMount.inner,
+    waistMount.inner,
+    pelvisMount.inner,
+    ...capMounts,
+    ...armMounts,
+    ...foreMounts,
+    ...fistMounts,
+    ...thighMounts,
+    ...shinMounts,
+    ...bootMounts,
+  ];
+
+  r.root.updateMatrixWorld(true);
+  for (const bg of allBoneGroups) {
+    bg.updateWorldMatrix(true, true);
+    const invBg = bg.matrixWorld.clone().invert();
+    const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const meshesToRemove: THREE.Mesh[] = [];
+
+    bg.traverse((obj) => {
+      const m = obj as THREE.Mesh;
+      if (!m.isMesh || !m.geometry) return;
+      meshesToRemove.push(m);
+      if (!m.visible) return;
+      const mat = m.material as THREE.Material;
+      const relMat = invBg.clone().multiply(m.matrixWorld);
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+      for (const k of Object.keys(g.attributes)) {
+        if (k !== 'position' && k !== 'normal') {
+          g.deleteAttribute(k);
+        }
+      }
+      g.applyMatrix4(relMat);
+      if (!g.attributes.normal) {
+        g.computeVertexNormals();
+      }
+      let list = byMat.get(mat);
+      if (!list) {
+        list = [];
+        byMat.set(mat, list);
+      }
+      list.push(g);
+    });
+
+    for (const m of meshesToRemove) {
+      m.removeFromParent();
+    }
+
+    for (const [mat, geoms] of byMat.entries()) {
+      if (geoms.length === 0) continue;
+      const merged = geoms.length === 1 ? geoms[0] : mergeGeometries(geoms, false);
+      if (!merged) continue;
+      const batchedMesh = new THREE.Mesh(merged, mat);
+      batchedMesh.castShadow = mat !== eye && mat !== crystal;
+      batchedMesh.receiveShadow = mat !== eye;
+      batchedMesh.userData.isZeus = true;
+      bg.add(batchedMesh);
+    }
   }
 
   // Tag robot as currently wearing Zeus 100%

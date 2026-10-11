@@ -9,7 +9,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Robot, type Pose, type RobotStyle, type AnimState } from './robot';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from './build';
 import { mount100PercentZeus } from './zeusModel';
-import { FREESTYLE, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
+import { FREESTYLE, fallArms, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
 import { buildArena, type Arena, type PyroPlacement, loadPyroPlacement, savePyroPlacement } from './arena';
 export { type PyroPlacement, loadPyroPlacement, savePyroPlacement };
 import { HANGAR_POS, buildHangar, type Hangar } from './hangar';
@@ -459,7 +459,6 @@ const BLOCK: Pose = { sx: -1.0, sy: -0.75, sz: 0, ex: -2.2 };
 // dazed, but still a fighter: the hands stay half up in front of the chest (elbows folded) — an arm thrown wide
 // open is a man who has given up on his guard, and he never has
 const STAGGER: Pose = { sx: -0.42, sy: -0.34, sz: 0.34, ex: -1.15 };
-const LIMP: Pose = { sx: 0.1, sy: 0, sz: 0.35, ex: -0.25 };
 const TAUNT: Pose = { sx: -0.3, sy: -0.1, sz: 1.3, ex: -2.3 };
 const VICTORY: Pose = { sx: -3.0, sy: 0, sz: 0.5, ex: -0.3 };
 
@@ -480,7 +479,7 @@ const MOVES: Record<MoveId, Move> = {
     // is meant to be doubled and tripled up, and the cheapest way to charge the Overdrive — it measures the range,
     // it pokes a guard open, and it never leaves you open. It is still a jab (a 7, not a knockdown), but it is a
     // jab with a two-ton machine behind it.
-    id: 'jab', arm: 0, dur: 0.55, strikeAt: 0.07, impact: 0.15, cancel: 0.27, dmg: 7, reach: 4.4, cost: 4, stun: 0.55, knock: 4, blockMul: 0.22, power: 0.36, hitY: 4.5, step: 1.35, kind: 'front',
+    id: 'jab', arm: 0, dur: 0.55, strikeAt: 0.07, impact: 0.15, cancel: 0.27, dmg: 7, reach: 4.4, cost: 4, stun: 0.55, knock: 4, blockMul: 0.1, power: 0.36, hitY: 4.5, step: 1.35, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.07, P(-0.34, -0.02, 0.14, -2.7), 0.42, -0.1, -0.34, 0.26, 'out'), // coil back
@@ -491,7 +490,7 @@ const MOVES: Record<MoveId, Move> = {
     ],
   },
   cross: {
-    id: 'cross', arm: 1, dur: 0.86, strikeAt: 0.17, impact: 0.28, cancel: 0.46, dmg: 11, reach: 4.2, cost: 10, stun: 0.64, knock: 6, blockMul: 0.15, power: 0.55, hitY: 4.2, step: 1.9, kind: 'front',
+    id: 'cross', arm: 1, dur: 0.86, strikeAt: 0.17, impact: 0.28, cancel: 0.46, dmg: 11, reach: 4.2, cost: 10, stun: 0.64, knock: 6, blockMul: 0.1, power: 0.55, hitY: 4.2, step: 1.9, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.17, P(-0.08, 0.85, 0.42, -2.6), -1.15, -0.26, -0.6, 0.36, 'out'), // shoulder loaded all the way back
@@ -502,7 +501,7 @@ const MOVES: Record<MoveId, Move> = {
     ],
   },
   hook: {
-    id: 'hook', arm: 0, dur: 0.92, strikeAt: 0.2, impact: 0.33, cancel: 0.5, dmg: 13, reach: 3.9, cost: 12, stun: 0.66, knock: 7, blockMul: 0.15, power: 0.62, hitY: 4.5, step: 1.4, kind: 'side',
+    id: 'hook', arm: 0, dur: 0.92, strikeAt: 0.2, impact: 0.33, cancel: 0.5, dmg: 13, reach: 3.9, cost: 12, stun: 0.66, knock: 7, blockMul: 0.1, power: 0.62, hitY: 4.5, step: 1.4, kind: 'side',
     keys: [
       k(0, GUARD),
       k(0.2, P(-0.25, 1.05, 1.5, -1.7), 1.15, -0.05, -0.5, 0.34, 'out'), // wind the arc up wide
@@ -513,7 +512,7 @@ const MOVES: Record<MoveId, Move> = {
     ],
   },
   upper: {
-    id: 'upper', arm: 1, dur: 0.95, strikeAt: 0.2, impact: 0.33, cancel: 0.52, dmg: 15, reach: 3.7, cost: 14, stun: 0.8, knock: 8, blockMul: 0.2, power: 0.72, hitY: 4.8, step: 1.2, kind: 'up',
+    id: 'upper', arm: 1, dur: 0.95, strikeAt: 0.2, impact: 0.33, cancel: 0.52, dmg: 15, reach: 3.7, cost: 14, stun: 0.8, knock: 8, blockMul: 0.1, power: 0.72, hitY: 4.8, step: 1.2, kind: 'up',
     keys: [
       k(0, GUARD),
       k(0.2, P(-0.02, 0.2, 0.3, -0.5), -0.78, 0.62, -0.42, 0.82, 'out'), // sink into the legs
@@ -524,7 +523,7 @@ const MOVES: Record<MoveId, Move> = {
     ],
   },
   slam: {
-    id: 'slam', arm: 2, dur: 1.5, strikeAt: 0.52, impact: 0.64, cancel: 99, dmg: 34, reach: 4.4, cost: 0, stun: 1.2, knock: 12, blockMul: 0.45, power: 1, hitY: 4.2, step: 2.4, kind: 'up',
+    id: 'slam', arm: 2, dur: 1.5, strikeAt: 0.52, impact: 0.64, cancel: 99, dmg: 34, reach: 4.4, cost: 0, stun: 1.2, knock: 12, blockMul: 0.1, power: 1, hitY: 4.2, step: 2.4, kind: 'up',
     keys: [
       k(0, GUARD),
       k(0.34, P(-2.95, -0.1, 0.3, -0.5), 0, -0.3, -0.1, 0.0, 'out'),
@@ -536,7 +535,7 @@ const MOVES: Record<MoveId, Move> = {
   },
   // OVERDRIVE (straight): deep coil, then a huge lunging straight that crosses the whole gap
   bolt: {
-    id: 'bolt', arm: 1, dur: 1.3, strikeAt: 0.44, impact: 0.54, cancel: 99, dmg: 32, reach: 5.2, cost: 0, stun: 1.2, knock: 12, blockMul: 0.5, power: 1, hitY: 4.1, step: 3.6, kind: 'front',
+    id: 'bolt', arm: 1, dur: 1.3, strikeAt: 0.44, impact: 0.54, cancel: 99, dmg: 32, reach: 5.2, cost: 0, stun: 1.2, knock: 12, blockMul: 0.1, power: 1, hitY: 4.1, step: 3.6, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.22, P(-0.1, 0.95, 0.42, -2.65), -1.3, -0.28, -0.6, 0.5, 'out'),
@@ -549,7 +548,7 @@ const MOVES: Record<MoveId, Move> = {
   // FREESTYLE OVERDRIVE (windmill): spins the arms in full 360° circles (muter-muter tangan) with blazing sparks,
   // then unleashes a devastating lunging haymaker smash! Both Player and Enemy can unleash it.
   windmill: {
-    id: 'windmill', arm: 1, dur: 1.48, strikeAt: 0.56, impact: 0.68, cancel: 99, dmg: 35, reach: 5.1, cost: 0, stun: 1.25, knock: 13.5, blockMul: 0.5, power: 1, hitY: 4.3, step: 3.5, kind: 'front',
+    id: 'windmill', arm: 1, dur: 1.48, strikeAt: 0.56, impact: 0.68, cancel: 99, dmg: 35, reach: 5.1, cost: 0, stun: 1.25, knock: 13.5, blockMul: 0.1, power: 1, hitY: 4.3, step: 3.5, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.16, P(-1.8, 0.35, 0.55, -0.35), -0.75, -0.18, -0.35, 0.24, 'io'),
@@ -566,7 +565,7 @@ const MOVES: Record<MoveId, Move> = {
   // amount of blocking helps. Same family as the other Overdrives (unblockable, meter-priced, cinematic beat) but a
   // completely different read on screen: it does not cross the ring, it comes up off the canvas.
   skyhook: {
-    id: 'skyhook', arm: 1, dur: 1.36, strikeAt: 0.44, impact: 0.56, cancel: 99, dmg: 33, reach: 4.2, cost: 0, stun: 1.3, knock: 11, blockMul: 0.5, power: 1, hitY: 5.5, step: 2.8, kind: 'up',
+    id: 'skyhook', arm: 1, dur: 1.36, strikeAt: 0.44, impact: 0.56, cancel: 99, dmg: 33, reach: 4.2, cost: 0, stun: 1.3, knock: 11, blockMul: 0.1, power: 1, hitY: 5.5, step: 2.8, kind: 'up',
     keys: [
       k(0, GUARD),
       // the sink: he drops under the target's guard, both fists coming down with the hips (deep dip, shoulders over the knees)
@@ -581,7 +580,7 @@ const MOVES: Record<MoveId, Move> = {
     ],
   },
   grab: {
-    id: 'grab', arm: 2, dur: 1.25, strikeAt: 0.1, impact: 0.3, cancel: 99, dmg: 20, reach: 3.5, cost: 14, stun: 1, knock: 8, blockMul: 1, power: 0.85, hitY: 3.6, step: 1.4, kind: 'front',
+    id: 'grab', arm: 2, dur: 1.25, strikeAt: 0.1, impact: 0.3, cancel: 99, dmg: 20, reach: 3.5, cost: 14, stun: 1, knock: 8, blockMul: 0.1, power: 0.85, hitY: 3.6, step: 1.4, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.1, P(-1.35, 0.35, 0.75, -0.55), 0, 0.1, -0.2, 0.3, 'out'),
@@ -604,7 +603,7 @@ const MOVES: Record<MoveId, Move> = {
   // The first frames are still a read: an incoming strike that lands inside the (short) parry window is CAUGHT —
   // then the straight fires instantly with the 1.6× COUNTER bonus.
   counter: {
-    id: 'counter', arm: 1, dur: 0.95, strikeAt: 0.3, impact: 0.4, cancel: 0.6, dmg: 16, reach: 4.6, cost: 10, stun: 0.6, knock: 6, blockMul: 0.25, power: 0.5, hitY: 4.3, step: 2.6, kind: 'front',
+    id: 'counter', arm: 1, dur: 0.95, strikeAt: 0.3, impact: 0.4, cancel: 0.6, dmg: 16, reach: 4.6, cost: 10, stun: 0.6, knock: 6, blockMul: 0.1, power: 0.5, hitY: 4.3, step: 2.6, kind: 'front',
     keys: [
       k(0, GUARD),
       k(0.08, P(-0.44, -0.2, 0.42, -2.5), -0.5, -0.1, -0.28, 0.28, 'out'), // hands up, weight back (the catch)
@@ -1411,11 +1410,11 @@ export interface QualityTier {
   bloomScale: number;
 }
 export const QUALITY_TIERS: QualityTier[] = [
-  { key: 'max', name: 'MAKSIMAL', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.40 },
-  { key: 'high', name: 'TINGGI', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.38 },
-  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.32 },
-  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.90, shadow: 512, bloom: true, bloomScale: 0.28 },
-  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.85, shadow: 512, bloom: false, bloomScale: 0.25 },
+  { key: 'max', name: 'MAKSIMAL', mirror: 0, samples: 0, scale: 1.0, shadow: 1024, bloom: true, bloomScale: 0.38 },
+  { key: 'high', name: 'TINGGI', mirror: 0, samples: 0, scale: 0.95, shadow: 768, bloom: true, bloomScale: 0.35 },
+  { key: 'balanced', name: 'SEIMBANG', mirror: 0, samples: 0, scale: 0.90, shadow: 512, bloom: true, bloomScale: 0.30 },
+  { key: 'performance', name: 'KINERJA', mirror: 0, samples: 0, scale: 0.85, shadow: 512, bloom: true, bloomScale: 0.25 },
+  { key: 'lite', name: 'RINGAN', mirror: 0, samples: 0, scale: 0.80, shadow: 512, bloom: false, bloomScale: 0.22 },
 ];
 
 export type GfxMode = 'auto' | 'max' | 'balanced' | 'performance';
@@ -1672,7 +1671,7 @@ export class Game {
   private menuHero: Robot;
   private hangar: Hangar;
   /** the VS screen: the opponent (and the 2v2 partner) standing opposite the hero in the hangar */
-  private vs: { idx: number; idx2: number; stage: 'search' | 'found' | 'lock' | 'clash' } | null = null;
+  private vs: { idx: number; idx2: number; stage: 'search' | 'found' | 'lock' | 'windup' | 'clash' } | null = null;
   private vsPunch = 0; // brief lens punch-in on the opponent reveal, decays before the countdown
   private vsClashTime = 0; // playback clock for the matchmaking Clash Straight
   private vsClashHitPlayed = false; // one-shot impact sound and spark burst
@@ -1849,7 +1848,7 @@ export class Game {
     const touchUi = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     this.warnEl = document.createElement('div');
     this.warnEl.className = 'warn warn-yellow';
-    this.warnEl.innerHTML = `<div class="warn-text">⚡ DODGE [${touchUi ? '◎' : 'SPACE'}]</div>`;
+    this.warnEl.innerHTML = `<div class="warn-text">⚡ HINDAR [${touchUi ? '◎' : 'G'}] / LINDUNG [SPACE]</div>`;
     container.appendChild(this.warnEl);
     this.warnTag = this.warnEl.children[0] as HTMLElement;
 
@@ -2278,6 +2277,7 @@ export class Game {
   // ------------------------------------------------------------ public api
   startMatch(idx: number, team?: { enemy2: number }) {
     this.endTeam();
+    if (this.hangar) this.hangar.g.visible = false;
     if (this.menuHero) {
       this.menuHero.root.visible = false;
       this.menuHeroPedestal.visible = false;
@@ -2414,9 +2414,19 @@ export class Game {
     const toO = this.toward(f, o);
     const side = new THREE.Vector2(-toO.y, toO.x);
     const oDown = o.state === 'ko' || o.state === 'down';
-    if (o.state === 'attack' && o.move && !o.impacted && dist < 5.5 && st.blockT <= 0 && Math.random() < dt * 11) {
-      if (Math.random() < 0.5 && this.startDodge(f, side.clone().multiplyScalar(Math.random() < 0.5 ? 1 : -1), 'side')) return;
-      st.blockT = 0.4 + Math.random() * 0.3;
+    if (o.state === 'attack' && o.move && !o.impacted && dist < 5.8 && st.blockT <= 0 && Math.random() < dt * 22) {
+      if (Math.random() < 0.45 && this.startDodge(f, side.clone().multiplyScalar(Math.random() < 0.5 ? 1 : -1), 'side')) {
+        f.dodgeFor = o.moveSeq;
+        f.counterT = 2.0;
+        f.dodgeWinT = 1.1;
+        return;
+      }
+      if (Math.random() < 0.35 && f.counterCd <= 0) {
+        this.startMove(f, 'counter');
+        return;
+      }
+      st.blockT = 0.42 + Math.random() * 0.28;
+      f.counterT = 1.6;
     }
     f.blocking = st.blockT > 0;
     if (st.strafeT <= 0) {
@@ -2681,7 +2691,7 @@ export class Game {
   }
 
   /** UI one-shots for the lobby flows (matchmaking radar, the bracket, the lock-in count) */
-  uiCue(kind: 'click' | 'tick' | 'found' | 'lock' | 'go' | 'fanfare') {
+  uiCue(kind: 'click' | 'tick' | 'found' | 'lock' | 'windup' | 'go' | 'fanfare') {
     this.sfx.init();
     switch (kind) {
       case 'click':
@@ -2699,6 +2709,11 @@ export class Game {
       case 'lock':
         this.sfx.tick(1);
         this.sfx.charge();
+        break;
+      case 'windup':
+        this.sfx.tick(1);
+        this.sfx.charge();
+        this.sfx.servo();
         break;
       case 'go':
         this.sfx.ready();
@@ -2728,6 +2743,7 @@ export class Game {
     this.paused = false;
     this.round = 1;
     this.wins = [0, 0];
+    if (this.hangar) this.hangar.g.visible = true;
     if (this.menuHero) {
       this.menuHero.root.visible = true;
       this.menuHeroPedestal.visible = false;
@@ -2774,7 +2790,7 @@ export class Game {
    * THE MATCHMAKING STAGE: the player takes the left mark, the opponent (and in 2v2 the second Titan) takes the
    * right mark, and both keep the selected menu pose while facing inward. `found` reveals the opponent; null exits.
    */
-  setVsMode(idx: number | null, idx2 = -1, stage: 'search' | 'found' | 'lock' | 'clash' = 'search') {
+  setVsMode(idx: number | null, idx2 = -1, stage: 'search' | 'found' | 'lock' | 'windup' | 'clash' = 'search') {
     if (idx === null) {
       for (const f of [this.vsFoe, this.vsFoe2]) {
         if (!f) continue;
@@ -2872,8 +2888,14 @@ export class Game {
         // match found
       } else if (stage === 'lock') {
         this.sfx.ready();
-      } else if (stage === 'clash') {
+      } else if (stage === 'windup') {
         this.vsClashTime = 0;
+        this.vsClashHitPlayed = false;
+        this.vsClashWhooshPlayed = false;
+        this.vsClashReleasePlayed = false;
+        this.vsClashGrindTimer = 0;
+      } else if (stage === 'clash') {
+        this.vsClashTime = prev === 'windup' ? Math.max(0.44, this.vsClashTime) : 0;
         this.vsClashHitPlayed = false;
         this.vsClashWhooshPlayed = false;
         this.vsClashReleasePlayed = false;
@@ -2945,6 +2967,7 @@ export class Game {
     this.shotT = 0;
     this.shotCut = true;
     const showHero = this.menuCamMode !== 'arena';
+    if (this.hangar) this.hangar.g.visible = showHero;
     // Keep root.visible = true so eyeLights stay registered in the scene and never trigger shader recompilations;
     // when showHero is active, park the background fighters at y = -200 where frustum culling skips them in 0ms.
     this.player.robot.root.visible = true;
@@ -2990,9 +3013,8 @@ export class Game {
   press(code: string) {
     if (this.keys.has(code)) return;
     this.keys.add(code);
-    // SPACE dodges on the press (instant). HOLDING it keeps the guard up, so a dodge flows straight into a block
-    // if you never let go of the key.
-    if (code === 'Space' && this.phase === 'fight' && !this.paused) this.playerDodge();
+    // KeyG dodges on the press (instant). Space is held to guard/block (reduces incoming attack damage by 90%).
+    if (code === 'KeyG' && this.phase === 'fight' && !this.paused) this.playerDodge();
     this.onEdge(code);
   }
   release(code: string) {
@@ -3065,7 +3087,7 @@ export class Game {
       case 'KeyP':
         this.tryAttack(p, 'grab');
         break;
-      case 'KeyG':
+      case 'KeyU':
         this.toggleRage();
         break;
       case 'KeyH':
@@ -3094,19 +3116,19 @@ export class Game {
         this.tryOverdrive(p);
         break;
       // ---------------- FREESTYLE ----------------
-      // The whole show-off book (poses.ts) sits on its own keys, and one key just cycles it: M N B U I Y O.
+      // The whole show-off book (poses.ts) sits on its own keys: M N B Y O 1 2 3 4 5 6.
       case 'KeyM':
       case 'KeyN':
       case 'KeyB':
-      case 'KeyU':
-      case 'KeyI':
       case 'KeyY':
       case 'KeyO':
       case 'KeyZ':
       case 'Digit1':
       case 'Digit2':
       case 'Digit3':
-      case 'Digit4': {
+      case 'Digit4':
+      case 'Digit5':
+      case 'Digit6': {
         const fs = freestyleByKey(code);
         if (fs) this.taunt(p, fs.id);
         break;
@@ -3132,6 +3154,7 @@ export class Game {
 
   // ------------------------------------------------------------ round flow
   private startRound(first = false) {
+    if (this.hangar) this.hangar.g.visible = false;
     if (this.menuHero) {
       this.menuHero.root.visible = false;
       this.menuHeroPedestal.visible = false;
@@ -3723,10 +3746,10 @@ export class Game {
       const dpr = window.devicePixelRatio || 1;
       const w = window.innerWidth || 1280;
       const h = window.innerHeight || 720;
-      const budget = 2.0e6; // ensure frame easily hits rock-solid 60 FPS even on integrated/mobile GPU
-      return Math.max(0.75, Math.min(dpr, 1.5, Math.sqrt(budget / Math.max(1, w * h))));
+      const budget = 1.6e6; // ensure frame easily hits rock-solid 60 FPS even on integrated/mobile GPU
+      return Math.max(0.75, Math.min(dpr, 1.35, Math.sqrt(budget / Math.max(1, w * h))));
     } catch {
-      return 1.25;
+      return 1.15;
     }
   }
 
@@ -3951,9 +3974,11 @@ export class Game {
       this.updateCamera(raw, dt); // the cinematic beats run on world time, so they slow down with the action
       this.updateWarn();
       this.focus.set((this.player.pos.x + this.enemy.pos.x) / 2, 3.4, (this.player.pos.y + this.enemy.pos.y) / 2);
-      // the hero followspots ride the fighters' feet — from the walk-in, through the fight, to the count
-      this.arena.track(this.player.robot.root.position, this.enemy.robot.root.visible ? this.enemy.robot.root.position : null);
-      this.arena.update(this.time, raw, this.hype, this.focus, this.camera);
+      if (this.phase !== 'menu' || this.menuCamMode === 'arena') {
+        // the hero followspots ride the fighters' feet — from the walk-in, through the fight, to the count
+        this.arena.track(this.player.robot.root.position, this.enemy.robot.root.visible ? this.enemy.robot.root.position : null);
+        this.arena.update(this.time, raw, this.hype, this.focus, this.camera);
+      }
       this.hype = Math.max(0.15, this.hype - raw * 0.12);
       if (this.bannerT > 0) {
         this.bannerT -= raw;
@@ -4015,16 +4040,16 @@ export class Game {
       this.sfx.warn(UNBLOCKABLE.includes(m.id));
     }
     const ok = p.dodgeFor === e.moveSeq;
-    const red = UNBLOCKABLE.includes(m.id);
+    const red = m.id === 'grab';
     const kind = ok ? 'warn-ok' : red ? 'warn-red' : 'warn-yellow';
     const touchUi = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-    const keyName = touchUi ? '◎' : 'SPACE';
+    const keyName = touchUi ? '◎' : 'G';
     if (!this.warnOn || this.warnKind !== kind) {
       this.warnOn = true;
       this.warnKind = kind;
       this.warnEl.className = `warn ${kind}`;
       this.warnEl.style.display = 'block';
-      this.warnTag.textContent = ok ? '✔ AMAN!' : red ? `⚠ TAK BISA DIBLOK — DODGE [${keyName}]!` : `⚡ DODGE [${keyName}]!`;
+      this.warnTag.textContent = ok ? '✔ AMAN!' : red ? `⚠ BANTINGAN — HINDAR [${keyName}]!` : `⚡ HINDAR [${keyName}] / LINDUNG [SPACE]!`;
     }
     const u = Math.max(0, Math.min(1, remain / this.warnTotal)); // 1 → 0 as the strike approaches
     this.warnTag.style.opacity = String(0.85 + (1 - u) * 0.15);
@@ -4161,8 +4186,20 @@ export class Game {
     p.blocking = false;
     p.sprinting = false;
     p.ippo = false;
+    // Allow pressing SPACE (Berlindung) to cancel attack recovery or non-Overdrive swing when an enemy attack is incoming
+    const wantBlockKey = this.keys.has('Space') && p.stam > 0;
+    if (wantBlockKey && p.state === 'attack' && p.move) {
+      const incomingAtk = this.enemy.state === 'attack' && !!this.enemy.move && !this.enemy.impacted;
+      if (p.impacted || (!isOD(p.move.id) && incomingAtk)) {
+        p.state = 'idle';
+        p.move = null;
+        p.runStrike = false;
+        p.ippoStrike = false;
+        p.queued = null;
+      }
+    }
     if (p.state === 'idle' && p.dodgeT <= 0) {
-      p.blocking = this.keys.has('Space') && p.stam > 0;
+      p.blocking = wantBlockKey;
       const holdW = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       // SPRINT: hold SHIFT (or F) and walk in any direction. A double-tap on W that you keep holding also runs.
       // A run only ends when the stamina is really empty, and only restarts once ~25 has recovered.
@@ -4990,12 +5027,16 @@ export class Game {
 
   private startMove(f: Fighter, id: MoveId, chain = false) {
     const m = MOVES[id];
-    if (id === 'counter' && f.isPlayer) {
-      if (f.counterCd > 0) return; // guarded again here: a queued follow-up must not sneak past the cooldown
-      f.counterCd = 0.65; // short anti-spam cooldown in neutral (reset to 0 on any dodge or incoming attack!)
-      const e = this.enemy;
-      if (e.state === 'attack' && e.move && !e.impacted) {
-        f.parryFor = e.moveSeq; // lock onto the enemy's active attack so L catches & counters it!
+    const foe = this.foeOf(f);
+    if (id === 'counter') {
+      if (f.isPlayer) {
+        if (f.counterCd > 0) return; // guarded again here: a queued follow-up must not sneak past the cooldown
+        f.counterCd = 0.65; // short anti-spam cooldown in neutral (reset to 0 on any dodge or incoming attack!)
+      } else {
+        f.counterCd = 0.45;
+      }
+      if (foe.state === 'attack' && foe.move && !foe.impacted) {
+        f.parryFor = foe.moveSeq; // lock onto the opponent's active attack so Counter catches & parries it!
         f.invuln = Math.max(f.invuln, 0.45);
       }
     }
@@ -5042,9 +5083,8 @@ export class Game {
     // DODGE ADVANTAGE & RAGE MODE: a strike thrown out of a dodge or during Rage Mode comes out faster and lands harder
     if (!f.isPlayer) f.rage = false; // enemy is strictly forbidden from using Rage Mode
     const isReactiveCounter =
-      f.isPlayer &&
       id === 'counter' &&
-      (f.dodgeWinT > 0 || f.counterT > 0 || (this.enemy.state === 'attack' && !!this.enemy.move && !this.enemy.impacted));
+      (f.dodgeWinT > 0 || f.counterT > 0 || (foe.state === 'attack' && !!foe.move && !foe.impacted));
     f.winStrike = (f.dodgeWinT > 0 || isReactiveCounter) && !isOD(id);
     const dodgeSpd = isReactiveCounter ? 1.48 : f.winStrike ? DODGE_WIN_SPD : 1;
     const rageSpd = f.isPlayer && f.rage ? 1.2 : 1;
@@ -5147,7 +5187,7 @@ export class Game {
       strafeT: 0,
       blockT: 0,
       reactT: -1,
-      reactAct: '' as '' | 'block' | 'side' | 'back',
+      reactAct: '' as '' | 'block' | 'side' | 'back' | 'parry',
       habit: { jab: 0, cross: 0, hook: 0, upper: 0, slam: 0, bolt: 0, windmill: 0, skyhook: 0, grab: 0, counter: 0 } as Record<MoveId, number>,
       defStreak: 0,
       defT: 0,
@@ -5250,14 +5290,22 @@ export class Game {
 
   private aiDefended(kind: 'block' | 'dodge', seq: number) {
     const ai = this.ai;
+    const e = this.enemy;
+    const foe = this.foeOf(e);
+    const dist = e.pos.distanceTo(foe.pos);
     ai.punishSeq = seq; // this move is already accounted for
     ai.defStreak = Math.min(6, ai.defStreak + 1);
     ai.defT = 2.4;
-    const p = Math.min(0.98, this.def.punish * (kind === 'dodge' ? 1.08 : 0.92));
+    e.counterT = Math.max(e.counterT, 2.2); // prime 1.6x Counter Attack bonus after blocking or dodging!
+    e.dodgeWinT = Math.max(e.dodgeWinT, 1.2);
+    e.counterCd = 0;
+    const p = Math.min(0.99, Math.max(0.88, this.def.punish) * (kind === 'dodge' ? 1.08 : 1.02));
     if (Math.random() < p) {
-      ai.punishT = (kind === 'dodge' ? 0.85 : 0.65) * (1 + Math.max(0, this.iq - 1) * 0.05);
+      ai.punishT = (kind === 'dodge' ? 0.95 : 0.85) * (1 + Math.max(0, this.iq - 1) * 0.05);
       ai.cool = 0;
-      ai.blockT = 0; // drop guard immediately to fire back the counter!
+      ai.blockT = kind === 'block' ? 0.06 : 0; // absorb the blow on the guard, then immediately fire back a counter-attack!
+      ai.queued = dist > 3.7 * e.scale ? 'counter' : Math.random() < 0.55 ? 'counter' : Math.random() < 0.78 ? 'hook' : 'upper';
+      ai.queuedT = 0.95;
     }
   }
 
@@ -5272,9 +5320,9 @@ export class Game {
     const sq = Math.sqrt(iq);
     if (e.dodgeT > 0 || ai.reactT >= 0) return;
     if (e.state !== 'idle') {
-      // Genius AI bails out of its own wind-up or post-impact recovery to slip/block your counter-attack!
-      const bail = e.state === 'attack' && !!e.move && (e.tellT > 0 || e.impacted) && !isOD(e.move.id);
-      if (!bail || Math.random() > Math.min(0.98, (isZeusAI ? 0.85 : 0.55) + iq * 0.06)) return;
+      // Genius AI bails out of its own wind-up or post-impact recovery to slip/block/counter your attack!
+      const bail = e.state === 'attack' && !!e.move && (e.tellT > 0 || e.impacted || e.moveT < e.move.strikeAt * 0.85) && !isOD(e.move.id);
+      if (!bail || Math.random() > Math.min(0.99, (isZeusAI ? 0.92 : 0.78) + iq * 0.05)) return;
       e.state = 'idle';
       e.move = null;
       e.tellT = 0;
@@ -5285,18 +5333,30 @@ export class Game {
     }
     const foe = this.foeOf(e);
     const d = foe.pos.distanceTo(e.pos);
-    if (d > (m.reach + m.step * 0.5) * foe.scale + 3.2) return; // reads lunges and dash-ins from afar
-    // defending several times in a row tires the reflexes slightly, but a genius AI stays sharp (Zeus never fatigues)
-    const fatigue = isZeusAI ? 1 : Math.max(0.48, 1 - ai.defStreak * (0.09 / sq));
-    const hab = 1 + Math.min(0.85, (ai.habit[m.id] - 1) * 0.16 * def.adapt);
-    const cap = isZeusAI ? 0.995 : iq >= 10 ? 0.992 : iq >= 3 ? 0.975 : this.ultra ? 0.96 : 0.93;
-    const p = Math.min(cap, (isZeusAI ? Math.max(0.96, def.react) : def.react) * hab * fatigue);
+    if (d > (m.reach + m.step * 0.5) * foe.scale + 3.4) return; // reads lunges and dash-ins from afar
+    // Pro-boxer AI defense: stays sharp and actively blocks, slips, or parries incoming strikes
+    const fatigue = isZeusAI ? 1 : Math.max(0.68, 1 - ai.defStreak * (0.06 / sq));
+    const hab = 1 + Math.min(0.85, (ai.habit[m.id] - 1) * 0.18 * def.adapt);
+    const cap = isZeusAI ? 0.995 : iq >= 10 ? 0.992 : iq >= 3 ? 0.98 : this.ultra ? 0.96 : 0.94;
+    const baseReact = Math.max(0.86, def.react);
+    const p = Math.min(cap, (isZeusAI ? Math.max(0.96, baseReact) : baseReact) * hab * fatigue);
     if (Math.random() > p) return;
-    const act = defenceAgainst(m.id, isZeusAI ? Math.max(0.86, def.dodge) : def.dodge);
+    // Smart mix of Dodge/Slip, Block (-90% damage + Guard Counter), and Direct Counter Parry!
+    let act: 'block' | 'side' | 'back' | 'parry' = defenceAgainst(m.id, isZeusAI ? Math.max(0.72, def.dodge) : Math.max(0.58, def.dodge));
+    const roll = Math.random();
+    if (m.id === 'grab') {
+      act = roll < 0.35 ? 'parry' : roll < 0.7 ? 'side' : 'back';
+    } else if (roll < (isZeusAI ? 0.28 : 0.22) && e.counterCd <= 0 && d <= 4.6 * e.scale) {
+      act = 'parry'; // direct counter-parry straight into the player's attack!
+    } else if (roll < 0.56 && e.stam > 30) {
+      act = 'block'; // solid guard (-90% damage) followed by immediate guard-counter!
+    } else if (act === 'block' && roll < 0.78 && e.dodgeCd <= 0) {
+      act = Math.random() < 0.65 ? 'side' : 'back';
+    }
     ai.reactAct = act;
-    // fair, athletic reaction time so jabs, hooks, and counters are slipped with realistic championship boxing timing
-    const rt = (isZeusAI ? 0.09 : 0.12) + Math.random() * 0.05 + (1 - def.react) * 0.08;
-    ai.reactT = Math.max(isZeusAI ? 0.08 : 0.10, rt / Math.pow(iq, 0.42));
+    // Crisp championship reaction timing
+    const rt = (isZeusAI ? 0.06 : 0.08) + Math.random() * 0.04 + (1 - baseReact) * 0.05;
+    ai.reactT = Math.max(isZeusAI ? 0.05 : 0.065, rt / Math.pow(iq, 0.42));
   }
 
   private pickAiMove(e: Fighter, chain: MoveId | null, dist: number): MoveId {
@@ -5560,29 +5620,39 @@ export class Game {
         }
         const side = r.clone().multiplyScalar(slipSign);
 
-        // If stamina is low (< 38), never sit in block waiting to get guard-broken — force a slip!
-        const act = ai.reactAct === 'block' && e.stam < 38 && e.dodgeCd <= 0 ? 'side' : ai.reactAct;
+        // If stamina is low (< 25), prefer slipping over sitting in block
+        const act = ai.reactAct === 'block' && e.stam < 25 && e.dodgeCd <= 0 ? 'side' : ai.reactAct;
 
-        if (act === 'block') {
-          ai.blockT = 0.34 + Math.random() * 0.22;
-          if (e.robot.isZeus) {
-            ai.punishT = 0.9;
-            ai.queued = dist > 3.6 * e.scale ? 'counter' : 'hook';
-            ai.queuedT = 0.85;
-          }
+        if (act === 'parry') {
+          e.counterCd = 0;
+          e.counterT = 2.2;
+          e.dodgeWinT = 1.2;
+          ai.punishSeq = p.moveSeq;
+          ai.punishT = 0.95;
+          ai.cool = 0;
+          ai.blockT = 0;
+          this.startMove(e, 'counter', true);
+        } else if (act === 'block') {
+          ai.blockT = 0.42 + Math.random() * 0.24;
+          e.counterT = 2.0;
+          ai.punishT = 0.95;
+          ai.queued = dist > 3.6 * e.scale ? 'counter' : Math.random() < 0.55 ? 'counter' : 'hook';
+          ai.queuedT = 0.95;
         } else if (act === 'side') {
           if (this.startDodge(e, side, 'side')) {
             if (p.state === 'attack' && p.move) {
               e.dodgeFor = p.moveSeq;
               ai.punishSeq = p.moveSeq;
             }
-            ai.punishT = 0.85;
+            e.counterT = 2.2;
+            e.dodgeWinT = 1.2;
+            ai.punishT = 0.95;
             ai.cool = 0;
             ai.blockT = 0;
-            ai.queued = dist > 3.8 * e.scale ? 'counter' : Math.random() < 0.5 ? 'hook' : 'upper';
-            ai.queuedT = 0.85;
+            ai.queued = dist > 3.7 * e.scale ? 'counter' : Math.random() < 0.55 ? 'counter' : Math.random() < 0.78 ? 'hook' : 'upper';
+            ai.queuedT = 0.95;
           } else {
-            ai.blockT = 0.35;
+            ai.blockT = 0.4;
           }
         } else if (act === 'back') {
           if (this.startDodge(e, f.clone().multiplyScalar(-1).addScaledVector(side, 0.38).normalize(), 'back')) {
@@ -5590,13 +5660,15 @@ export class Game {
               e.dodgeFor = p.moveSeq;
               ai.punishSeq = p.moveSeq;
             }
-            ai.punishT = 0.85;
+            e.counterT = 2.2;
+            e.dodgeWinT = 1.2;
+            ai.punishT = 0.95;
             ai.cool = 0;
             ai.blockT = 0;
-            ai.queued = Math.random() < 0.6 ? 'counter' : 'cross';
-            ai.queuedT = 0.9;
+            ai.queued = Math.random() < 0.72 ? 'counter' : 'cross';
+            ai.queuedT = 0.95;
           } else {
-            ai.blockT = 0.35;
+            ai.blockT = 0.4;
           }
         }
         ai.reactAct = '';
@@ -6044,8 +6116,8 @@ export class Game {
       }
     }
     f.riseOut = Math.max(0, f.riseOut - dt / 0.55);
-    if (f.state === 'ko') f.fallT = 1;
-    const airborne = f.state === 'air' || (f.state === 'ko' && (f.y > 0 || f.vy !== 0));
+    const airborne = f.state === 'air' || (f.state === 'ko' && (f.y > 0.001 || f.vy !== 0));
+    if (f.state === 'ko' && !airborne) f.fallT = 1;
     if (airborne) this.updateAir(f, dt);
 
     // movement
@@ -6296,7 +6368,7 @@ export class Game {
     f.speed = f.state === 'ko' ? 0 : f.vel.length();
 
     // facing (locks onto the strike direction once a punch is thrown)
-    if (f.state === 'air' && this.phase !== 'walk' && this.phase !== 'menu') {
+    if ((f.state === 'air' || (f.state === 'ko' && airborne)) && this.phase !== 'walk' && this.phase !== 'menu') {
       // knocked flying: no steering — he turns with the spin the blow put on him, and that spin bleeds off
       f.airSpin *= Math.exp(-1.6 * dt);
       f.yaw += f.airSpin * dt;
@@ -6340,12 +6412,12 @@ export class Game {
     if (f.y > 0) return;
     f.y = 0;
     const imp = -f.vy;
-    if (imp > 16 && !f.bounced) {
-      // only a truly violent slam skips once off the canvas — and barely (steel does not bounce like a ball)
+    if (imp > 14 && !f.bounced) {
+      // a violent slam skips once off the canvas with heavy steel rebound before settling
       f.bounced = true;
-      f.vy = imp * 0.1;
+      f.vy = imp * 0.14;
       this.landFx(f, imp);
-      this.ragdollSlam(f, Math.min(1, imp / 18) * 0.8);
+      this.ragdollSlam(f, Math.min(1, imp / 18) * 0.85);
     } else {
       f.vy = 0;
       if (f.state === 'air') {
@@ -6367,14 +6439,24 @@ export class Game {
         // and slam the canvas (head last). The lean he arrives with is kept as its own channel (tiltLand) and is
         // traded for the staged lie as the collapse progresses — the total pitch is continuous and monotonic.
         f.fallS.set(0);
-        f.fallS.v = 1.4;
+        f.fallS.v = Math.min(2.2, 1.35 + imp * 0.045);
         f.tiltLand = f.tilt;
         f.tiltZLand = f.tiltZ;
         if (Math.abs(f.tiltZ) > 0.15) f.riseDir = f.tiltZ > 0 ? 1 : -1; // he lies on the side he went over to
-        this.ragdollSlam(f, Math.min(1, imp / 18));
+        this.ragdollSlam(f, Math.min(1.15, imp / 16));
         f.juggle = 0;
         f.comboTaken = 0;
         f.kb.multiplyScalar(0.4);
+      } else if (f.state === 'ko' && f.fallT === 0) {
+        // KO TOUCHDOWN: lands on the canvas from the KO launch and collapses through the same two-stage ragdoll chain
+        f.fallT = 1;
+        f.fallS.set(0);
+        f.fallS.v = Math.min(2.2, 1.35 + imp * 0.045);
+        f.tiltLand = f.tilt;
+        f.tiltZLand = f.tiltZ;
+        if (Math.abs(f.tiltZ) > 0.15) f.riseDir = f.tiltZ > 0 ? 1 : -1;
+        this.ragdollSlam(f, Math.min(1.2, imp / 15));
+        f.kb.multiplyScalar(0.45);
       }
       if (imp > 2) this.landFx(f, imp);
     }
@@ -6409,9 +6491,11 @@ export class Game {
     for (let i = 0; i < 2; i++) {
       const sp = f.armS[i];
       const s = i === 0 ? 1 : -1;
-      sp[0].v += (4 + (s * side > 0 ? 1.5 : 0)) * mag; // arms slap down
-      sp[2].v += (-0.8 + s * side * 0.5) * mag;
-      sp[3].v += (-2.5 - (s * side > 0 ? 0 : 1.0)) * mag; // elbows buckle
+      // When the back slams the canvas, the arms rebound slightly upward (negative sx = above chest) and out to the
+      // sides instead of driving positive sx through the floor behind the back (which used to prop the body in mid-air).
+      sp[0].v += (-1.8 - (s * side > 0 ? 0.9 : 0.3)) * mag;
+      sp[2].v += (1.15 + (s * side > 0 ? 0.55 : 0.2)) * mag;
+      sp[3].v += (-1.5 - (s * side > 0 ? 0.35 : 0.75)) * mag; // elbows flex on rebound
     }
     f.bodyS.twist.v += side * 1.6 * mag;
     f.bodyS.roll.v += -side * 1.2 * mag;
@@ -6604,19 +6688,20 @@ export class Game {
       this.fx.spark(new THREE.Vector3(a.pos.x - toA.x * 2.4, 0.3, a.pos.y - toA.y * 2.4), 22, 11, 0xffa040, undefined, 1.4, 1.0, 16);
     }
 
-    // TIMED DODGE: the player pressed dodge while THIS very attack was winding up → it whiffs, wherever he stands
-    if (d.isPlayer && d.dodgeFor === a.moveSeq) {
+    // TIMED DODGE: the defender (player OR enemy) dodged while THIS very attack was winding up → it whiffs cleanly!
+    if (d.dodgeFor === a.moveSeq) {
       d.dodgeFor = -1;
       this.perfectDodge(d, m);
+      if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
       return;
     }
 
-    const playerTrueCounter = a.isPlayer && (m.id === 'counter' || a.winStrike || a.counterT > 0);
-    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (playerTrueCounter ? 0.65 : 0)) * a.scale) return; // out of range (a running punch / true counter reaches further)
+    const trueCounter = m.id === 'counter' || a.winStrike || a.counterT > 0;
+    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale) return; // out of range (a running punch / true counter reaches further)
 
-    // COUNTER STANCE (L): a strike that arrives inside the parry window (or locked by parryFor) is caught, not eaten.
-    // Works on ANY attack — including the unblockable throw and the Overdrives!
-    if (d.isPlayer && d.state === 'attack' && d.move && d.move.id === 'counter' && (d.moveT <= PARRY_ACTIVE || d.parryFor === a.moveSeq)) {
+    // COUNTER STANCE (L / Enemy Counter Parry): a strike that arrives inside the parry window (or locked by parryFor) is caught, not eaten.
+    // Works for both Player and Enemy!
+    if (d.state === 'attack' && d.move && d.move.id === 'counter' && (d.moveT <= PARRY_ACTIVE || d.parryFor === a.moveSeq)) {
       this.parryCounter(d, a, m);
       return;
     }
@@ -6625,34 +6710,25 @@ export class Game {
     const rel = new THREE.Vector2().subVectors(d.pos, a.pos);
     const lateral = Math.abs(rel.x * a.attackDir.y - rel.y * a.attackDir.x);
     const avg = (a.scale + d.scale) * 0.5;
-    const hitWidth = X.width * (playerTrueCounter ? 1.45 : 1) * avg;
+    const hitWidth = X.width * (trueCounter ? 1.45 : 1) * avg;
     if (lateral > hitWidth) {
       if (d.dodgeT > 0 || d.invuln > 0) {
-        if (d.isPlayer) {
-          this.perfectDodge(d, m);
-        } else {
-          this.popup(new THREE.Vector3(d.pos.x, 6.5 * d.scale, d.pos.y), 'MISS', 'pop-info');
-          this.aiDefended('dodge', a.moveSeq);
-        }
+        this.perfectDodge(d, m);
+        if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
       }
       return;
     }
     if (d.wakeT > 0) return;
 
-    if (d.invuln > 0 && !(playerTrueCounter && !d.isPlayer)) {
-      if (d.isPlayer) {
-        this.perfectDodge(d, m);
-      } else {
-        this.popup(new THREE.Vector3(d.pos.x, 6.5 * d.scale, d.pos.y), 'MISS', 'pop-info');
-        this.aiDefended('dodge', a.moveSeq);
-      }
+    if (d.invuln > 0 && !trueCounter) {
+      this.perfectDodge(d, m);
+      if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
       return;
     }
 
-    // PLAYER L-COUNTER / OVERDRIVE INTERRUPTS ENEMY DEADLY WIND-UP:
-    // If the player lands L (counter) or R (Overdrive) while the enemy is winding up any attack (even an Overdrive or Unblockable!),
-    // it shatters the enemy's attack and triggers a full Counter Parry!
-    if (a.isPlayer && (m.id === 'counter' || isOD(m.id)) && d.state === 'attack' && d.move && !d.impacted) {
+    // COUNTER / OVERDRIVE INTERRUPTS ACTIVE WIND-UP:
+    // If either fighter lands Counter or Overdrive while the opponent is winding up an attack, it shatters the wind-up!
+    if ((m.id === 'counter' || isOD(m.id)) && d.state === 'attack' && d.move && !d.impacted) {
       if (m.id === 'counter') {
         this.parryCounter(a, d, d.move);
       } else {
@@ -6675,10 +6751,10 @@ export class Game {
       dmg *= 1.45;
       label = 'RUNNING PUNCH!';
     }
-    if (a.isPlayer && a.counterT > 0) {
+    if (a.counterT > 0) {
       dmg *= 1.6;
       a.counterT = 0;
-      label = 'COUNTER!';
+      label = a.isPlayer ? 'COUNTER!' : '⚡ COUNTER MUSUH!';
     }
     if (d.state === 'attack' && d.move && d.moveT < d.move.impact && !label && !isOD(m.id)) {
       dmg *= d.isPlayer ? 1.15 : 1.35; // counter-hits hurt you less than they hurt the enemy
@@ -6726,39 +6802,115 @@ export class Game {
       return;
     }
 
-    // ---------- blocked ----------
-    if (!X.unblock && d.blocking && d.state === 'idle') {
+    // ---------- blocked (90% attack strength reduction -> only 10% damage gets through, with MASSIVE sparks & heavy punch impact feel!) ----------
+    if (m.id !== 'grab' && d.blocking && (d.state === 'idle' || d.state === 'stagger')) {
       a.hitConfirmed = true;
       if (!d.isPlayer) this.aiDefended('block', a.moveSeq);
-      const chip = dmg * m.blockMul * (d.isPlayer ? 1 : 1 / (1 + (this.iq - 1) * 0.1)); // a smart guard soaks more
+      const big = m.power;
+      const chip = dmg * 0.10; // 90% damage reduction: only 10% of the attack damage lands!
       d.hp = Math.max(1, d.hp - chip);
-      // body shots against a guard eat the guard: the chip drain is multiplied when you are aiming at the body
-      d.stam = Math.max(0, d.stam - dmg * 1.25 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1) * (d.isPlayer ? 1 : 1 / Math.pow(this.iq, 0.35)));
-      // Boxing guard pushback: even blocked punches drive the defender backward across the ring while the attacker presses in!
-      d.kb.addScaledVector(away, m.knock * 0.88 * (a.rage ? 1.32 : 1) * (d.robot.isZeus ? 0.833 : 1));
-      if (dist > 2.9 * avg) a.kb.addScaledVector(away, m.knock * 0.34);
-      this.fx.spark(new THREE.Vector3(d.pos.x, 0.2, d.pos.y), 4, 3.8, 0xb8c4d8, new THREE.Vector3(-away.x, 0.2, -away.y), 1.1, 0.4, 4);
-      this.fx.spark(hitPos, 12 + Math.floor(m.power * 10), 10 + m.power * 4, 0xffd27a, dirAD, 1, 0.55); // steel on steel: a shower of sparks
-      this.fx.spark(hitPos, 4 + Math.floor(m.power * 4), 7, 0xffffff, dirAD, 1.2, 0.32);
-      this.fx.flash(hitPos, 2.2 + m.power * 1.6, 0x9fd6ff, 0.16);
-      this.fx.shards(hitPos, 2 + Math.floor(m.power * 5), dirAD, d.robot.armorColor, 6 + m.power * 5, 0.6);
+      if (this.phase === 'fight') {
+        this.stats.dmg[a.isPlayer ? 0 : 1] += chip;
+      }
+      // Stamina drain is reduced by 90% (0.10x) when blocking
+      d.stam = Math.max(0, d.stam - dmg * 0.10 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
+
+      // Physical boot-skid pushback so the 2-ton punch force visibly shoves the defender's planted guard across the mat
+      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * (d.robot.isZeus ? 0.833 : 1);
+      d.kb.addScaledVector(away, blockPush);
+      if (dist > 2.85 * avg) a.kb.addScaledVector(away, blockPush * 0.45);
+
+      // Exact collision point on the raised forearm guard in front of the defender
+      const guardPos = new THREE.Vector3(aimP.x + toA.x * 1.05 * d.scale, aimP.y, aimP.z + toA.y * 1.05 * d.scale);
+      const sideVec = new THREE.Vector3(-away.y, 0.38, away.x).normalize();
+      const sideVecR = new THREE.Vector3(away.y, 0.38, -away.x).normalize();
+      const bounceBack = new THREE.Vector3(-away.x * 0.7, 0.55, -away.y * 0.7).normalize();
+
+      // 1. MASSIVE STEEL-ON-STEEL WELDING SPARKS & LATERAL ANVIL SPRAY
+      // Main golden-orange welding spark fountain erupting off the forearm shield
+      this.fx.spark(guardPos, 28, 13.5 + big * 12, 0xffd268, bounceBack, 1.05, 0.78, 12);
+      this.fx.spark(guardPos, 22, 11.5 + big * 10, 0xff9430, dirAD, 1.15, 0.85, 14);
+      // White-hot core impact flash sparks
+      this.fx.spark(guardPos, 20, 12.0 + big * 9, 0xffffff, bounceBack, 1.25, 0.48, 10);
+      // Twin lateral spark jets squirting out left & right between the colliding glove and crossed steel forearms
+      this.fx.spark(guardPos, 18, 13.0 + big * 10, 0xffdf80, sideVec, 0.72, 0.68, 12);
+      this.fx.spark(guardPos, 18, 13.0 + big * 10, 0xffdf80, sideVecR, 0.72, 0.68, 12);
+      // High-voltage cyan-blue kinetic shield / servo overload arcs
+      this.fx.spark(guardPos, 16, 11.0 + big * 9, 0x7fe8ff, bounceBack, 0.95, 0.56, 9);
+      // Heavy boot-skid friction sparks & canvas dust at the defender's planted feet
+      this.fx.spark(new THREE.Vector3(d.pos.x, 0.14, d.pos.y), 12 + Math.floor(big * 10), 5.5 + big * 4.5, 0xffc868, new THREE.Vector3(-away.x, 0.35, -away.y), 1.15, 0.5, 10);
+      this.fx.spark(new THREE.Vector3(d.pos.x, 0.18, d.pos.y), 8 + Math.floor(big * 6), 4.5 + big * 3.5, 0xb8c4d8, new THREE.Vector3(-away.x, 0.25, -away.y), 1.25, 0.45, 5);
+      // Tumbling glowing armor shards chipped off the forearm guard
+      this.fx.shards(guardPos, 6 + Math.floor(big * 12), bounceBack, d.robot.armorColor, 8 + big * 7, 0.75 + big * 0.55);
+
+      // Hot embers dripping from the scorched forearm guard after impact
+      d.emberT = Math.max(d.emberT, 0.26 + big * 0.32);
+      {
+        const sy = Math.sin(d.yaw);
+        const cy = Math.cos(d.yaw);
+        const lx = guardPos.x - d.pos.x;
+        const lz = guardPos.z - d.pos.y;
+        d.emberLocal.set(cy * lx - sy * lz, guardPos.y - d.y, sy * lx + cy * lz);
+      }
+
+      // 2. HEAVY MECHANICAL GUARD COMPRESSION & SUSPENSION JOLT ON DEFENDER
+      // The defender stays in tight BLOCK stance, but the sheer force of the punch visibly compresses his forearms,
+      // rocks his torso back on its springs, sinks his knees into the mat, and jolts the robot's pistons!
+      const cyD = Math.cos(d.yaw);
+      const syD = Math.sin(d.yaw);
+      const hitL = away.x * cyD - away.y * syD;
+      const hitSide = Math.abs(hitL) > 0.1 ? Math.sign(hitL) : (m.arm === 0 ? 1 : -1);
+      const guardShove = 1.0 + big * 1.45;
+      for (let i = 0; i < 2; i++) {
+        const sp = d.armS[i];
+        const s = i === 0 ? 1 : -1;
+        sp[0].v += (2.4 + (s * hitSide > 0 ? 1.2 : 0.5)) * guardShove; // forearms driven back against chest/jaw
+        sp[2].v += (1.1 + (s * hitSide > 0 ? 0.7 : 0.25)) * guardShove; // guard absorbs lateral shock
+        sp[3].v -= (1.8 + big * 1.4) * guardShove; // elbows flex tightly under load
+      }
+      d.bodyS.lean.v -= (2.8 + big * 3.8); // torso rocks backward from the blow
+      d.bodyS.lunge.v -= (2.5 + big * 3.2); // hips brace backward
+      d.bodyS.dip.v += (2.6 + big * 3.4); // knees compress into the canvas to hold ground
+      d.bodyS.twist.v += hitSide * (2.2 + big * 3.2); // shoulders torque with the punch side
+      d.bodyS.roll.v -= hitSide * (1.2 + big * 1.8);
+      d.robot.jolt(0.65 + big * 0.85, hitSide);
+      d.flash = Math.max(d.flash, 0.85 + big * 0.35);
+      d.glowBoost = Math.max(d.glowBoost, 1.6 + big * 1.4);
+
+      // 3. ATTACKER FIST RECOIL OFF THE STEEL GUARD WALL
       a.recoilArm = this.armOf(a, m);
-      a.recoilTot = 0.12 + m.power * 0.08;
+      a.recoilTot = 0.15 + big * 0.1;
       a.recoilT = a.recoilTot;
-      a.recoilAmt = 0.7 + m.power * 0.8; // a guard is a wall: the fist bounces off it harder than off a body
-      this.fx.impactWave(hitPos, dirAD, 0x96e2ff, 2.2 + m.power * 2.4, 0.24);
-      this.fx.ring(hitPos.x, hitPos.z, 0xbfe4ff, 2.0 + m.power * 2.4, 0.28, hitPos.y);
-      this.sfx.block(m.power);
-      this.freeze = 0.032 + m.power * 0.028;
+      a.recoilAmt = 0.95 + big * 1.15; // a guard is a solid wall of steel: the fist bounces off it hard!
+
+      // 4. SHOCKWAVES, FLASH, STROBE, CAMERA PUNCH & THUNDEROUS STEEL CLANG AUDIO
+      this.fx.flash(guardPos, 3.8 + big * 4.2, 0xffe4a8, 0.22);
+      this.fx.impactWave(guardPos, dirAD, 0xffd27a, 2.8 + big * 2.8, 0.26, 0.36);
+      this.fx.impactWave(guardPos, bounceBack, 0x8fe8ff, 2.2 + big * 2.2, 0.22, 0.3);
+      this.fx.ring(guardPos.x, guardPos.z, 0xffe090, 2.8 + big * 2.8, 0.32, guardPos.y);
+      this.fx.ring(d.pos.x, d.pos.y, 0x9fe6ff, 3.2 + big * 2.6, 0.3, 0.08);
+      if (big >= 0.35) this.arena.strobe(0.28 + big * 0.55);
+
+      this.sfx.block(Math.min(1, 0.65 + big * 0.5));
+      this.sfx.hit(Math.min(1, 0.5 + big * 0.65)); // heavy low-end punch thud combined with metallic block clang
+      this.sfx.crackle(0.65 + big * 0.65); // sizzling welding spark crackle
+      if (this.allOverdrivePunch || isOD(m.id)) {
+        this.sfx.overdriveHit(Math.min(1.1, 0.55 + big * 0.55));
+      }
+
+      this.freeze = 0.048 + big * 0.048; // crisp mechanical hitstop so the steel-on-steel impact feels heavy
       this.frozenFighter = d;
-      this.trauma = Math.min(0.45, this.trauma + 0.12 + m.power * 0.16);
-      this.camPush += 0.12 + m.power * 0.18;
-      this.camBump = Math.max(this.camBump, 0.06 + m.power * 0.1);
-      const bImp = 1.4 + m.power * 2.2;
+      this.shakePh = 0;
+      this.trauma = Math.min(0.68, this.trauma + 0.22 + big * 0.32);
+      this.camPush += 0.22 + big * 0.36;
+      this.camBump = Math.max(this.camBump, 0.11 + big * 0.18);
+      this.camRoll = hitSide * (0.012 + big * 0.024);
+      this.fovKick = -(1.4 + big * 3.0);
+      const bImp = 2.4 + big * 3.8;
       this.camImpVel.x += away.x * bImp;
-      this.camImpVel.y -= 0.7 + m.power * 1.1;
+      this.camImpVel.y -= 1.1 + big * 1.8;
       this.camImpVel.z += away.y * bImp;
-      this.popup(hitPos, aim === AIM_BODY ? 'GUARD ABSORB' : 'BLOCK', 'pop-block');
+      this.popup(guardPos, `🛡️ LINDUNG -90% (${Math.max(1, Math.round(chip))})`, 'pop-block');
       if (d.stam <= 0) {
         d.blocking = false;
         d.state = 'stagger';
@@ -7099,6 +7251,16 @@ export class Game {
       d.hp = d.maxHp; // the demo reel never ends: patch him up and fight on
       return;
     }
+    const away = new THREE.Vector2(d.pos.x - a.pos.x, d.pos.y - a.pos.y);
+    if (away.lengthSq() < 1e-4) away.set(Math.sin(a.yaw), Math.cos(a.yaw));
+    away.normalize();
+    const sideL = away.x * Math.cos(d.yaw) - away.y * Math.sin(d.yaw);
+    const koSide = Math.abs(sideL) > 0.15 ? (sideL > 0 ? 1 : -1) : (d.hitSign || 1);
+    d.riseDir = koSide;
+    if (d.state !== 'air') {
+      d.airSpin = koSide * 1.35;
+      this.ragdollKick(d, 0.95, koSide);
+    }
     const mate = this.mateOf(d);
     if (this.teamMode && mate && mate.state !== 'ko') {
       // TEAM MATCH: one down, the partner fights on — the survivors regroup on whoever is still standing
@@ -7106,9 +7268,10 @@ export class Game {
       d.move = null;
       d.blocking = false;
       d.fallT = 0;
+      d.fallS.set(0);
       d.vy = Math.max(d.vy, 9);
       d.bounced = false;
-      d.kb.copy(new THREE.Vector2(d.pos.x - a.pos.x, d.pos.y - a.pos.y).normalize()).multiplyScalar(8);
+      d.kb.copy(away).multiplyScalar(Math.max(d.kb.length(), 8));
       d.hp = 0;
       this.slowT = 0.6;
       this.slowScale = 0.38;
@@ -7130,9 +7293,10 @@ export class Game {
     d.move = null;
     d.blocking = false;
     d.fallT = 0;
+    d.fallS.set(0);
     d.vy = Math.max(d.vy, 9);
     d.bounced = false;
-    d.kb.copy(new THREE.Vector2(d.pos.x - a.pos.x, d.pos.y - a.pos.y).normalize()).multiplyScalar(8);
+    d.kb.copy(away).multiplyScalar(Math.max(d.kb.length(), 8));
     this.slowT = 0.95;
     this.slowScale = 0.32;
     this.freeze = 0.16;
@@ -7296,16 +7460,16 @@ export class Game {
     const t = this.time;
     this.hangar.update(t);
     if (this.vs) {
-      if (this.vs.stage === 'clash') {
+      if (this.vs.stage === 'windup' || this.vs.stage === 'clash') {
+        const WIND = 0.44; // Authentic heavyweight hook wind-up (ancang-ancang ngehook mantap)
         const ct = this.vsClashTime;
-        const timeScale = vsClashTimeScale(ct);
-        this.vsClashTime += dt * timeScale;
+        const timeScale = this.vs.stage === 'windup' ? 1.0 : vsClashTimeScale(ct);
+        this.vsClashTime = this.vs.stage === 'windup' ? Math.min(WIND, this.vsClashTime + dt) : this.vsClashTime + dt * timeScale;
 
         const heroX = HANGAR_POS.x;
         const heroZ = HANGAR_POS.z;
         const H = 0.85;
         const REL = 1.65;
-        const WIND = 0.44; // Authentic heavyweight hook wind-up (ancang-ancang ngehook mantap)
 
         // Base/Selected starting pose with live breathing motion to blend smoothly from
         const startHero = this.heroAnimState(this.heroPose, this.time, 0, 0, false, false);
@@ -7733,11 +7897,9 @@ export class Game {
     const t = f.animT;
     f.headYaw = 0;
 
-    if (f.state === 'ko') {
-      a0 = a1 = LIMP;
-      ln = 0;
-      dp = 0;
-    } else if ((f.pkTuck > 0.01 || f.pkLand > 0.01 || f.pkPre > 0.01) && f.tauntT <= 0) {
+    const isAirRagdoll = (f.state === 'air' || (f.state === 'ko' && (f.y > 0.02 || f.vy > 0))) && this.phase !== 'walk' && this.phase !== 'menu';
+
+    if ((f.pkTuck > 0.01 || f.pkLand > 0.01 || f.pkPre > 0.01) && f.tauntT <= 0) {
       // PARKOUR ENTRANCE: the load before take-off (arms swung back, hips down), the tuck of the front flip (arms
       // wrapped round the knees), the arms flying open on the descent, then the superhero landing — deep crouch,
       // one fist driven into the canvas, the other arm swept back for balance, head coming up last
@@ -7762,21 +7924,36 @@ export class Game {
       tw = 0;
       rl = 0;
       kk = ld > 0.3 ? 70 : 34; // the landing pose SNAPS in
-    } else if (f.state === 'air') {
-      // KNOCKED FLYING: nothing is "animated" here. The arms were thrown by the blow (ragdollKick put the velocity
-      // into their springs); from then on they hang as dead weight that trails the body — very soft springs, a slow
-      // drift as the torso pitches over, no flapping
-      const drift = Math.sin(t * 3.4) * 0.07;
-      a0 = P(-0.6 + drift, 0.05, 0.38, -0.75);
-      a1 = P(-0.6 - drift, 0.05, 0.38, -0.75);
-      ln = -0.2;
+    } else if (isAirRagdoll || f.state === 'air') {
+      // KNOCKED FLYING: asymmetric airborne ragdoll — the arms were thrown by the blow (ragdollKick put velocity
+      // into their springs) and trail the vertical/horizontal flight trajectory with natural asymmetric drift.
+      const side = f.riseDir || f.hitSign || 1;
+      const driftA = Math.sin(t * 3.4) * 0.08;
+      const driftB = Math.cos(t * 2.9 + 0.8) * 0.08;
+      const vyK = THREE.MathUtils.clamp(f.vy / 12, -1, 1);
+      a0 = P(-0.52 + vyK * 0.2 + driftA, 0.08 + side * 0.06, 0.36 + (side > 0 ? 0.14 : 0.04), -0.7 - Math.max(0, vyK) * 0.22);
+      a1 = P(-0.44 + vyK * 0.16 - driftB, -0.06 + side * 0.06, 0.32 + (side < 0 ? 0.14 : 0.04), -0.84 - Math.max(0, vyK) * 0.18);
+      ln = -0.18 - Math.max(0, vyK) * 0.1;
+      tw = -side * 0.15;
+      rl = side * 0.1;
       dp = 0.05;
       kk = 5;
+    } else if (f.state === 'ko') {
+      // KO COLLAPSE & SPRAWL: staged knee-buckle → back/side canvas slam → asymmetric heavy ragdoll sprawl
+      const fb = fallArms(f.fallS.x, f.riseDir || f.hitSign || 1, t, true);
+      a0 = fb.a0;
+      a1 = fb.a1;
+      tw = fb.tw;
+      ln = fb.ln;
+      lg = 0;
+      dp = fb.dp;
+      rl = fb.rl;
+      kk = fb.kk;
     } else if (f.state === 'down') {
-      // KNOCK-DOWN & GET-UP: the whole rise is one continuous curve — he lies limp, rolls onto one shoulder,
-      // plants that hand and pushes, swings the free arm across for momentum, and hands the arms back to the guard
-      // as he comes up. The body, hips, head and legs read the same staging curves (riseStages), so nothing fights.
-      const rb = riseArms(f.riseU, f.riseDir);
+      // KNOCK-DOWN & GET-UP: while collapsing onto the canvas (riseU = 0), `fallArms` drives the asymmetric
+      // knee-buckle flail, canvas slap, and settle into the exact starting pose of `riseArms(0, dir)`, which then
+      // rolls onto one shoulder, plants that hand, and drives up into the guard.
+      const rb = f.riseU > 0.001 ? riseArms(f.riseU, f.riseDir) : fallArms(f.fallS.x, f.riseDir, t, false);
       a0 = rb.a0;
       a1 = rb.a1;
       tw = rb.tw;
@@ -8187,11 +8364,25 @@ export class Game {
         const tau = Math.PI * 2;
         if (sp[0].x < -tau) sp[0].x = ((sp[0].x % tau) + tau) % tau - tau;
       }
+      let sxVal = isWindmillSpin ? ps.sx : sp[0].update(ps.sx, hzA, zA, dt);
+      const syVal = sp[1].update(ps.sy, hzA, zA, dt);
+      const szVal = sp[2].update(ps.sz, hzA, zA, dt);
+      const exVal = sp[3].update(ps.ex, hzA, zA, dt);
+      // Canvas surface constraint while lying down: stops the upper arm from hyper-extending behind the back into
+      // the floor and bounces it off the mat, preventing groundSolve from levitating the torso on a downward elbow.
+      if ((f.state === 'down' || f.state === 'ko') && f.riseU < 0.12 && fallStages(f.fallS.x).lay > 0.45) {
+        const maxSx = 0.16;
+        if (sxVal > maxSx) {
+          sxVal = maxSx;
+          sp[0].x = maxSx;
+          if (sp[0].v > 0) sp[0].v = -sp[0].v * 0.35;
+        }
+      }
       f.arms[i] = {
-        sx: isWindmillSpin ? ps.sx : sp[0].update(ps.sx, hzA, zA, dt),
-        sy: sp[1].update(ps.sy, hzA, zA, dt),
-        sz: sp[2].update(ps.sz, hzA, zA, dt),
-        ex: sp[3].update(ps.ex, hzA, zA, dt),
+        sx: sxVal,
+        sy: syVal,
+        sz: szVal,
+        ex: exVal,
       };
     }
     // Hard surface-contact clamping after spring solver: guarantees that no spring overshoot can push the fist or forearm into the opponent's body
@@ -8221,9 +8412,9 @@ export class Game {
     f.roll = f.bodyS.roll.update(rl, lerp(6.8, 11.2, dodgeBlend), 0.78, dt);
 
     // fall / get-up through a spring: quick, slightly bouncy drop and a slow, smooth rise
-    const fallTarget = f.state === 'ko' ? 1 : f.state === 'down' ? f.fallT : 0;
+    const fallTarget = f.state === 'ko' ? f.fallT : f.state === 'down' ? f.fallT : 0;
     const dropping = fallTarget > f.fallS.x;
-    const e = THREE.MathUtils.clamp(f.fallS.update(fallTarget, f.state === 'ko' ? 1.8 : dropping ? 1.7 : 1.2, f.state === 'ko' ? 0.7 : dropping ? 0.8 : 1.0, dt), 0, 1.06);
+    const e = THREE.MathUtils.clamp(f.fallS.update(fallTarget, f.state === 'ko' ? 1.85 : dropping ? 1.75 : 1.2, f.state === 'ko' ? 0.72 : dropping ? 0.78 : 1.0, dt), 0, 1.06);
     // hit reactions: snap in fast, relax slowly
     f.hitV += (f.hit - f.hitV) * (1 - Math.exp(-(f.hit > f.hitV ? 40 : 7) * dt));
     f.hitUpV += (f.hitUp - f.hitUpV) * (1 - Math.exp(-(Math.abs(f.hitUp) > Math.abs(f.hitUpV) ? 40 : 6) * dt));
@@ -8243,10 +8434,10 @@ export class Game {
     const kbL = (f.kb.x * cyT - f.kb.y * syT) / f.scale; // + = driven to his left
     const hsp = THREE.MathUtils.clamp(Math.max(0, kbF) / 10, 0, 1);
     const lsp = THREE.MathUtils.clamp(kbL / 9, -1, 1);
-    const inAir = f.state === 'air' && this.phase !== 'walk';
-    const tiltTarget = inAir ? (f.vy > 0 ? 0.2 + hsp * 0.25 : 0.32 + hsp * 0.3) : 0;
-    const tiltZTarget = inAir ? lsp * (f.vy > 0 ? 0.28 : 0.5) : 0;
-    if (f.state === 'down' || (f.state === 'ko' && f.fallT > 0 && f.y <= 0.001)) {
+    const inAir = isAirRagdoll;
+    const tiltTarget = inAir ? (f.vy > 0 ? 0.22 + hsp * 0.28 : 0.36 + hsp * 0.34) : 0;
+    const tiltZTarget = inAir ? lsp * (f.vy > 0 ? 0.3 : 0.52) : 0;
+    if (f.state === 'down' || (f.state === 'ko' && f.fallT > 0 && !inAir)) {
       // on the canvas: the airborne lean is handed over to the staged collapse (robot.ts adds the two)
       const lay = fallStages(f.fallS.x).lay;
       f.tilt = f.tiltLand * (1 - lay);
@@ -8304,7 +8495,7 @@ export class Game {
         af: (f.acc.x * sy + f.acc.y * cy) / f.scale,
         al: (f.acc.x * cy - f.acc.y * sy) / f.scale,
         yawRate: f.yawRate,
-        air: f.state === 'air' || (f.state === 'ko' && f.y > 0.05) ? 1 : 0,
+        air: f.state === 'air' || (f.state === 'ko' && (f.y > 0.02 || f.vy > 0)) ? 1 : 0,
         tuck: f.pkTuck,
         hit: f.hitV,
         hitSign: f.hitSign,
@@ -8319,7 +8510,7 @@ export class Game {
         flash: f.flash,
         tilt: f.tilt,
         tiltZ: f.tiltZ,
-        ragdoll: f.state === 'air' && this.phase !== 'walk' && this.phase !== 'menu' ? 1 : 0,
+        ragdoll: isAirRagdoll || ((f.state === 'down' || f.state === 'ko') && f.riseU <= 0.001 && e < 0.98) ? 1 : 0,
         dash: f.dodgeT > 0 && f.state === 'idle' ? 1 : 0,
         dashF: f.dodgeDir.x * sy + f.dodgeDir.y * cy,
         dashL: f.dodgeDir.x * cy - f.dodgeDir.y * sy,
@@ -8333,9 +8524,9 @@ export class Game {
         punchDur: pw.dur,
         punchSeq: pw.seq,
         stepLift: pw.lift,
-        // the get-up is only declared while he is actually on the canvas: standing, the staged weights are gone
-        // and the ordinary rig takes the body back (see robot.ts)
-        rise: f.state === 'down' ? f.riseU : undefined,
+        // the get-up is declared once the rise begins (riseU > 0): during the initial collapse (riseU = 0) the fall
+        // staging owns the body, and standing, the ordinary rig takes the body back (see robot.ts)
+        rise: f.state === 'down' && f.riseU > 0.001 ? f.riseU : undefined,
         riseDir: f.riseDir,
         riseOut: f.riseOut,
         strike,

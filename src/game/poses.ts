@@ -105,9 +105,9 @@ export const FREESTYLE: Freestyle[] = [
     ],
   },
   {
-    // 3 — U: the double beckon — palms up, forearms flicking you in
+    // 3 — 5: the double beckon — palms up, forearms flicking you in
     id: 3,
-    key: 'KeyU',
+    key: 'Digit5',
     name: 'lambaikan tangan',
     tag: 'AYO SINI!',
     say: 'Bring it!',
@@ -120,9 +120,9 @@ export const FREESTYLE: Freestyle[] = [
     ],
   },
   {
-    // 4 — I: the cable flex — arms out wide, elbows up, tension crackling through the shoulders
+    // 4 — 6: the cable flex — arms out wide, elbows up, tension crackling through the shoulders
     id: 4,
-    key: 'KeyI',
+    key: 'Digit6',
     name: 'pamer kabel',
     tag: 'TEGANG!',
     say: 'Feel that?',
@@ -528,10 +528,68 @@ export function freestylePose(style: number, u: number, t: number): Beat {
  */
 export function fallStages(e: number) {
   const ec = clamp(e, 0, 1.06);
+  const slam = Math.sin(Math.PI * S(ec, 0.52, 0.96)); // secondary canvas impact compression & rebound settle
   return {
-    buckle: Math.sin(Math.PI * S(ec, 0.0, 0.62)), // the knees fold, the hips drop out from under the torso
-    lay: S(ec, 0.16, 1.0), // the torso goes over (late: the legs have already gone)
-    side: S(ec, 0.4, 1.0), // ...and settles a little onto one side, knee up
+    buckle: Math.sin(Math.PI * S(ec, 0.0, 0.58)), // the knees fold, the hips drop out from under the torso
+    lay: S(ec, 0.14, 0.96), // the torso goes over (late: the legs have already gone)
+    side: S(ec, 0.34, 0.98), // ...and settles onto one side, knee up — never a flat plank
+    slam,
+  };
+}
+
+/**
+ * THE RAGDOLL FALL & CANVAS SETTLE. Driven by the collapse weight `e` (0 upright → 1 on the canvas):
+ *  1. As the knees buckle (`st.buckle`), the arms are thrown open and trail behind the dropping torso (asymmetric,
+ *     never a stiff mirrored pose).
+ *  2. As the back/shoulder slams the canvas (`st.lay` / `st.slam`), the arms slap the mat beside the body, rebound
+ *     slightly on the impact beat, and settle flush on the canvas.
+ *  3. For a knockdown (`isKo = false`), `e = 1` lands at the exact `U` pose that `riseArms(0, dir)` starts from,
+ *     guaranteeing a zero-error handover into the get-up. For a knockout (`isKo = true`), the arms settle into an
+ *     asymmetric heavy ragdoll sprawl (one arm out on the canvas, the other across the ribs/abdomen) with `sx` and
+ *     `ex` constrained above the back plane so no elbow or fist ever pokes through the floor.
+ */
+export function fallArms(e: number, dir: number, t = 0, isKo = false): Beat {
+  const ec = clamp(e, 0, 1);
+  const d = dir < 0 ? -1 : 1;
+  const st = fallStages(ec);
+  const flailW = Math.sin(Math.PI * S(ec, 0.0, 0.68));
+  const settleW = S(ec, 0.48, 1.0);
+  const bounce = st.slam * (1 - S(ec, 0.88, 1.0));
+  const drift = Math.sin(t * 3.6) * 0.04 * (1 - settleW);
+
+  // Airborne / buckling flail: asymmetric arms trailing the falling torso
+  const FLAIL_LEAD = P(-0.48 + drift, 0.12 * d, 0.58, -0.82);
+  const FLAIL_TRAIL = P(-0.64 - drift, -0.22 * d, 0.34, -1.28);
+
+  // Canvas impact rebound: arms slap the mat and bounce slightly upward (negative sx = above chest)
+  const BOUNCE_LEAD = P(-0.14, 0.08 * d, 0.64, -0.68);
+  const BOUNCE_TRAIL = P(-0.26, -0.18 * d, 0.44, -1.04);
+
+  // Final resting poses on the canvas (never exceeding sx = 0.12 so elbows/fists never dig below the back)
+  const REST_DOWN = P(0.12, 0.02, 0.38, -0.48); // exact match to riseArms(0, dir) U pose
+  const REST_KO_LEAD = P(0.08, 0.12, 0.64, -0.58); // sprawled out to the side on the mat
+  const REST_KO_TRAIL = P(-0.16, -0.34, 0.28, -1.18); // resting loosely across the lower ribs
+
+  const startLead = lerpPose(GUARD, FLAIL_LEAD, flailW);
+  const startTrail = lerpPose(GUARD, FLAIL_TRAIL, flailW);
+
+  const endLead = isKo ? REST_KO_LEAD : REST_DOWN;
+  const endTrail = isKo ? REST_KO_TRAIL : REST_DOWN;
+
+  const leadArm = lerpPose(lerpPose(startLead, endLead, settleW), BOUNCE_LEAD, bounce * 0.65);
+  const trailArm = lerpPose(lerpPose(startTrail, endTrail, settleW), BOUNCE_TRAIL, bounce * 0.65);
+
+  const a0 = d > 0 ? leadArm : trailArm;
+  const a1 = d > 0 ? trailArm : leadArm;
+
+  return {
+    a0,
+    a1,
+    tw: (-d * 0.22 * st.buckle + d * 0.12 * bounce) * (1 - settleW) + (isKo ? d * 0.14 * settleW : 0),
+    ln: lerp(0.08 + st.buckle * 0.18 - bounce * 0.12, 0.08, settleW),
+    dp: lerp(0.12 + st.buckle * 0.26, 0.12, settleW),
+    rl: (d * 0.16 * st.buckle - d * 0.08 * bounce) * (1 - settleW) + (isKo ? d * 0.12 * settleW : 0),
+    kk: lerp(14, 20, settleW),
   };
 }
 

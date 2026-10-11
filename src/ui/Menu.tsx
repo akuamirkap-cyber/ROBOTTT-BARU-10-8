@@ -292,17 +292,17 @@ const CONTROLS: { title: string; rows: [string[], string][] }[] = [
   {
     title: 'TARGET PUKULAN, RAGE & OVERDRIVE',
     rows: [
-      [['G'], 'RAGE MODE 🔥 — tingkatkan kecepatan bertarung, kombo agresif & dorongan pukulan!'],
+      [['U'], 'RAGE MODE 🔥 — tingkatkan kecepatan bertarung, kombo agresif & dorongan pukulan!'],
       [['R'], 'OVERDRIVE (4 jurus bergiliran): FREESTYLE 360° muter-muter tangan → STRAIGHT lurus sepanjang ring → UPPERCUT pelontar ke udara (paling tinggi!) → SLAM hantaman atas. Semua menembus blok (bisa mencopot kepala)!'],
       [['Q', '/', 'T'], 'Ganti titik sasaran: KEPALA (stun & KO cepat) → DADA (kuras stamina & hancurkan blok) → REMIX (kombinasi otomatis atas-bawah, lawan tak bisa pasang blok di satu level)'],
     ],
   },
   {
-    title: 'DODGE FLUID (GAYA MUHAMMAD ALI) & BLOK',
+    title: 'BERLINDUNG (SPACE) & MENGHINDAR / DODGE (G)',
     rows: [
-      [['SPACE'], 'DODGE fluid gaya Muhammad Ali (slip kepala, weave bahu & pull-back). Tekan saat ◎ muncul = Timed Dodge'],
-      [['SPACE', '→', 'SERANG'], 'Dodge Strike: pukulan setelah dodge keluar 38% lebih cepat & 22% lebih keras'],
-      [['SPACE', 'TAHAN'], 'Tahan SPACE untuk menjaga Blok aktif'],
+      [['SPACE'], 'BERLINDUNG (BLOK): tahan SPACE untuk pasang perisai pelindung — mengurangi efek & kekuatan serangan lawan sebesar 90% (hanya 10% serangan yang masuk)!'],
+      [['G'], 'MENGHINDAR (DODGE) fluid gaya Muhammad Ali (slip kepala, weave bahu & pull-back). Tekan G saat ◎ muncul = Timed Dodge'],
+      [['G', '→', 'SERANG'], 'Counter / Dodge Strike: pukulan setelah menghindar keluar 38% lebih cepat & 22% lebih keras'],
     ],
   },
   {
@@ -318,7 +318,7 @@ const CONTROLS: { title: string; rows: [string[], string][] }[] = [
       [['Z'], 'POSE SOMBONG ZEUS 😤 — busungkan dada, dagu mendongak, panggil lawan bertarung (isi meter +25%)!'],
       [['M', '/', 'N'], 'Taunt provokasi: pound dada 3× cepat & sombong / angkat sabuk (mengisi meter Overdrive)'],
       [['4'], 'ADU TINJU — adu kedua sarung tinju di tengah dada 3× dengan percikan api, lalu dagu terangkat'],
-      [['B', 'U', 'I', 'Y', 'O', '1', '2', '3'], 'Buku freestyle lain: gulir bahu, lambaian, pamer kabel, kincir, gas piston, cek servo, inti nyala, bor tinju'],
+      [['B', '5', '6', 'Y', 'O', '1', '2', '3'], 'Buku freestyle lain: gulir bahu, lambaian, pamer kabel, kincir, gas piston, cek servo, inti nyala, bor tinju'],
       [['R'], 'OVERDRIVE FINISHER saat meter mencapai 100%'],
       [['[', ']'], 'Ubah kecepatan footwork secara instan saat bertanding'],
       [['/', '.'], 'Ganti sudut kamera (SIARAN · AKSI · DEKAT · RING LUAS · PUNDAK)'],

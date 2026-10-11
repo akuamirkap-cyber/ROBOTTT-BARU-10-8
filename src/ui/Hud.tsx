@@ -234,7 +234,7 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
               CTR [L] {h.parryCd > 0 ? `${h.parryCd.toFixed(1)}s` : 'SIAP'}
             </div>
           )}
-          {/* RAGE MODE [G] status badge */}
+          {/* RAGE MODE [U] status badge */}
           <div
             className={`mt-1 flex items-center justify-center gap-1.5 border px-2 py-1 font-tech text-[10px] font-bold tracking-[0.22em] backdrop-blur-sm transition-all ${
               h.rage
@@ -245,7 +245,7 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
             }`}
           >
             <span>🔥</span>
-            <span>{h.rage ? 'RAGE AKTIF [G]' : 'RAGE [G]'}</span>
+            <span>{h.rage ? 'RAGE AKTIF [U]' : 'RAGE [U]'}</span>
           </div>
         </div>
       )}
@@ -268,15 +268,16 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
             <Hint k="P">grab</Hint>
           </div>
           <div>
-            <Hint k="SPACE">dodge ◎ (tahan = blok)</Hint>
+            <Hint k="SPACE">berlindung 🛡️ (-90% dmg)</Hint>
+            <Hint k="G">menghindar ◎</Hint>
             <Hint k="R">overdrive</Hint>
-            <Hint k="G">rage 🔥</Hint>
+            <Hint k="U">rage 🔥</Hint>
             <Hint k="E">ippo</Hint>
           </div>
           <div>
             <Hint k="Z">sombong zeus 😤</Hint>
             <Hint k="M N B">pound · sabuk · gulir</Hint>
-            <Hint k="U I Y O">lambai · kabel · kincir · piston</Hint>
+            <Hint k="5 6 Y O">lambai · kabel · kincir · piston</Hint>
             <Hint k="1 2 3">servo · inti · bor</Hint>
           </div>
           <div>
@@ -356,10 +357,10 @@ export function TouchControls({ game }: { game: Game | null }) {
         <div className="absolute left-0 top-[72px]"><TouchBtn game={game} code="KeyP" label="GRAB" className="bg-pink-500/60 text-xs" size="h-14 w-14" /></div>
         <div className="absolute left-[76px] top-[72px]"><TouchBtn game={game} code="KeyL" label="CTR" className="bg-amber-500/60 text-sm" size="h-14 w-14" /></div>
         <div className="absolute left-[152px] top-[72px]"><TouchBtn game={game} code="KeyQ" label="TARGET" className="bg-rose-500/60 text-[9px]" size="h-14 w-14" /></div>
-        <div className="absolute left-0 -top-[68px]"><TouchBtn game={game} code="Space" label="DODGE / BLOK" className="bg-emerald-500/50 text-[9px]" size="h-14 w-14" /></div>
+        <div className="absolute left-0 -top-[68px]"><TouchBtn game={game} code="KeyG" label="DODGE (G)" className="bg-emerald-500/50 text-[9px]" size="h-14 w-14" /></div>
         <div className="absolute left-[76px] -top-[68px]"><TouchBtn game={game} code="KeyR" label="OD" className="bg-amber-400/60" size="h-14 w-14" /></div>
-        <div className="absolute left-[152px] -top-[68px]"><TouchBtn game={game} code="KeyE" label="IPPO" className="bg-cyan-400/50 text-[10px]" size="h-14 w-14" /></div>
-        <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyG" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
+        <div className="absolute left-[152px] -top-[68px]"><TouchBtn game={game} code="Space" label="BLOK (SPC)" className="bg-sky-400/60 text-[9px]" size="h-14 w-14" /></div>
+        <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyU" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
         <div className="absolute left-[62px] -top-[136px]"><TouchBtn game={game} code="KeyZ" label="SOMBONG" className="bg-emerald-600/70 border-emerald-300 text-[8px] font-bold" size="h-12 w-12" /></div>
         <div className="absolute left-[122px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>
       </div>

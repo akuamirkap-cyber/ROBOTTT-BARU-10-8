@@ -417,7 +417,7 @@ export class Robot {
     // "shivering" knock-down).
     const want = minY < margin ? (margin - minY) / S : 0;
     if (dt <= 0 || want > this.groundLift) this.groundLift = want; // up: hard (nothing ever goes through the canvas)
-    else this.groundLift += (want - this.groundLift) * (1 - Math.exp(-9 * dt)); // down: eased
+    else this.groundLift += (want - this.groundLift) * (1 - Math.exp(-(lying ? 16 : 10) * dt)); // down: eased, faster settle on canvas
     if (this.groundLift > 0.0005) this.body.position.y += this.groundLift;
   }
 
@@ -989,9 +989,11 @@ export class Robot {
     const layE = fs.lay * 1.42; // the lie: 81° back and rolled onto one shoulder (not a flat 90° plank)
     const lieSide = fs.side * (1 - rs.side) * riseDir; // a little onto the shoulder he will get up over
     // the head is the last thing to hit: as the torso arrives on the canvas the neck whips once
-    if (this.prevLay < 0.82 && fs.lay >= 0.82 && a.rise === undefined) {
-      this.sHeadX.v += 5.5;
-      this.sHeadZ.v += 2.2 * riseDir;
+    if (this.prevLay < 0.78 && fs.lay >= 0.78 && (a.rise === undefined || riseU <= 0.001)) {
+      this.sHeadX.v += 6.2;
+      this.sHeadZ.v += 2.6 * riseDir;
+      this.sHeadY.v += 1.4 * riseDir;
+      this.sMass.v += 0.85;
     }
     this.prevLay = fs.lay;
     // ...and it does not unwind straight to zero: it passes through a deep forward fold, chest over the knees,
@@ -1141,7 +1143,7 @@ export class Robot {
     // running: the knees stay bent; the hips are lowest in mid-stance and rise gently towards touch-down / toe-off / flight.
     // `depth` is a smooth sine of the stance progress, so the bob is a clean ~6% wave (the old version spiked by 25%).
     const runHd = (zm ? standY - 0.62 : RUN_HIP_LOW) + RUN_HIP_BOB * (1 - fw.depth);
-    const hd = lerp(baseHd + gw * walkBob, runHd, rw) - massDip - fs.buckle * 1.5; // the knees give way under a knock-down
+    const hd = lerp(baseHd + gw * walkBob, runHd, rw) - massDip - fs.buckle * 0.95; // the knees give way under a knock-down
     // never ask a leg to stretch further than it can reach
     let cap = 9;
     for (let i = 0; i < 2; i++) {
@@ -1180,7 +1182,12 @@ export class Robot {
     // Without this the pivot sat at the root and the whole machine arrived on the mat already flat.
     const ragW = clamp(a.ragdoll ?? 0, 0, 1);
     this.ragW += (ragW - this.ragW) * (1 - Math.exp(-(ragW > this.ragW ? 14 : 6) * dt));
-    const heightW = a.rise !== undefined ? rs.hipUp : Math.max(ik, this.ragW * (1 - sm(fs.lay)));
+    const heightW =
+      a.rise !== undefined && riseU > 0.001
+        ? rs.hipUp
+        : a.rise !== undefined
+          ? rs.hipUp * sm(fs.lay) + (1 - sm(fs.lay))
+          : Math.max(ik, this.ragW, 1 - sm(fs.lay)) * (1 - sm(fs.lay));
     this.dashW += ((a.dash > 0.05 ? a.dash : 0) - this.dashW) * (1 - Math.exp(-14 * dt));
     const dodgeFlow = this.dashW;
     const slipRoll = a.rise === undefined && e < 0.05 ? a.roll : 0;
@@ -1200,15 +1207,15 @@ export class Robot {
       bodyZ + riseZ + slipLean * 0.16 * dodgeFlow,
     );
     this.body.rotation.set(
-      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35,
-      riseYaw + lieSide * 0.22, // the lie is rolled a little onto one shoulder (about the spine = the log-roll axis)
-      (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0),
+      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35 + fs.slam * 0.06 * (1 - rs.unroll),
+      riseYaw + lieSide * 0.25, // the lie is rolled onto one shoulder (about the spine = the log-roll axis)
+      (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0) + lieSide * 0.12 * (1 - rs.unroll),
     );
     // Living respiratory heave: rhythmic chest expansion & compression (~3.9s cycle)
     const breathe = Math.sin(t * 1.6) * 0.038;
     // Core spinal dynamics: kurvatura tulang belakang saat jatuh (buckle & shock absorption) dan melengkung ke depan saat bangkit (eFold)
-    const spineFallCurl = fs.buckle * 0.16;
-    const spineImpactDecompress = fs.lay * 0.06;
+    const spineFallCurl = fs.buckle * 0.22 - fs.slam * 0.08;
+    const spineImpactDecompress = fs.lay * 0.07 + fs.slam * 0.05;
     const spineFold = eFold * 0.28;
     this.pelvis.rotation.set(a.lean * 0.06 - spineFallCurl * 0.12 + spineFold * 0.1, pelvisYaw, gr - slipRoll * 0.14);
     this.waist.rotation.set(
@@ -1491,22 +1498,25 @@ export class Robot {
       const ikHx = phi - beta;
 
       // FK pose used in the air / when knocked down
-      const flail = Math.sin(t * 4.2 + i * Math.PI) * 0.13; // a slow drift of dead-weight legs, not a flap
+      const flail = Math.sin(t * 4.2 + i * Math.PI) * 0.14; // a slow drift of dead-weight legs, not a flap
       const am = this.airW;
       const flipTuck = clamp(a.tuck ?? 0, 0, 1) * am; // the flip: both knees up, both heels under the hips
       // A front flip is written with BOTH legs: as the knees come up, the dead-weight flail folds away with them, so
       // what the eye reads is one body turning over its own centre — never two legs doing their own thing mid-air.
-      const airHx = lerp((i === 0 ? -0.65 : 0.25) + flail, -0.18 + flail * 0.35, flipTuck);
-      const airKx = lerp((i === 0 ? 0.95 : 0.45) + flail * 0.5, 1.02 + flail * 0.35, flipTuck);
-      // LYING LIMP: the pelvis is pitched back almost 90°, so the legs have to be near-zero in this frame to
-      // actually lie ON the mat. A bent knee here hangs the boot under the canvas, and the floor solver is then
-      // left choosing between a boot through the mat and a body floating a metre above it.
+      const airHx = lerp((i === 0 ? -0.58 : -0.18) + flail, -0.18 + flail * 0.35, flipTuck);
+      const airKx = lerp((i === 0 ? 1.05 : 0.62) + flail * 0.5, 1.02 + flail * 0.35, flipTuck);
+      // LYING LIMP: trigonometrically grounded for body pitch = -1.42 rad and y_hip ≈ 0.63 so neither knee nor boot
+      // ever pokes below the canvas, while keeping an authentic asymmetric ragdoll posture (lead knee bent up with
+      // its boot planted on the mat, trail leg relaxed and slightly bent on the canvas). During the knee-buckle phase
+      // (fs.buckle), hip flexion (-0.62) and knee flexion (+1.24) follow the 1:2 kinematic ratio so the boots stay
+      // right on the canvas as the hips drop!
       const lieLead = (riseDir > 0 ? 0 : 1) === i ? 1 : 0; // the leg on the side he lies towards
       const lieW = fs.side * (1 - rs.tuck) * (1 - rs.legs);
-      const buckleK = fs.buckle * 0.62; // knees buckle dynamically under weight during the collapse
-      const buckleH = -fs.buckle * 0.35; // hips sink as knees give way
-      const fallHx = 0.02 * s + buckleH - (0.72 * lieLead + 0.16 * (1 - lieLead)) * lieW;
-      const fallKx = 0.14 + buckleK + (0.95 * lieLead + 0.24 * (1 - lieLead)) * lieW;
+      const slamBounce = fs.slam * (1 - rs.tuck) * (1 - rs.legs);
+      const buckleK = fs.buckle * 1.24; // knees buckle dynamically under weight during the collapse
+      const buckleH = -fs.buckle * 0.62; // hips sink in 1:2 kinematic ratio with the knees
+      const fallHx = 0.02 * s + buckleH - (0.68 * lieLead + 0.22 * (1 - lieLead) + 0.12 * slamBounce) * lieW;
+      const fallKx = 0.14 + buckleK + (1.20 * lieLead + 0.20 * (1 - lieLead) + 0.18 * slamBounce) * lieW;
       // GET-UP: the legs are the load-bearing part of the whole move, and they are posed here by hand (the IK
       // does not get them back until he drives up out of the crouch). The LEAD leg — the one on the side he rolls
       // towards — folds hard, knee up over the boot, and stays under him; the TRAIL leg draws in behind it, its
@@ -1519,7 +1529,7 @@ export class Robot {
       const trailW = 1 - leadW;
       const fkHx = lerp(fallHx, airHx, am) - 1.25 * leadW * tuckW - 0.3 * leadW * kneelW + 0.4 * trailW * kneelW - (1.75 + airHx) * flipTuck;
       const fkKx = lerp(fallKx, airKx, am) + 2.0 * leadW * tuckW + 1.6 * trailW * tuckW + (2.25 - airKx) * flipTuck;
-      const fkHz = lerp(s * 0.12, s * 0.2, am) + s * 0.34 * tuckW;
+      const fkHz = lerp(s * (0.14 + 0.1 * lieLead * lieW), s * 0.22, am) + s * 0.34 * tuckW;
 
       const hxF = lerp(fkHx, ikHx, ik);
       const kxF = lerp(fkKx, kx, ik);
@@ -1542,10 +1552,8 @@ export class Robot {
       }
       if (ik < 1) {
         // Off the feet (in the air, knocked down, getting up) the boot stops chasing the floor: it hangs off the
-        // shin the way a relaxed foot does — toes up while he is down, pointed while he is in the air. The old
-        // version blended towards a WORLD orientation, which left the boots pointing straight at the canvas and
-        // the whole robot propped up on a toe.
-        this.qd.setFromEuler(this.eu.set(-0.3 + am * 0.55, 0, 0, 'XYZ'));
+        // shin the way a relaxed foot does — toes up while he is down, pointed while he is in the air.
+        this.qd.setFromEuler(this.eu.set(-0.22 + am * 0.48 + lieW * (lieLead ? 0.28 : 0.12), 0, s * 0.15 * lieW, 'XYZ'));
         this.qf.slerp(this.qd, 1 - ik);
       }
       this.footJ[i].quaternion.copy(this.qf);
@@ -1555,7 +1563,7 @@ export class Robot {
     }
 
     // last step: nothing may ever sink below the floor (falls, knock-downs, overshoot, odd poses)
-    this.groundSolve(S, ik, a.rise !== undefined, dt, fs.lay > 0.5);
+    this.groundSolve(S, ik, a.rise !== undefined, dt, fs.lay > 0.15 || e > 0.22);
 
     const gl = (0.62 + Math.min(2.2, a.glow) * 0.42 + Math.sin(t * 3) * 0.08) * (1 - eSpan * 0.85);
     for (const m of this.glowMats) m.emissiveIntensity = gl;

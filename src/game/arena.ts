@@ -849,20 +849,9 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
   mkHalo(-DECK_W / 2 - haloD / 2 + 0.4, 0, Math.PI / 2);
 
   // ---------- THE GLOSSY FLOORS: disabled on canvas to keep matras pure deep dark matte without bleached white sheen
-  const canvasSheen = buildSheen(new THREE.PlaneGeometry(30.6, 30.6), { strength: 0.0, res: 256 });
-  canvasSheen.mesh.rotation.x = -Math.PI / 2;
-  canvasSheen.mesh.position.y = 0.025;
-  canvasSheen.setEnabled(false);
-  ring.add(canvasSheen.mesh);
-  const hallSheen = buildSheen(new THREE.RingGeometry(18, 62, 72, 1), { strength: 0.4, res: 256, layer: REFLECT_LIGHTS_LAYER });
-  hallSheen.mesh.rotation.x = -Math.PI / 2;
-  hallSheen.mesh.position.y = -1.375;
-  hallSheen.setEnabled(false);
-  scene.add(hallSheen.mesh);
-  // the two glossies are switched separately; default is off for 60 FPS performance and dark canvas contrast
-  const setMirrors = (canvasOn: boolean, hallOn = canvasOn) => {
-    canvasSheen.setEnabled(canvasOn);
-    hallSheen.setEnabled(hallOn);
+  // Default is off for 60 FPS performance and dark canvas contrast
+  const setMirrors = (_canvasOn: boolean, _hallOn = _canvasOn) => {
+    // No-op: mirror render passes disabled for locked 60 FPS arena performance
   };
 
   const neonRed = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff4350).multiplyScalar(0.8) });
@@ -1820,10 +1809,12 @@ export function buildArena(scene: THREE.Scene, camera?: THREE.Camera): Arena {
     updateRopes(dt);
     updateRing(dt);
     frame++;
-    // Pass camera for behind-the-camera frustum culling
-    crowd.update(t, smoothHype, frame % 3, 3, currentCamera);
+    // Pass camera for behind-the-camera frustum culling (sliced across 4 frames for 60 FPS headroom)
+    crowd.update(t, smoothHype, frame % 4, 4, currentCamera);
     const foc = focus ?? ORIGIN;
-    props.update(t, dt, smoothHype, foc, currentCamera);
+    if (frame % 2 === 0) {
+      props.update(t, dt * 2, smoothHype, foc, currentCamera);
+    }
     rimSide.intensity = 1.0 + smoothHype * 0.2;
     // Balanced canvas lighting: cahaya pas dan cocok agar gambar & warna matras tampak jelas dan tajam
     ringKey.intensity = 3.8 + smoothHype * 0.4 + kick * 0.25;

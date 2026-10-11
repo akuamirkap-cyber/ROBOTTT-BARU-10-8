@@ -35,7 +35,7 @@ export default function RealSteelGame({ onBack }: RealSteelGameProps) {
     let last = 0;
     e.onTime = (t) => {
       const now = performance.now();
-      if (now - last > 33 || t < 0.05) {
+      if (now - last > 16 || t < 0.05) {
         last = now;
         setTime(t);
       }
