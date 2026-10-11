@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { Robot } from './.__robot.mjs';
 import { FREESTYLE, GUARD, freestylePose, getupFoot, riseArms, riseStages } from './.__poses.mjs';
+import { STAMP_CUES, FS_STAMP_LEAD, stampCueAt, stampDurFor } from './.__footwork.mjs';
 
 const D = 1 / 60;
 const STYLE = { variant: 'atom', main: 0x8a8f98, secondary: 0x3a3f47, accent: 0x1e9bff, glow: 0x63e0ff };
@@ -267,6 +268,46 @@ console.log('\n§6  every freestyle move is continuous and returns to the guard'
       `worst ${f3(maxJump)} rad/frame · ends ${endErr.toExponential(1)} off the neutral`,
     );
   }
+}
+
+// ====================================================================================== §7 boot beats
+console.log('\n§7  the show-off\'s boots answer the beat (and only the beat)');
+{
+  // Reported: "pas taunting kok kakinya gerak-gerak ga jelas". The boots are PLANTED for the whole move (feettest
+  // §15 measures that on the rig) and the only footwork left is one stamp per percussive beat, armed by the beat
+  // clock in footwork.ts. This runs that clock over the REAL book at 60 fps, exactly as Game.tickTaunt does, and
+  // checks that every percussive beat arms exactly one stamp AND that the stamp lands ON its beat.
+  const steps = (fs) => {
+    const fired = [];
+    const out = [];
+    let tauntT = fs.dur;
+    for (let i = 0, n = Math.round(fs.dur / D) + 3; i < n; i++) {
+      for (let due = stampCueAt(fs.cues, fs.dur, tauntT, fired), guard = 0; due >= 0 && guard < fs.cues.length; guard++) {
+        fired[due] = true;
+        // the cue lands `p · dur` seconds into the move; the stamp takes the time ACTUALLY left, so it lands on it
+        out.push({ t: i * D, at: fs.cues[due].p * fs.dur, dur: stampDurFor(fs.cues[due], fs.dur, tauntT), s: fs.cues[due].s });
+        due = stampCueAt(fs.cues, fs.dur, tauntT, fired);
+      }
+      tauntT -= D;
+    }
+    return out;
+  };
+  let allBeats = 0;
+  let allPlanted = 0;
+  for (const fs of FREESTYLE) {
+    const want = fs.cues.filter((c) => STAMP_CUES.has(c.s)).length;
+    const got = steps(fs);
+    const late = got.filter((st) => Math.abs(st.t + st.dur - st.at) > D + 1e-9); // the boot lands when the step ends
+    ok(
+      `${fs.key} ${fs.name}`,
+      got.length === want && late.length === 0,
+      want === 0 ? 'boots stay planted for the whole move' : `${got.length}/${want} stamps, worst landing ${(Math.max(...got.map((st) => Math.abs(st.t + st.dur - st.at))) * 1000).toFixed(0)} ms off the beat`,
+    );
+    allBeats += want;
+    allPlanted += want === 0 ? 1 : 0;
+  }
+  console.log(`   ${allBeats} percussive beats over ${FREESTYLE.length} moves, ${allPlanted} moves that leave the boots alone entirely`);
+  ok('a stamp is never armed earlier than the step can come down', FREESTYLE.every((fs) => steps(fs).every((st) => st.dur <= FS_STAMP_LEAD + 1e-9)), '');
 }
 
 console.log(fails === 0 ? '\nGET-UP + FREESTYLE: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);

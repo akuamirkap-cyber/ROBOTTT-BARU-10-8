@@ -76,6 +76,9 @@ export interface AnimState {
   riseDir?: number; // ±1: the shoulder he rolls onto and pushes off
   riseOut?: number; // 1 → 0 over the beat after he stands: the loose settle (shoulders shake out, chest drops)
   stepLift?: number; // optional foot clearance for a scripted step (the get-up plants its feet high and slow)
+  punchSteer?: number; // 0..1: the strike's plant is being steered by a movement key — the other boot must follow at once
+  // SHOW-OFF FOOTWORK (the freestyle / taunt book)
+  feetLock?: number; // 0..1: the boots stay exactly where they stand (a posing machine does not shuffle its stance)
   // DIRECTIONAL HEAD SNAP TOGGLE & PUNCH PARAMETERS
   directionalHeadSnap?: boolean;
   hitKind?: 'jab' | 'hook' | 'upper' | 'cross' | 'standard';
@@ -200,7 +203,7 @@ export class Robot {
   private eyeWhite = new THREE.Color(0xffffff);
   glowMats: THREE.MeshStandardMaterial[] = [];
   bodyMats: THREE.MeshStandardMaterial[] = [];
-  onStep?: (foot: number, speed: number, x: number, z: number) => void;
+  onStep?: (foot: number, speed: number, x: number, z: number, lift: number) => void;
   /** the live stride signal (read-only for callers): arm = −1..1 contralateral swing phase (+1 = left foot a full
    *  stride ahead), swing = 0..1 how far a foot is through its swing. The ring-walk strut hangs its show on this. */
   readonly stride = { arm: 0, swing: 0 };
@@ -243,6 +246,7 @@ export class Robot {
   private punchSeq = -1; // last strike that already re-planted a foot (so one strike = one re-plant)
   private idleW = 0; // 0..1 "he is standing still on his feet": drives the live stance (heel pop, weight rock, resets)
   private idleHopT = 1.1; // countdown to the next idle stance reset
+  private feetLockW = 0; // 0..1: how locked the boots are (see AnimState.feetLock) — a show-off stands on planted feet
   private punchPivotT = 0; // the strike's follow-through: the OTHER boot rolls onto its ball and turns its heel out
   private punchPivotFoot = 1;
   private punchHoldT = 0; // a beat after a strike plant lands, in which the stance is held instead of re-set
@@ -575,6 +579,12 @@ export class Robot {
     // spikes both of them, and letting that through would jerk the stance the planted feet are measured against.
     this.dipK += (a.dip - this.dipK) * (1 - Math.exp(-14 * dt));
     this.lungeK += (a.lunge - this.lungeK) * (1 - Math.exp(-12 * dt));
+    // SHOW-OFF LOCK: while a freestyle move plays the boots hold their ground. It fades in fast (the pose is about to
+    // dip and turn over them) and out slowly, so the stance resettles by itself once the move is over instead of
+    // snapping home the frame the taunt ends.
+    const lockWant = clamp(a.feetLock ?? 0, 0, 1);
+    this.feetLockW += (lockWant - this.feetLockW) * (1 - Math.exp(-(lockWant > this.feetLockW ? 14 : 5) * dt));
+    const locked = this.feetLockW > 0.4;
     const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
     const guardStance = zm ? clamp((this.dipK - 0.045) / 0.075, 0, 1) : 1;
     const wide = zm
@@ -700,8 +710,8 @@ export class Robot {
     let planted = false;
     if (punchArmed && pSeq !== this.punchSeq && !this.feet[pf].stepping) {
       const f = this.feet[pf];
-      const z = clamp(a.punchZ ?? 0.2, -0.25, 0.95);
-      const x = clamp(a.punchX ?? 0, -0.5, 0.5);
+      const z = clamp(a.punchZ ?? 0.2, -0.85, 1.05);
+      const x = clamp(a.punchX ?? 0, -0.9, 0.9);
       // take off from wherever the boot actually is: if a live stance reset had it in the air, the strike picks that
       // flight up (height and all) instead of snapping it back onto the canvas first
       this.swingFrom(f, toL);
@@ -713,7 +723,7 @@ export class Robot {
       f.tz = ideal[pf].z + z;
       f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
       // a deliberate, readable plant: the boot has to come off the canvas and come down ON the beat of the fist
-      f.lift = Math.max(f.lift, a.stepLift ?? 0.22 + Math.min(0.12, Math.abs(z) * 0.12));
+      f.lift = Math.max(f.lift, a.stepLift ?? 0.26 + Math.min(0.16, Math.abs(z) * 0.16));
       f.err = 0;
       this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
       // ...and the foot he is standing on answers the same beat: it stays planted but rolls onto its ball and turns
@@ -736,7 +746,7 @@ export class Robot {
     // beats a boot picks up and re-plants itself — the small reset step every fighter takes while he waits.
     const idleLock = clamp(a.idleBounce ?? 1, 0, 1);
     const idleWant =
-      idleLock > 0.5 && this.ikW > 0.75 && !dashing && !this.gait && !planted && !punchArmed && a.rise === undefined && (a.air ?? 0) < 0.02 && a.fall < 0.02 && spdRaw < 0.7
+      idleLock > 0.5 && !locked && this.ikW > 0.75 && !dashing && !this.gait && !planted && !punchArmed && a.rise === undefined && (a.air ?? 0) < 0.02 && a.fall < 0.02 && spdRaw < 0.7
         ? 1
         : 0;
     this.idleW += (idleWant - this.idleW) * (1 - Math.exp(-(idleWant ? 3.4 : 16) * dt));
@@ -749,7 +759,7 @@ export class Robot {
       // lighter or slower — the little adjust-tap a boxer keeps taking while he waits.
       f.hopDur = 0.22 + Math.random() * 0.12;
       f.hopT = f.hopDur;
-      f.hopLift = Math.random() < 0.45 ? 0.12 + Math.random() * 0.06 : 0.2 + Math.random() * 0.09;
+      f.hopLift = Math.random() < 0.45 ? 0.16 + Math.random() * 0.08 : 0.26 + Math.random() * 0.11;
       f.hopYaw = (Math.random() - 0.5) * 0.3;
       this.nextFoot = 1 - i;
       this.idleHopT = 1.25 + Math.random() * 1.5;
@@ -770,8 +780,9 @@ export class Robot {
         f.shuffle = true;
         f.dur = i === this.dashLead ? 0.17 : 0.20;
         // Clean, athletic foot clearance so feet lift off mat and never drag or clip (this is the SIDESTEP, so the
-        // boot has to be seen to come off the canvas and come down again — 0.16 was a skim the camera never caught).
-        f.lift = 0.34;
+        // boot has to be seen to come off the canvas and come down again — 0.16 and then 0.34 were skims the fight
+        // camera barely caught on a machine this tall).
+        f.lift = 0.42;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
@@ -795,11 +806,17 @@ export class Robot {
         f.p0 = f.pitch;
         f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.45);
         // FOOT CLEARANCE: on a machine this size the old 0.28 (≈3 % of his height) read as a glide, not a step. A
-        // stride now picks the boot visibly off the canvas and sets it back down; a sprint drives the knee up.
-        f.lift = lerp(clamp(0.26 + spd * 0.05, 0.30, 0.58), 0.85, run);
+        // stride picks the boot clearly off the canvas and sets it back down; a sprint drives the knee up until the
+        // knee is what leads the step. (0.44+ walked, 1.05 sprinted — 12 cm / 28 cm of clear air on a 2.7 m machine.)
+        f.lift = lerp(clamp(0.40 + spd * 0.055, 0.44, 0.78), 1.05, run);
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
       }
+    } else if (locked) {
+      // SHOW-OFF LOCK: the boots stay exactly where they stand. The pose dips, turns and rocks the whole body over the
+      // top of them (which is the read we want — a machine showing off is PLANTED), but no balance step hunts the
+      // moving ideal stance, and no idle reset taps a boot around while he poses.
+      this.stepDist = 0;
     } else {
       this.stepDist = 0;
       let pick = -1;
@@ -827,7 +844,7 @@ export class Robot {
           f.gaitStep = false;
           const rec = messy ? 0.78 : 1;
           f.dur = clamp(0.22 - spd * 0.024, 0.1, 0.21) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
-          f.lift = (0.24 + sp01 * 0.16) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
+          f.lift = (0.30 + sp01 * 0.20) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
         }
       }
 
@@ -857,7 +874,7 @@ export class Robot {
         const w = Math.sin(Math.PI * hp);
         f.hopY = w * f.hopLift;
         // the boot rolls off the canvas, turns, and rolls back on: pitch leads, yaw lags a little behind it
-        f.pitch = lerp(f.pitch, restP[i] + 0.055 * w, 1 - Math.exp(-18 * dt));
+        f.pitch = lerp(f.pitch, restP[i] + 0.085 * w, 1 - Math.exp(-18 * dt));
         f.yawOff = lerp(f.yawOff, restYaw[i] + f.hopYaw * w, 1 - Math.exp(-16 * dt));
         sway += -s * 0.045 * w;
         if (f.hopT <= 0) {
@@ -867,7 +884,7 @@ export class Robot {
           f.stT = 0;
           f.p0 = f.pitch;
           this.sLand.v -= 0.14;
-          this.onStep?.(i, 0, f.x, f.z);
+          this.onStep?.(i, 0, f.x, f.z, f.hopLift);
         }
         continue;
       }
@@ -988,13 +1005,18 @@ export class Robot {
         f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-16 * dt));
         sway += -s * 0.05 * w;
       } else if (f.gaitStep) {
-        // level foot flight into a clean flat touch-down
-        f.pitch = lerp(f.p0, landP, sm(clamp(u * 1.1, 0, 1)));
-        // mid-swing the foot remains stable and level with minimal droop
-        f.follow = u < 0.92 ? 0.25 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
+        // THE ROLL OF A STEP, in three parts: the boot LEAVES the canvas still up on its toe (carrying the toe-off
+        // roll it was standing in), levels out over the middle of the swing, then leads down with the HEEL for the
+        // touch-down. Blending straight from take-off pitch to landing pitch (the old curve) dropped the toe the
+        // instant the boot left the mat — half of why a stride used to read as a skim rather than a step.
+        const lvl = sm(clamp((u - 0.16) / 0.38, 0, 1));
+        const strike = sm(clamp((u - 0.58) / 0.34, 0, 1));
+        f.pitch = lerp(lerp(f.p0, 0.02, lvl), landP, strike);
+        // mid-swing the foot stays level and natural with the shin (it only hangs with the shin once the roll is done)
+        f.follow = u < 0.92 ? 0.22 * Math.pow(Math.sin(Math.PI * clamp((u - 0.18) / 0.74, 0, 1)), 0.8) : 0;
         f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.13 * w * (1 + run * 0.5); // weight shifts over the stance foot
-        roll += -s * 0.05 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
+        sway += -s * 0.17 * w * (1 + run * 0.5); // weight shifts over the stance foot
+        roll += -s * 0.07 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
         swingW = Math.max(swingW, w);
       } else if (f.punchStep) {
         // the foot drives forward for the punch and comes down flat and solid on the canvas
@@ -1009,6 +1031,7 @@ export class Robot {
         yawS += -s * 0.07 * w * (a.vf >= 0 ? 1 : -1) * Math.min(1, Math.abs(a.vf) / 2);
       }
       if (u >= 1) {
+        const lift = f.lift; // how high that boot just came from (the game's footfall FX is scaled by it)
         f.x = f.curX = tw.x;
         f.z = f.curZ = tw.z;
         f.stepping = false;
@@ -1029,7 +1052,10 @@ export class Robot {
           settle(restP[i]);
           f.yawOff += i === 1 ? -0.05 : 0.02; // the pivot leaves a touch of turn behind; it eases out next stance
           this.sLand.v -= 0.24 + spd * 0.12; // the fist lands on the same beat as the foot
-          this.punchHoldT = 0.45; // hold the punched-through stance for a beat before the feet hunt for home
+          // The stance is held for a beat after the plant — unless the plant was STEERED by a movement key: then the
+      // machine is still travelling and the other boot has to close the gap straight away, or the stance is left
+      // behind the body (which is exactly the "he slides while he punches" look).
+      this.punchHoldT = 0.45 * (1 - 0.65 * clamp(a.punchSteer ?? 0, 0, 1));
         } else if (f.gaitStep) {
           settle(landP); // heel strike (walk) / mid-foot strike (run)
           this.sLand.v -= 0.16 + spd * 0.08 + run * 0.35; // weight transfer; a sprint lands harder
@@ -1037,7 +1063,7 @@ export class Robot {
           settle(restP[i]);
           this.sLand.v -= 0.3 + spd * 0.2;
         }
-        this.onStep?.(i, spd, f.x, f.z);
+        this.onStep?.(i, spd, f.x, f.z, lift);
       }
     }
     this.storeFeetLocal(toL);
@@ -1055,7 +1081,7 @@ export class Robot {
     // +1 when foot 0 is a full stride ahead of foot 1, −1 the other way round; faded in with the gait mode
     const zD = clamp((l0.z - l1.z) / (2 * half), -1, 1) * this.gaitW;
     // the hip on the side whose foot is forward turns forward; the chest counter-rotates (see animate)
-    const gaitYaw = -0.085 * (1 + run * 1.1) * zD;
+    const gaitYaw = -0.11 * (1 + run * 1.1) * zD;
     // how deep into its stance the planted foot is (0 at touch-down / toe-off, 1 in mid-stance): drives the run bob
     let depth = 0;
     if (this.gait && !this.dashOn) {

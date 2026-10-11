@@ -12,6 +12,7 @@
 // "local" = robot-local units (the same units the foot targets use), so ~1.0 local is a full step.
 import * as THREE from 'three';
 import { Robot } from './.__robot.mjs';
+import { steeredPlant, steerFromKeys, FS_STAMP_LEAD, FS_STAMP_LIFT, FS_STAMP_SEQ } from './.__footwork.mjs';
 
 const D = 1 / 60;
 const STYLE = { variant: 'atom', main: 0x8a8f98, secondary: 0x3a3f47, accent: 0x1e9bff, glow: 0x63e0ff };
@@ -484,6 +485,118 @@ console.log('=== 13. THE BOOT REALLY LEAVES THE CANVAS (lift, heel-strike, toe-o
     r.frame(0, sp, { dash: active ? 1 : 0, dashF: 0, dashL: 1 });
   });
   check('a sidestep shuffle clears the canvas as well', dodge.peak > 0.28, `peak clearance ${dodge.peak.toFixed(3)} local`);
+}
+
+console.log('=== 14. A STRIKE STEPS WHERE THE KEYS SAY (the re-plant is steered) ===');
+{
+  // Reported: "kalo mukul, kakinya harus maju / kanan / kiri / mundur kalau kita pencet W A S D". Every strike plant
+  // is steered by the held movement keys (footwork.ts — the helper the game itself calls), so a combination thrown
+  // on the move steps with the body instead of re-planting on the same old spot while the body travels away.
+  const P = (fwd, lat, foot = 1, far = 0.4, power = 0.6, runStrike = false) =>
+    steeredPlant({ foot, far, power, runStrike, steer: steerFromKeys(fwd, lat) });
+  const idle = P(0, 0);
+  const fwdP = P(1, 0); // W — into the punch
+  const backP = P(-1, 0); // S — retreating
+  const leftP = P(0, -1); // A — his own left
+  const rightP = P(0, 1); // D — his own right
+  check('W drives the plant further into the punch', fwdP.z > idle.z + 0.2, `z ${idle.z.toFixed(3)} → ${fwdP.z.toFixed(3)}`);
+  check('S plants the boot back under him as he retreats', backP.z < -0.1, `z ${backP.z.toFixed(3)}`);
+  check('A steps out to his own left', leftP.x > 0.2 && Math.abs(leftP.z - idle.z) < 0.4, `x +${leftP.x.toFixed(3)} (z ${leftP.z.toFixed(3)})`);
+  check('D steps out to his own right', rightP.x < -0.2, `x ${rightP.x.toFixed(3)}`);
+  check('no key held = the ordinary stance plant', Math.abs(idle.x) < 0.15 && idle.z > 0.1 && idle.steer === 0, `x ${idle.x.toFixed(3)} z ${idle.z.toFixed(3)}, steer ${idle.steer}`);
+  check('a key held is reported as a steered plant (the rig drops the stance hold)', fwdP.steer > 0.99 && leftP.steer > 0.99, `steer ${idle.steer} → ${fwdP.steer.toFixed(2)}`);
+  check(
+    'every steered plant stays inside the stance the rig clamps to',
+    [idle, fwdP, backP, leftP, rightP].every((p) => p.z > -0.85 && p.z < 1.05 && Math.abs(p.x) < 0.9),
+    '',
+  );
+
+  // ON THE RIG: the boot has to BE where the key points, not just in the maths
+  const plant = (extra) => {
+    const r = new Rig();
+    for (let i = 0; i < 20; i++) r.frame(0, 0, { punchFoot: 1, punchDur: 0.24, punchSeq: 20, punchSteer: 1, ...extra });
+    return r;
+  };
+  const base = plant({ punchZ: idle.z, punchX: idle.x });
+  const lf = plant({ punchZ: leftP.z, punchX: leftP.x });
+  const rt = plant({ punchZ: rightP.z, punchX: rightP.x });
+  const bk = plant({ punchZ: backP.z, punchX: backP.x });
+  const fr = plant({ punchZ: fwdP.z, punchX: fwdP.x });
+  check('the boot really lands where the key points: A out to his left', lf.loc(1).x - base.loc(1).x > 0.3, `+${(lf.loc(1).x - base.loc(1).x).toFixed(3)} local off the plain plant`);
+  check('...and D out to his right', base.loc(1).x - rt.loc(1).x > 0.3, `${(rt.loc(1).x - base.loc(1).x).toFixed(3)} local`);
+  check('...W ahead of it', fr.loc(1).z - base.loc(1).z > 0.15, `+${(fr.loc(1).z - base.loc(1).z).toFixed(3)} local forward`);
+  check('...and S behind it', bk.loc(1).z - base.loc(1).z < -0.4, `${(bk.loc(1).z - base.loc(1).z).toFixed(3)} local back`);
+
+  // ...and the stance is never left behind: a steered plant stops holding the stance, so the other boot follows
+  const hold = (steer) => {
+    const r = new Rig();
+    for (let i = 0; i < 30; i++) r.frame(0, 0, { punchFoot: 1, punchZ: 0.5, punchX: 0, punchDur: 0.24, punchSeq: 21, punchSteer: steer });
+    return r.robot.punchHoldT;
+  };
+  check('a steered punch lets the OTHER boot follow at once (no stance left behind)', hold(0) > hold(1) + 0.15, `stance hold ${hold(0).toFixed(3)} s → ${hold(1).toFixed(3)} s`);
+}
+
+console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat) ===');
+{
+  // Reported: "pas taunting kok kakinya gerak-gerak ga jelas". While a freestyle move plays the boots hold their
+  // ground whatever the pose does over the top of them (the piston rev drops 0.67, the shoulder roll twists 0.42),
+  // and the only footwork left is one crisp stamp per percussive beat (armed by the beat clock, posetest §7).
+  const SOLE = 0.21;
+  const TOE_Z = 1.24;
+  const HEEL_Z = 0.62;
+  const v = new THREE.Vector3();
+  const drop = (p) => Math.max(SOLE * Math.cos(p) + TOE_Z * Math.sin(p), SOLE * Math.cos(p) - HEEL_Z * Math.sin(p));
+  const air = (r, i) => {
+    r.robot.footJ[i].updateWorldMatrix(true, false);
+    r.robot.footJ[i].getWorldPosition(v);
+    return v.y / r.S - drop(r.feet[i].pitch);
+  };
+  const show = (locked, seconds = 4) => {
+    const r = new Rig();
+    r.run(0.6, 0, 0, locked ? { feetLock: 1 } : undefined); // let the lock land (a boot already in the air finishes its tap)
+    let hop = 0;
+    let wander = 0;
+    let drift = 0;
+    let prev = [0, 1].map((i) => r.loc(i));
+    const rest = [0.1, -0.5];
+    for (let i = 0, n = Math.round(seconds / D); i < n; i++) {
+      const u = i / n;
+      r.frame(0, 0, {
+        dip: 0.12 + 0.55 * Math.sin(Math.PI * u), // the piston rev, the deepest dip in the book
+        twist: Math.sin(u * Math.PI * 3) * 0.22,
+        roll: Math.sin(u * Math.PI * 4) * 0.12,
+        feetLock: locked ? 1 : undefined,
+      });
+      for (let k = 0; k < 2; k++) {
+        hop = Math.max(hop, r.feet[k].hopY);
+        wander = Math.max(wander, Math.abs(r.feet[k].yawOff - rest[k]));
+        const l = r.loc(k);
+        drift = Math.max(drift, Math.hypot(l.x - prev[k].x, l.z - prev[k].z));
+        prev[k] = l;
+      }
+    }
+    return { hop, wander, drift };
+  };
+  const off = show(false);
+  const on = show(true);
+  check('unlocked, the boots keep tapping themselves around (that was the bug)', off.hop > 0.1 || off.wander > 0.06, `boot air ${off.hop.toFixed(3)}, boot yaw wander ${off.wander.toFixed(3)} rad`);
+  check('locked, the boots do not leave the canvas at all while the pose works over them', on.hop < 0.0005, `boot air ${on.hop.toFixed(5)}`);
+  check('...and they stay square to the stance (no wander)', on.wander < 0.02, `boot yaw wander ${on.wander.toFixed(4)} rad`);
+  check('...and no tap ever moves a contact point (a tap can never be a skate)', off.drift < 0.002 && on.drift < 0.0005, `worst move ${off.drift.toFixed(5)} / ${on.drift.toFixed(5)} local/frame`);
+
+  // THE STAMP: the one piece of footwork a show-off does deliver — a real boot coming down, in place, on the beat
+  const stamp = new Rig();
+  const before = stamp.loc(0);
+  let peak = 0;
+  for (let i = 0; i < Math.round((FS_STAMP_LEAD + 0.25) / D); i++) {
+    stamp.frame(0, 0, { feetLock: 1, punchFoot: 0, punchZ: 0, punchX: 0, punchDur: FS_STAMP_LEAD, punchSeq: FS_STAMP_SEQ + 1, stepLift: FS_STAMP_LIFT });
+    peak = Math.max(peak, air(stamp, 0));
+  }
+  const after = stamp.loc(0);
+  const stampDrift = Math.hypot(after.x - before.x, after.z - before.z);
+  check('a stamp is a real boot coming off the canvas', stamp.punchSteps === 1 && peak > 0.08, `plants ${stamp.punchSteps}, peak clearance ${peak.toFixed(3)} local`);
+  check('...and it comes down on the very spot it left (a stamp, not a shuffle)', stampDrift < 0.002, `contact point moved ${stampDrift.toFixed(5)} local`);
+  check('one beat arms exactly one stamp', stamp.punchSteps === 1, `plants ${stamp.punchSteps}`);
 }
 
 console.log('=== 10. BOTH BUILDS: NO BROKEN GEOMETRY, NO CLUTTER ===');

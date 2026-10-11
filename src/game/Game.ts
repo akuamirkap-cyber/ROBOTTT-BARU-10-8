@@ -10,6 +10,7 @@ import { Robot, type Pose, type RobotStyle, type AnimState } from './robot';
 import { ARMOR_SKINS, GLOVE_SKINS, HELMET_SKINS } from './build';
 import { mount100PercentZeus } from './zeusModel';
 import { FREESTYLE, fallArms, fallStages, freestyleByKey, freestylePose, getupFoot, riseArms } from './poses';
+import { steeredPlant, steerFromKeys, stampCueAt, stampDurFor, FS_STAMP_LIFT, FS_STAMP_SEQ, type Steer } from './footwork';
 import { buildArena, type Arena, type PyroPlacement, loadPyroPlacement, savePyroPlacement } from './arena';
 export { type PyroPlacement, loadPyroPlacement, savePyroPlacement };
 import { HANGAR_POS, buildHangar, type Hangar } from './hangar';
@@ -1121,6 +1122,12 @@ class Fighter {
   tauntT = 0; // FREESTYLE: time left of the show-off
   tauntDur = 0;
   tauntStyle = 0; // index into the freestyle book (poses.ts) — M N B U I Y O pick one each
+  // FREESTYLE FOOTWORK (see punchStepOf): a show-off stands on PLANTED boots and the boots answer the percussive
+  // beats of the move with one stamp each — armed a step-length early so the boot lands exactly ON the beat.
+  fsStamp = 0; // how many stamps have been fired so far: a new number = exactly one step (the rig's step id)
+  fsStampFoot = 0; // the boot that stamps the next beat (they take turns)
+  fsStampDur = 0.2; // how long that stamp takes to come down (it is armed to the beat, so it lands on it)
+  fsFired: boolean[] = []; // which cue of the running move has already been put on the stamp schedule
   // GET-UP: the staged rise off the canvas (see riseStages in poses.ts)
   riseU = 0; // 0 = flat on the floor, 1 = back on his feet
   riseDir = 1; // the shoulder he rolls onto and pushes off
@@ -1231,6 +1238,7 @@ class Fighter {
     this.tauntT = 0;
     this.tauntDur = 0;
     this.tauntStyle = 0;
+    this.fsFired = [];
     this.swagger = 0;
     this.headYaw = 0;
     this.pkPre = 0;
@@ -1879,7 +1887,7 @@ export class Game {
     const tc = isPlayer ? 0x6fd8ff : style.glow;
     f.trails = [new Trail(this.scene, tc), new Trail(this.scene, tc)];
     let lastStepSfx = 0;
-    robot.onStep = (_foot, spd, wx, wz) => {
+    robot.onStep = (_foot, spd, wx, wz, lift) => {
       const now = performance.now();
       const v = new THREE.Vector3(wx, 0.1, wz);
       const isZeusFighter = f.robot.isZeus;
@@ -1894,6 +1902,10 @@ export class Game {
         this.fx.spark(v, 2 + Math.floor(spd * 0.7), 1.4 + spd * 0.15, 0x8a8a99, undefined, 1.1, 0.3, 2);
       } else if (spd > 2.0) {
         this.fx.spark(v, 1 + Math.floor(spd * 0.4), 1.0 + spd * 0.1, 0x8a8a99, undefined, 0.9, 0.25, 1);
+      } else if (lift > 0.2 && f.y < 0.05 && (this.phase === 'fight' || this.phase === 'walk')) {
+        // a boot coming down from a high, slow step (a strike re-plant, a freestyle stamp, an idle reset tap) still
+        // kicks dust: nothing here is gliding, the machine PUT its foot down
+        this.fx.spark(v, 2, 1.2 + lift, 0x8a8a99, undefined, 0.85, 0.3, 1);
       }
       // TONNAGE: a striding / sprinting machine makes the ring itself answer
       if (spd > 3.5 && f.y < 0.05 && this.phase !== 'walk' && this.phase !== 'menu') {
@@ -4204,6 +4216,14 @@ export class Game {
       }
     }
     if (p.state === 'idle' && p.dodgeT <= 0) {
+      // A SHOW-OFF STANDS ON PLANTED BOOTS (see the freestyle footwork in robot.ts): while a move from the book is
+      // playing the machine does not walk — and the moment a movement key asks for footwork, the show-off is over
+      // and the ordinary stance takes the feet back.
+      if (p.tauntT > 0) {
+        if (fwd === 0 && lat === 0) return;
+        p.tauntT = 0; // the move is abandoned: the boots take the feet back now
+        p.softT = Math.max(p.softT, 0.35); // ...and the arms ease back into the guard instead of snapping
+      }
       p.blocking = wantBlockKey;
       const holdW = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       // SPRINT: hold SHIFT (or F) and walk in any direction. A double-tap on W that you keep holding also runs.
@@ -4253,7 +4273,7 @@ export class Game {
       if (p.runStrike) {
         p.wish.addScaledVector(f, 3.4 * rageSpd); // a running punch keeps its forward momentum
       } else {
-        const free = (p.impacted ? 3.8 : 1.5) * rageSpd; // once the punch has landed you can already glide away / reposition
+        const free = (p.impacted ? 3.8 : 2.6) * rageSpd; // the body travels with the steered re-plant (see punchStepOf)
         p.wish.addScaledVector(f, fwd * free).addScaledVector(r, lat * free * 1.15);
       }
     }
@@ -4381,6 +4401,7 @@ export class Game {
     f.tauntStyle = fs.id;
     f.tauntT = fs.dur;
     f.tauntDur = fs.dur;
+    f.fsFired = []; // a fresh move: nothing on the beat schedule yet
     f.blocking = false;
     f.ippo = false;
     f.glowBoost = Math.max(f.glowBoost, fs.glow);
@@ -4638,14 +4659,45 @@ export class Game {
   }
 
   /**
+   * WHERE THE FIGHTER IS ASKING HIS FEET TO GO, robot-local (+z = towards the enemy, +x = his own left). For the
+   * player that is literally the held movement keys — W/A/S/D — and for a machine it is where its own momentum is
+   * carrying it. The strike footwork is steered by this (see punchStepOf), so a combination thrown on the move
+   * steps with the body instead of re-planting on the same old spot.
+   */
+  private steerDir(f: Fighter): Steer {
+    if (f.isPlayer) {
+      const { fwd, lat } = this.dirKeys();
+      return steerFromKeys(fwd, lat);
+    }
+    const sy = Math.sin(f.yaw);
+    const cy = Math.cos(f.yaw);
+    const mag = Math.hypot(f.wish.x, f.wish.y);
+    if (mag < 0.5) return { f: 0, l: 0 };
+    return { f: (f.wish.x * sy + f.wish.y * cy) / mag, l: (f.wish.x * cy - f.wish.y * sy) / mag };
+  }
+
+  /**
    * PUNCH FOOTWORK. Every strike throws the body forward (see beginStrike) — this decides how the legs answer it.
    * The foot on the PUNCHING side re-plants: the left hand drives off the lead (left) foot, the right hand swings
    * the rear (right) foot in behind it. The step is metred by the distance — a short, flat nudge at the clinch
    * (there is nothing to close), a real step-in while the enemy is still out of punching range.
+   *
+   * AND IT IS STEERED: hold W through the punch and the boot plants INTO the punch, S and it plants back under him
+   * as he retreats, A/D and it steps out to that side (see steerDir). A strike re-planting on the same old spot
+   * while the body travels is exactly the anomaly the footwork must never show — the step and the body are one
+   * motion, and the other boot follows at once (the stance is not held behind him while he is still moving).
    */
   private punchStepOf(f: Fighter, o: Fighter) {
-    const none = { foot: -1, z: 0, x: 0, dur: 0.18, seq: -1, lift: undefined as number | undefined };
+    const none = { foot: -1, z: 0, x: 0, dur: 0.18, seq: -1, lift: undefined as number | undefined, steer: 0 };
     const m = f.move;
+    // ---- FREESTYLE FOOTWORK (the show-off) ----
+    // A machine showing off is PLANTED: the boots hold their ground while the pose dips, turns and rocks the whole
+    // body over the top of them (the fix for the taunt's feet "gerak-gerak ga jelas" — they used to keep taking the
+    // live-stance taps of a fighter waiting to fight while the upper body posed). What they DO deliver is the beat
+    // stamps armed in tickTaunt: the step id only changes on a beat, so between stamps the boots do not move at all.
+    if (f.tauntT > 0) {
+      return { foot: f.fsStampFoot, z: 0, x: 0, dur: f.fsStampDur, seq: FS_STAMP_SEQ + f.fsStamp, lift: FS_STAMP_LIFT, steer: 0 };
+    }
     // ---- GET-UP FOOTWORK ----
     // Two plants, on the beat of the rise: the rear foot comes up under the hips first (that is the one the knee
     // tuck hands the weight to), then the lead foot squares the stance. The steps are slow and high so they read as
@@ -4656,7 +4708,7 @@ export class Game {
       if (!g) return none;
       f.riseSteps = g.steps;
       // z/x = 0: the foot walks all the way home to its standing stance spot, which is where the leg IK wants it
-      return { foot: g.foot, z: g.z, x: g.x, dur: g.dur, seq: g.seq, lift: g.lift };
+      return { foot: g.foot, z: g.z, x: g.x, dur: g.dur, seq: g.seq, lift: g.lift, steer: 0 };
     }
     if (f.state === 'stagger') {
       // Boxing reactive backward footwork: each hit forces a crisp backward recovery step so the defender
@@ -4669,6 +4721,7 @@ export class Game {
         dur: 0.21,
         seq: 5000 + f.comboTaken + f.moveSeq * 10,
         lift: 0.3, // the recovery step has to be SEEN to come off the canvas (see the footwork pass in robot.ts)
+        steer: 0, // a knocked-back fighter is not steering his own footwork
       };
     }
     if (f.state !== 'attack' || !m) return none;
@@ -4677,11 +4730,11 @@ export class Game {
     const avg = Math.max(0.001, (f.scale + o.scale) * 0.5);
     const gap = f.pos.distanceTo(o.pos) / avg; // ~1 at the clinch, ~2.6 in punching range, 4+ out of range
     const far = THREE.MathUtils.clamp((gap - 1.15) / 1.9, 0, 1);
-    const z = (0.13 + far * 0.46) * (0.8 + m.power * 0.45) * (f.runStrike ? 1.25 : 1);
-    const x = (foot === 0 ? -0.05 : 0.07) * (0.5 + far * 0.8); // a small pivot towards the centre line
+    // the plant goes where the footwork is being asked to go (see footwork.ts — the harness measures this directly)
+    const { z, x, steer } = steeredPlant({ foot, far, power: m.power, runStrike: f.runStrike, steer: this.steerDir(f) });
     // the foot has to land on the same beat as the fist (the move clock runs at PACE × tscale, faster out of a dodge)
     const dur = THREE.MathUtils.clamp(((m.impact - m.strikeAt * 0.4) * PACE * f.tscale) / Math.max(1, f.atkSpd), 0.1, 0.34);
-    return { foot, z, x, dur, seq: f.moveSeq, lift: undefined as number | undefined };
+    return { foot, z, x, dur, seq: f.moveSeq, lift: undefined as number | undefined, steer };
   }
 
   /**
@@ -5964,6 +6017,17 @@ export class Game {
     f.tauntT -= dt;
     // a show-off banks Overdrive — the longer and prouder the move, the more it pays (not during the pre-fight show)
     if (this.phase === 'fight') f.meter = Math.min(100, f.meter + fs.meter * dt);
+    // FREESTYLE FOOTWORK: put the boots on the beat. Every percussive cue of the move gets one stamp, armed a
+    // step-length EARLY so the boot comes down exactly ON the beat (the trick a strike plant uses to land with the
+    // fist) — a chest pound with the boots answering underneath it, instead of the aimless shuffle the show-off
+    // used to stand in.
+    for (let due = stampCueAt(fs.cues, fs.dur, f.tauntT, f.fsFired), guard = 0; due >= 0 && guard < fs.cues.length; guard++) {
+      f.fsFired[due] = true;
+      f.fsStamp += 1;
+      f.fsStampFoot = f.fsStamp % 2 === 1 ? 0 : 1; // the boots take turns, like a fighter pacing himself
+      f.fsStampDur = stampDurFor(fs.cues[due], fs.dur, f.tauntT);
+      due = stampCueAt(fs.cues, fs.dur, f.tauntT, f.fsFired);
+    }
     // the beats of the move fire off its own progress clock, so sound, sparks and camera always land together
     for (const c of fs.cues) if (was > (1 - c.p) * fs.dur && f.tauntT <= (1 - c.p) * fs.dur) this.fsCue(f, c.s);
     if (f.tauntT <= 0) f.softT = Math.max(f.softT, 0.35);
@@ -8588,6 +8652,10 @@ export class Game {
         punchDur: pw.dur,
         punchSeq: pw.seq,
         stepLift: pw.lift,
+        punchSteer: pw.steer,
+        // SHOW-OFF FOOTWORK: while a freestyle move plays the boots are planted (see robot.ts) — the pace that a
+        // machine showing off stands on its own feet, not the little shuffles of a fighter waiting to fight
+        feetLock: f.tauntT > 0 ? 1 : undefined,
         // the get-up is declared once the rise begins (riseU > 0): during the initial collapse (riseU = 0) the fall
         // staging owns the body, and standing, the ordinary rig takes the body back (see robot.ts)
         rise: f.state === 'down' && f.riseU > 0.001 ? f.riseU : undefined,
