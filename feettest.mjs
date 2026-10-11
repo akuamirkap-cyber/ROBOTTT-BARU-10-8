@@ -536,11 +536,13 @@ console.log('=== 14. A STRIKE STEPS WHERE THE KEYS SAY (the re-plant is steered)
   check('a steered punch lets the OTHER boot follow at once (no stance left behind)', hold(0) > hold(1) + 0.15, `stance hold ${hold(0).toFixed(3)} s → ${hold(1).toFixed(3)} s`);
 }
 
-console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat) ===');
+console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps once per move) ===');
 {
   // Reported: "pas taunting kok kakinya gerak-gerak ga jelas". While a freestyle move plays the boots hold their
   // ground whatever the pose does over the top of them (the piston rev drops 0.67, the shoulder roll twists 0.42),
-  // and the only footwork left is one crisp stamp per percussive beat (armed by the beat clock, posetest §7).
+  // and the only footwork left is ONE stamp, on the beat the move lands its point on (armed by the beat clock,
+  // posetest §7). The waiting stance is measured here too: it has to stay ALIVE but QUIET — a reset tap every few
+  // seconds, never the shuffle it used to stand in.
   const SOLE = 0.21;
   const TOE_Z = 1.24;
   const HEEL_Z = 0.62;
@@ -551,13 +553,15 @@ console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat)
     r.robot.footJ[i].getWorldPosition(v);
     return v.y / r.S - drop(r.feet[i].pitch);
   };
-  const show = (locked, seconds = 4) => {
+  const show = (locked, seconds = 12) => {
     const r = new Rig();
-    r.run(0.6, 0, 0, locked ? { feetLock: 1 } : undefined); // let the lock land (a boot already in the air finishes its tap)
+    r.run(0.6, 0, 0, locked ? { feetLock: 1 } : undefined); // let the lock land
+    let taps = 0;
     let hop = 0;
     let wander = 0;
     let drift = 0;
     let prev = [0, 1].map((i) => r.loc(i));
+    const was = [false, false];
     const rest = [0.1, -0.5];
     for (let i = 0, n = Math.round(seconds / D); i < n; i++) {
       const u = i / n;
@@ -568,6 +572,8 @@ console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat)
         feetLock: locked ? 1 : undefined,
       });
       for (let k = 0; k < 2; k++) {
+        if (r.feet[k].hopT > 0 && !was[k]) taps += 1;
+        was[k] = r.feet[k].hopT > 0;
         hop = Math.max(hop, r.feet[k].hopY);
         wander = Math.max(wander, Math.abs(r.feet[k].yawOff - rest[k]));
         const l = r.loc(k);
@@ -575,12 +581,12 @@ console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat)
         prev[k] = l;
       }
     }
-    return { hop, wander, drift };
+    return { taps, hop, wander, drift };
   };
   const off = show(false);
   const on = show(true);
-  check('unlocked, the boots keep tapping themselves around (that was the bug)', off.hop > 0.1 || off.wander > 0.06, `boot air ${off.hop.toFixed(3)}, boot yaw wander ${off.wander.toFixed(3)} rad`);
-  check('locked, the boots do not leave the canvas at all while the pose works over them', on.hop < 0.0005, `boot air ${on.hop.toFixed(5)}`);
+  check('a waiting stance is alive but QUIET: a reset tap every few seconds, not a shuffle', off.taps >= 2 && off.taps <= 5, `${off.taps} taps in 12 s (one every ${(12 / off.taps).toFixed(1)} s)`);
+  check('locked, the boots do not leave the canvas at all while the pose works over them', on.hop < 0.0005 && on.taps === 0, `boot air ${on.hop.toFixed(5)}, taps ${on.taps}`);
   check('...and they stay square to the stance (no wander)', on.wander < 0.02, `boot yaw wander ${on.wander.toFixed(4)} rad`);
   check('...and no tap ever moves a contact point (a tap can never be a skate)', off.drift < 0.002 && on.drift < 0.0005, `worst move ${off.drift.toFixed(5)} / ${on.drift.toFixed(5)} local/frame`);
 
@@ -597,6 +603,69 @@ console.log('=== 15. A SHOW-OFF STANDS ON PLANTED BOOTS (and stamps on the beat)
   check('a stamp is a real boot coming off the canvas', stamp.punchSteps === 1 && peak > 0.08, `plants ${stamp.punchSteps}, peak clearance ${peak.toFixed(3)} local`);
   check('...and it comes down on the very spot it left (a stamp, not a shuffle)', stampDrift < 0.002, `contact point moved ${stampDrift.toFixed(5)} local`);
   check('one beat arms exactly one stamp', stamp.punchSteps === 1, `plants ${stamp.punchSteps}`);
+}
+
+console.log('=== 16. THE FOOTWORK IS ECONOMICAL (no wasted steps, no show-off clearance) ===');
+{
+  // Reported: "footworknya terlalu banyak gerak, mubazir, ga efisien". That complaint, made measurable: a stance
+  // that resets RARELY, strides that cover ground instead of shuffling, and clearance sized to read the step and no
+  // bigger. The floor is the other half of the requirement — the boot still has to be SEEN to leave the canvas.
+  const SOLE = 0.21;
+  const TOE_Z = 1.24;
+  const HEEL_Z = 0.62;
+  const v = new THREE.Vector3();
+  const drop = (p) => Math.max(SOLE * Math.cos(p) + TOE_Z * Math.sin(p), SOLE * Math.cos(p) - HEEL_Z * Math.sin(p));
+  const survey = (steps, drive, idle = false) => {
+    const r = new Rig();
+    let peak = 0;
+    let count = 0;
+    let taps = 0;
+    let airFrames = 0;
+    const sw = [false, false];
+    const was = [false, false];
+    const z0 = r.robot.root.position.z;
+    for (let i = 0; i < steps; i++) {
+      drive(r, i * D);
+      let airborne = false;
+      for (let k = 0; k < 2; k++) {
+        r.robot.footJ[k].updateWorldMatrix(true, false);
+        r.robot.footJ[k].getWorldPosition(v);
+        const c = v.y / r.S - drop(r.feet[k].pitch);
+        peak = Math.max(peak, c);
+        if (c > 0.03) airborne = true;
+        if (!idle && r.feet[k].stepping && !sw[k]) count += 1;
+        if (r.feet[k].hopT > 0 && !was[k]) taps += 1;
+        sw[k] = r.feet[k].stepping;
+        was[k] = r.feet[k].hopT > 0;
+      }
+      if (airborne) airFrames += 1;
+    }
+    const secs = steps * D;
+    const travel = Math.abs(r.robot.root.position.z - z0) / r.S;
+    return { peak, rate: count / secs, per: count ? travel / count : 0, taps, airPct: (airFrames / (steps || 1)) * 100 };
+  };
+  const idle = survey(60 * 24, (r) => r.frame(0, 0), true);
+  check('a waiting machine resets its stance about every 4 s — not a shuffle', idle.taps >= 3 && idle.taps <= 8, `${idle.taps} taps in 24 s (one every ${(24 / idle.taps).toFixed(1)} s)`);
+  check('...and it does not burn the canvas off its boots doing it', idle.airPct < 12, `a boot is off the canvas ${idle.airPct.toFixed(1)}% of the time`);
+  const walk = survey(60 * 8, (r) => r.frame(5.7, 0));
+  check('a walk covers ground with its steps (a stride is a stride)', walk.per > 1.5, `${walk.per.toFixed(2)} local units per step`);
+  check('...and takes no more steps than the speed needs', walk.rate < 3.5, `${walk.rate.toFixed(2)} steps/s at 5.7`);
+  check('...with clearance sized to read the step, not to show off', walk.peak > 0.32 && walk.peak < 0.62, `peak ${walk.peak.toFixed(2)} local`);
+  const sprint = survey(60 * 8, (r) => r.frame(11.2, 0, { sprint: 1 }));
+  check('the sprint spends its motion on the ground it covers', sprint.rate < 3.5 && sprint.per > 2.5, `${sprint.rate.toFixed(2)} steps/s, ${sprint.per.toFixed(2)} per step`);
+  check('...with a knee drive, not a march', sprint.peak > 0.6 && sprint.peak < 0.95, `peak ${sprint.peak.toFixed(2)} local`);
+  const dodge = survey(60 * 6, (r, t) => {
+    const u = (t % 1.0) / 0.32;
+    const active = u < 1;
+    const sp = active ? 15.2 * (u < 0.14 ? 0.38 + 0.62 * (u / 0.14) : Math.pow(Math.cos(((u - 0.14) / 0.86) * Math.PI * 0.5), 1.12)) : 0;
+    r.frame(0, sp, { dash: active ? 1 : 0, dashF: 0, dashL: 1 });
+  });
+  check('a sidestep is a pivot step, not a leap', dodge.peak > 0.28 && dodge.peak < 0.45, `peak ${dodge.peak.toFixed(2)} local`);
+  const shot = survey(60 * 6, (r, t) => {
+    const seq = Math.floor(t / 0.9);
+    r.frame(0, 0, { punchFoot: seq % 2, punchZ: 0.42, punchX: 0, punchDur: 0.22, punchSeq: seq, strike: 1 });
+  });
+  check('a strike plant is short, flat and deliberate', shot.peak > 0.18 && shot.peak < 0.42, `peak ${shot.peak.toFixed(2)} local`);
 }
 
 console.log('=== 10. BOTH BUILDS: NO BROKEN GEOMETRY, NO CLUTTER ===');

@@ -245,7 +245,7 @@ export class Robot {
   private tapT = 0;
   private punchSeq = -1; // last strike that already re-planted a foot (so one strike = one re-plant)
   private idleW = 0; // 0..1 "he is standing still on his feet": drives the live stance (heel pop, weight rock, resets)
-  private idleHopT = 1.1; // countdown to the next idle stance reset
+  private idleHopT = 3.6; // countdown to the next idle stance reset (rare: a waiting fighter does not tap-dance)
   private feetLockW = 0; // 0..1: how locked the boots are (see AnimState.feetLock) — a show-off stands on planted feet
   private punchPivotT = 0; // the strike's follow-through: the OTHER boot rolls onto its ball and turns its heel out
   private punchPivotFoot = 1;
@@ -534,7 +534,7 @@ export class Robot {
     this.tapT = 0;
     this.punchSeq = -1;
     this.idleW = 0;
-    this.idleHopT = 1.1;
+    this.idleHopT = 3.6;
     this.punchPivotT = 0;
     this.punchHoldT = 0;
     this.prevSpd = 0;
@@ -568,7 +568,8 @@ export class Robot {
     const run = this.runK;
 
     // Step length grows with speed (pro boxer gait: agile, grounded, never sliding)
-    const walkStride = clamp((0.45 + 0.24 * spdRaw) * (this.back ? 0.88 : 1), 0.85, 1.95);
+    // EFFICIENCY: a slightly longer stride covers the ring with fewer steps (a walking fighter is not a drummer).
+    const walkStride = clamp((0.50 + 0.26 * spdRaw) * (this.back ? 0.88 : 1), 0.9, 2.15);
     const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
     const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.0, 5.0), run);
     const HALF_MAX = 1.85;
@@ -723,7 +724,7 @@ export class Robot {
       f.tz = ideal[pf].z + z;
       f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
       // a deliberate, readable plant: the boot has to come off the canvas and come down ON the beat of the fist
-      f.lift = Math.max(f.lift, a.stepLift ?? 0.26 + Math.min(0.16, Math.abs(z) * 0.16));
+      f.lift = Math.max(f.lift, a.stepLift ?? 0.20 + Math.min(0.10, Math.abs(z) * 0.10));
       f.err = 0;
       this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
       // ...and the foot he is standing on answers the same beat: it stays planted but rolls onto its ball and turns
@@ -757,12 +758,16 @@ export class Robot {
       // The boot comes down on the very spot it left (a contact point that moved while the foot was nominally
       // planted would be a skate) but it turns a few degrees as it re-plants, and now and then it comes down
       // lighter or slower — the little adjust-tap a boxer keeps taking while he waits.
-      f.hopDur = 0.22 + Math.random() * 0.12;
+      //
+      // EFFICIENCY: an adjusted stance is the exception, not the rhythm. A machine that re-plants itself every
+      // second is burning motion it does not need — the tap is what it does when the stance has actually drifted,
+      // so it is rare (one every 4-6 s) and small, and the weight rock + heel pop carry the stance in between.
+      f.hopDur = 0.2 + Math.random() * 0.1;
       f.hopT = f.hopDur;
-      f.hopLift = Math.random() < 0.45 ? 0.16 + Math.random() * 0.08 : 0.26 + Math.random() * 0.11;
+      f.hopLift = Math.random() < 0.45 ? 0.18 + Math.random() * 0.06 : 0.24 + Math.random() * 0.06;
       f.hopYaw = (Math.random() - 0.5) * 0.3;
       this.nextFoot = 1 - i;
-      this.idleHopT = 1.25 + Math.random() * 1.5;
+      this.idleHopT = 3.8 + Math.random() * 3.2;
     }
 
     // ---- start a new step ----
@@ -779,10 +784,10 @@ export class Robot {
         f.gaitStep = false;
         f.shuffle = true;
         f.dur = i === this.dashLead ? 0.17 : 0.20;
-        // Clean, athletic foot clearance so feet lift off mat and never drag or clip (this is the SIDESTEP, so the
-        // boot has to be seen to come off the canvas and come down again — 0.16 and then 0.34 were skims the fight
-        // camera barely caught on a machine this tall).
-        f.lift = 0.42;
+        // Clean, athletic foot clearance so feet lift off mat and never drag or clip. A sidestep is a PIVOT step:
+        // the boot comes off the canvas, travels and comes down — it does not need height to read, and height on a
+        // shuffle is motion the fighter never asked for.
+        f.lift = 0.30;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
@@ -805,10 +810,10 @@ export class Robot {
         f.gaitStep = true;
         f.p0 = f.pitch;
         f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.45);
-        // FOOT CLEARANCE: on a machine this size the old 0.28 (≈3 % of his height) read as a glide, not a step. A
-        // stride picks the boot clearly off the canvas and sets it back down; a sprint drives the knee up until the
-        // knee is what leads the step. (0.44+ walked, 1.05 sprinted — 12 cm / 28 cm of clear air on a 2.7 m machine.)
-        f.lift = lerp(clamp(0.40 + spd * 0.055, 0.44, 0.78), 1.05, run);
+        // FOOT CLEARANCE: on a machine this size the original 0.28 (≈3 % of his height) read as a glide, not a step —
+        // but clearance is a cost, not a show. The boot now clears the canvas by about half a boot at a walk and
+        // lifts the knee properly at a sprint: enough air to read the step, no more motion than the step needs.
+        f.lift = lerp(clamp(0.30 + spd * 0.030, 0.30, 0.46), 0.72, run);
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
       }
@@ -823,13 +828,17 @@ export class Robot {
       let best = 0;
         // ...and a beat after a strike the stance is HELD: he has just punched through his own foot plant, and a
         // fighter who has thrown a real punch does not shuffle his feet back under himself the instant it lands.
-        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.30 : 0.52) + this.tapT * 0.22 + (this.punchHoldT > 0 ? 0.4 : 0);
-        const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
+        // EFFICIENCY: the balance solver is the LAST resort, not the rhythm of the stance. The bar for firing a
+        // corrective step is higher (0.60 of stance error, 0.36 just after a dash) and a genuinely messy stance has
+        // to be really messy before it gets the hurried version — every one of these steps is motion the fighter
+        // pays for, so it has to buy something.
+        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.36 : 0.60) + this.tapT * 0.22 + (this.punchHoldT > 0 ? 0.4 : 0);
+        const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.6;
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           const o = this.feet[1 - i];
           if (f.stepping || f.hopT > 0 || f.err < thr) continue;
-          if (o.stepping && f.err < 1.3) continue;
+          if (o.stepping && f.err < 1.5) continue;
           const score = f.err + (i === 0 ? 0.05 : 0);
           if (score > best) {
             best = score;
@@ -844,7 +853,7 @@ export class Robot {
           f.gaitStep = false;
           const rec = messy ? 0.78 : 1;
           f.dur = clamp(0.22 - spd * 0.024, 0.1, 0.21) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
-          f.lift = (0.30 + sp01 * 0.20) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
+          f.lift = (0.22 + sp01 * 0.12) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
         }
       }
 
@@ -858,7 +867,7 @@ export class Robot {
     // down on its HEEL (walking) or flat (running), stands, then the heel peels off the canvas and the machine
     // rolls forward over its toe with the calf — the old 0.02 rad "push-off" was 1°, i.e. a welded sole.
     const landP = lerp(-0.09, 0.03, run);
-    const toeP = lerp(0.20, 0.34, run);
+    const toeP = lerp(0.17, 0.30, run);
     const pr = { x: Math.cos(psi), z: -Math.sin(psi) };
     const stanceDur = (2 * duty * strideL) / Math.max(spdRaw, 1.2);
     for (let i = 0; i < 2; i++) {
@@ -874,7 +883,7 @@ export class Robot {
         const w = Math.sin(Math.PI * hp);
         f.hopY = w * f.hopLift;
         // the boot rolls off the canvas, turns, and rolls back on: pitch leads, yaw lags a little behind it
-        f.pitch = lerp(f.pitch, restP[i] + 0.085 * w, 1 - Math.exp(-18 * dt));
+        f.pitch = lerp(f.pitch, restP[i] + 0.055 * w, 1 - Math.exp(-18 * dt));
         f.yawOff = lerp(f.yawOff, restYaw[i] + f.hopYaw * w, 1 - Math.exp(-16 * dt));
         sway += -s * 0.045 * w;
         if (f.hopT <= 0) {
@@ -1015,8 +1024,8 @@ export class Robot {
         // mid-swing the foot stays level and natural with the shin (it only hangs with the shin once the roll is done)
         f.follow = u < 0.92 ? 0.22 * Math.pow(Math.sin(Math.PI * clamp((u - 0.18) / 0.74, 0, 1)), 0.8) : 0;
         f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.17 * w * (1 + run * 0.5); // weight shifts over the stance foot
-        roll += -s * 0.07 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
+        sway += -s * 0.13 * w * (1 + run * 0.5); // weight shifts over the stance foot
+        roll += -s * 0.05 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
         swingW = Math.max(swingW, w);
       } else if (f.punchStep) {
         // the foot drives forward for the punch and comes down flat and solid on the canvas
@@ -1081,7 +1090,7 @@ export class Robot {
     // +1 when foot 0 is a full stride ahead of foot 1, −1 the other way round; faded in with the gait mode
     const zD = clamp((l0.z - l1.z) / (2 * half), -1, 1) * this.gaitW;
     // the hip on the side whose foot is forward turns forward; the chest counter-rotates (see animate)
-    const gaitYaw = -0.11 * (1 + run * 1.1) * zD;
+    const gaitYaw = -0.09 * (1 + run * 1.1) * zD;
     // how deep into its stance the planted foot is (0 at touch-down / toe-off, 1 in mid-stance): drives the run bob
     let depth = 0;
     if (this.gait && !this.dashOn) {

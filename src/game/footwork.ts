@@ -44,21 +44,23 @@ export const steeredPlant = (p: {
   const keep = 1 - 0.6 * steer; // a steered punch keeps a share of its own drive into the enemy
   const baseZ = (0.13 + p.far * 0.46) * (0.8 + p.power * 0.45) * (p.runStrike ? 1.25 : 1);
   const baseX = (p.foot === 0 ? -0.05 : 0.07) * (0.5 + p.far * 0.8); // a small pivot towards the centre line
-  const reach = (0.32 + 0.30 * p.far) * (0.75 + 0.5 * p.power) * (p.runStrike ? 1.15 : 1);
+  const reach = (0.30 + 0.30 * p.far) * (0.75 + 0.5 * p.power) * (p.runStrike ? 1.15 : 1);
   return { z: baseZ * keep + p.steer.f * reach * steer, x: baseX * keep + p.steer.l * reach * steer, steer };
 };
 
 // ---------------------------------------------------------------- the show-off's beat clock
 /**
- * The beats of a freestyle move the boots answer with a stamp. A percussive beat — a chest pound, a fist clash, the
- * clap at the end of the windmill, the chin-up that ends a show — is a stamp. A beckon, a flex, a servo check is
- * not: there the boots stay planted and the hips do the talking.
+ * The beats of a freestyle move the boots answer with a stamp — ONE punctuation per move, on the beat the move lands
+ * its point on: the chin-up that closes a show, the fist clap at the end of the windmill, the reactor roar. The
+ * chest thumps and the fist clashes in the middle of a move are NOT stamped: the boots stay planted and the hips
+ * already do the talking there, and a boot popping off the canvas on every beat of a 4-beat move is motion nobody
+ * asked for. One clear stamp reads; a metronome reads as a waste of movement.
  */
-export const STAMP_CUES: ReadonlySet<string> = new Set(['beat', 'clash', 'clap', 'chin', 'roar']);
+export const STAMP_CUES: ReadonlySet<string> = new Set(['chin', 'clap', 'roar']);
 export const FS_STAMP_LEAD = 0.17; // how long a stamp takes to come down: the beat is armed this early so it LANDS on it.
 // It is deliberately SNAPping — the boot is off the canvas for a blink, so a show-off reads as a machine tapping the
 // mat on the beat, not as a machine doing a jig.
-export const FS_STAMP_LIFT = 0.22; // and it is a real boot coming down — enough air for the fight camera to catch it
+export const FS_STAMP_LIFT = 0.20; // and it is a real boot coming down — enough air for the fight camera to catch it
 export const FS_STAMP_SEQ = 9000; // step ids of the stamps (the strike footwork uses the move sequence numbers)
 
 /**

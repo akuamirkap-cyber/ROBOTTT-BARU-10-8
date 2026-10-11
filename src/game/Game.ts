@@ -1902,7 +1902,7 @@ export class Game {
         this.fx.spark(v, 2 + Math.floor(spd * 0.7), 1.4 + spd * 0.15, 0x8a8a99, undefined, 1.1, 0.3, 2);
       } else if (spd > 2.0) {
         this.fx.spark(v, 1 + Math.floor(spd * 0.4), 1.0 + spd * 0.1, 0x8a8a99, undefined, 0.9, 0.25, 1);
-      } else if (lift > 0.2 && f.y < 0.05 && (this.phase === 'fight' || this.phase === 'walk')) {
+      } else if (lift > 0.22 && f.y < 0.05 && (this.phase === 'fight' || this.phase === 'walk')) {
         // a boot coming down from a high, slow step (a strike re-plant, a freestyle stamp, an idle reset tap) still
         // kicks dust: nothing here is gliding, the machine PUT its foot down
         this.fx.spark(v, 2, 1.2 + lift, 0x8a8a99, undefined, 0.85, 0.3, 1);
@@ -4720,7 +4720,7 @@ export class Game {
         x: foot === 0 ? -0.07 : 0.07,
         dur: 0.21,
         seq: 5000 + f.comboTaken + f.moveSeq * 10,
-        lift: 0.3, // the recovery step has to be SEEN to come off the canvas (see the footwork pass in robot.ts)
+        lift: 0.28, // the recovery step has to be SEEN to come off the canvas (see the footwork pass in robot.ts)
         steer: 0, // a knocked-back fighter is not steering his own footwork
       };
     }
