@@ -528,9 +528,9 @@ export class Robot {
     const run = this.runK;
 
     // Step length grows with speed (pro boxer gait: agile, grounded, never sliding)
-    const walkStride = clamp((0.5 + 0.34 * spdRaw) * (this.back ? 0.88 : 1), 0.9, 2.5);
+    const walkStride = clamp((0.45 + 0.24 * spdRaw) * (this.back ? 0.88 : 1), 0.85, 1.95);
     const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
-    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.2, 6.0), run);
+    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.0, 5.0), run);
     const HALF_MAX = 1.85;
     const duty = clamp(Math.min(lerp(0.6, 0.38, run) - clamp((spdRaw - 11.5) / 45, 0, 0.1), HALF_MAX / strideL), 0.2, 0.66);
     const half = duty * strideL;
@@ -550,7 +550,7 @@ export class Robot {
       { x: wide, z: zLead + this.lungeK * 0.28 },
       { x: -wide, z: zRear + this.lungeK * 0.12 },
     ];
-    const restP = zm ? [lerp(0.0, 0.04, guardStance), lerp(0.0, 0.14, guardStance)] : [0.05, 0.2];
+    const restP = zm ? [lerp(0.0, 0.02, guardStance), lerp(0.0, 0.04, guardStance)] : [0.01, 0.03];
     const restYaw = zm ? [lerp(0.06, 0.08, guardStance), lerp(-0.06, -0.36, guardStance)] : [0.1, -0.5];
 
     this.bounce += dt * Math.PI * 2 * (1.8 + sp01 * 0.5);
@@ -626,11 +626,10 @@ export class Robot {
     const accAlong = (a.vf * a.af + a.vl * a.al) / Math.max(0.5, spdRaw);
     const braking = dv < -4.5 || accAlong < -2.0;
     if (this.dashOn) this.gait = false;
-    else if (!this.gait && !braking && spdRaw > 0.35 && spdRaw < 90) {
-      // Instant footwork response: steps initiate immediately without sluggish lag
+    else if (!this.gait && !braking && spdRaw > 1.0 && this.moveT > 0.09) {
       this.gait = true;
       this.firstStep = true;
-    } else if (this.gait && (spdRaw < 0.25 || spdRaw > 100)) {
+    } else if (this.gait && (spdRaw < 0.35 || braking)) {
       this.gait = false;
     }
     this.gaitW += ((this.gait ? 1 : 0) - this.gaitW) * (1 - Math.exp(-9 * dt));
@@ -645,38 +644,53 @@ export class Robot {
       this.firstStep = true;
     }
 
-    // Dynamic foot compliance: prevent planted feet from being dragged behind during dashes & moves
+    // Measure stance error on planted feet without artificially dragging them
     for (let i = 0; i < 2; i++) {
       const f = this.feet[i];
       if (f.stepping) continue;
       const l = toL(f.x, f.z);
-      const ex = l.x - ideal[i].x;
-      const ez = l.z - ideal[i].z;
-      f.err = Math.hypot(ex, ez);
-      const maxAllowedLag = (dashing || this.dashOn || spdRaw > 3) ? 0.38 : 0.65;
-      if (f.err > maxAllowedLag) {
-        const pull = (f.err - maxAllowedLag) * 0.88;
-        l.x -= (ex / f.err) * pull;
-        l.z -= (ez / f.err) * pull;
-        const w = toW(l.x, l.z);
-        f.x = w.x;
-        f.z = w.z;
-        f.curX = w.x;
-        f.curZ = w.z;
-        f.err = Math.hypot(l.x - ideal[i].x, l.z - ideal[i].z);
+      f.err = Math.hypot(l.x - ideal[i].x, l.z - ideal[i].z);
+    }
+
+    // ---- PUNCH FOOTWORK: striking foot re-plants on punch regardless of walk state ----
+    const pf = this.dashOn ? -1 : Math.round(a.punchFoot ?? -1);
+    const pSeq = a.punchSeq ?? -1;
+    let planted = false;
+    if (pf >= 0 && pf <= 1 && pSeq !== this.punchSeq) {
+      this.punchSeq = pSeq;
+      const f = this.feet[pf];
+      if (!f.stepping) {
+        const z = clamp(a.punchZ ?? 0.2, -0.25, 0.95);
+        const x = clamp(a.punchX ?? 0, -0.5, 0.5);
+        const curL = toL(f.x, f.z);
+        f.flx = curL.x;
+        f.flz = curL.z;
+        f.punchStep = true;
+        f.gaitStep = false;
+        f.shuffle = false;
+        f.stepping = true;
+        f.u = 0;
+        f.p0 = f.pitch;
+        f.fx = f.x;
+        f.fz = f.z;
+        f.tx = ideal[pf].x + x;
+        f.tz = ideal[pf].z + z;
+        f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
+        f.lift = a.stepLift ?? 0.06 + Math.min(0.06, Math.abs(z) * 0.05);
+        f.err = 0;
+        this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
+        planted = true;
       }
     }
 
     // ---- start a new step ----
-    if (this.dashOn) {
+    if (planted) {
+      // punch plant active
+    } else if (this.dashOn) {
       this.stepDist = 0;
       for (const i of [this.dashLead, 1 - this.dashLead]) {
         const f = this.feet[i];
-        // Allow cycling follow-through steps while high-speed dash/dodge momentum is continuing
-        if (this.dashGo[i] && !f.stepping && this.dashT > 0.18 && spdRaw > 4) {
-          this.dashGo[i] = false;
-        }
-        if (this.dashGo[i] || this.dashT < (i === this.dashLead ? 0 : 0.04)) continue;
+        if (this.dashGo[i] || this.dashT < (i === this.dashLead ? 0 : 0.05)) continue;
         this.dashGo[i] = true;
         const curL = toL(f.stepping ? f.curX : f.x, f.stepping ? f.curZ : f.z);
         f.flx = curL.x;
@@ -688,26 +702,26 @@ export class Robot {
         f.shuffle = true;
         f.u = 0;
         f.p0 = f.pitch;
-        f.dur = i === this.dashLead ? 0.18 : 0.21;
+        f.dur = i === this.dashLead ? 0.17 : 0.20;
         // Clean, athletic foot clearance so feet lift off mat and never drag or clip
-        f.lift = 0.25;
+        f.lift = 0.16;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
-      let trigger = this.firstStep || this.stepDist >= strideL;
+      let trigger = this.firstStep || this.stepDist >= strideL * 0.88;
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         if (f.stepping) continue;
         const l = toL(f.x, f.z);
         const behind = -(l.x * dirx + l.z * dirz);
-        if (behind > half * 1.35 + 0.3) {
+        if (behind > half * 1.15 + 0.22) {
           this.nextFoot = i;
           trigger = true;
         }
       }
       const f = this.feet[this.nextFoot];
       if (trigger && !f.stepping) {
-        this.stepDist = Math.max(0, this.stepDist - strideL);
+        this.stepDist = Math.max(0, this.stepDist - strideL * 0.88);
         this.firstStep = false;
         const curL = toL(f.x, f.z);
         f.flx = curL.x;
@@ -717,48 +731,17 @@ export class Robot {
         f.u = 0;
         f.fx = f.x;
         f.fz = f.z;
-        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.65);
-        f.lift = lerp(clamp(0.22 + spd * 0.04, 0.24, 0.48), 0.85, run);
+        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.45);
+        f.lift = lerp(clamp(0.14 + spd * 0.025, 0.15, 0.28), 0.38, run);
         f.p0 = f.pitch;
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
       }
     } else {
       this.stepDist = 0;
-      // ---- PUNCH FOOTWORK: the foot on the punching side re-plants for every strike ----
-      const pf = this.dashOn ? -1 : Math.round(a.punchFoot ?? -1);
-      const pSeq = a.punchSeq ?? -1;
-      let planted = false;
-      if (pf >= 0 && pf <= 1 && pSeq !== this.punchSeq) {
-        this.punchSeq = pSeq;
-        const f = this.feet[pf];
-        if (!f.stepping) {
-          const z = clamp(a.punchZ ?? 0.2, -0.25, 0.95);
-          const x = clamp(a.punchX ?? 0, -0.5, 0.5);
-          const curL = toL(f.x, f.z);
-          f.flx = curL.x;
-          f.flz = curL.z;
-          f.punchStep = true;
-          f.gaitStep = false;
-          f.shuffle = false;
-          f.stepping = true;
-          f.u = 0;
-          f.p0 = f.pitch;
-          f.fx = f.x;
-          f.fz = f.z;
-          f.tx = ideal[pf].x + x;
-          f.tz = ideal[pf].z + z;
-          f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
-          f.lift = a.stepLift ?? 0.08 + Math.min(0.09, Math.abs(z) * 0.07);
-          f.err = 0;
-          this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
-          planted = true;
-        }
-      }
-      if (!planted) {
-        let pick = -1;
-        let best = 0;
-        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.35 : 0.65) + this.tapT * 0.3;
+      let pick = -1;
+      let best = 0;
+        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.30 : 0.52) + this.tapT * 0.25;
         const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
@@ -788,7 +771,6 @@ export class Robot {
           f.lift = (0.12 + sp01 * 0.13) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
         }
       }
-    }
 
     // ---- animate each foot ----
     let sway = 0;
@@ -796,9 +778,9 @@ export class Robot {
     let yawS = 0;
     let swingW = 0;
     const toeOut = [0.07, -0.07];
-    // foot pitch at touch-down / toe-off: sprinters land on the mid-foot and push off hard from the toes
-    const landP = lerp(-0.2, 0.1, run);
-    const toeP = lerp(0.44, 0.78, run);
+    // foot pitch at touch-down / toe-off: grounded robot boxing footwork keeps soles flat and solid (no excessive tiptoeing)
+    const landP = lerp(-0.02, 0.01, run);
+    const toeP = lerp(0.015, 0.035, run);
     const pr = { x: Math.cos(psi), z: -Math.sin(psi) };
     const stanceDur = (2 * duty * strideL) / Math.max(spdRaw, 1.2);
     for (let i = 0; i < 2; i++) {
@@ -806,20 +788,20 @@ export class Robot {
       const s = i === 0 ? 1 : -1;
       if (!f.stepping) {
         if (this.gait) {
-          // stance: heel strike -> foot flat -> heel rises -> toe pushes off
+          // stance: heel touch -> solid foot flat on canvas -> subtle mechanical push-off roll
           f.stT += dt;
           const us = clamp(f.stT / stanceDur, 0, 1);
           let pit: number;
           if (us < 0.14) pit = lerp(landP, 0, sm(us / 0.14));
-          else if (us < 0.46) pit = 0;
-          else pit = toeP * sm((us - 0.46) / 0.54);
+          else if (us < 0.58) pit = 0;
+          else pit = toeP * sm((us - 0.58) / 0.42);
           // the first third of the stance rolls out of the pitch the foot ACTUALLY touched down with: a foot that
-          // lands up on its ball (straight after a punch) rolls flat instead of snapping into a heel-strike pose
+          // lands rolls flat smoothly instead of snapping into a heel-strike pose
           pit = lerp(f.p0, pit, sm(clamp(us / 0.3, 0, 1)));
-          f.pitch = lerp(f.pitch, pit, 1 - Math.exp(-(20 + run * 14) * dt)); // a walk rolls off the toe gently
+          f.pitch = lerp(f.pitch, pit, 1 - Math.exp(-(20 + run * 14) * dt));
           f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-14 * dt));
         } else {
-          const extra = (i === 0 ? 0.1 : 0.17) * h * bounceAmt;
+          const extra = (i === 0 ? 0.01 : 0.02) * h * bounceAmt;
           f.pitch = lerp(f.pitch, restP[i] + extra, 1 - Math.exp(-20 * dt));
           f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.75 * sp01), 1 - Math.exp(-7.5 * dt));
         }
@@ -833,12 +815,12 @@ export class Robot {
       let tl: { x: number; z: number };
       if (f.shuffle) {
         // land in the stance, offset along the dash: lead foot reaches out, rear foot closes the gap
-        const reach = i === this.dashLead ? 0.82 : 0.46;
-        const velK = i === this.dashLead ? 0.35 : 0.22;
+        const reach = i === this.dashLead ? 0.90 : 0.50;
+        const velK = i === this.dashLead ? 0.40 : 0.26;
         let ox = this.dashDirX * reach + a.vl * K * rem * velK;
         let oz = this.dashDirZ * reach + a.vf * K * rem * velK;
         const om = Math.hypot(ox, oz);
-        const maxReach = 1.35;
+        const maxReach = 1.48;
         if (om > maxReach) {
           ox *= maxReach / om;
           oz *= maxReach / om;
@@ -907,28 +889,26 @@ export class Robot {
       }
       const w = Math.sin(Math.PI * u);
       if (f.shuffle) {
-        // skimming the floor cleanly on the balls of the feet with natural compliance
-        f.pitch = lerp(f.p0, restP[i] + 0.15 + (i === this.dashLead ? 0 : 0.08 * (1 - u)), w);
+        // skimming the floor cleanly with flat grounded sole compliance
+        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
         f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-16 * dt));
         sway += -s * 0.05 * w;
       } else if (f.gaitStep) {
-        // toe-off pitch fades through the swing into a toes-up heel strike
+        // level foot flight into a clean flat touch-down
         f.pitch = lerp(f.p0, landP, sm(clamp(u * 1.1, 0, 1)));
-        // mid-swing the foot hangs with the shin (blended back to level well before touch-down)
-        f.follow = u < 0.92 ? 0.85 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
+        // mid-swing the foot remains stable and level with minimal droop
+        f.follow = u < 0.92 ? 0.25 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
         f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-16 * dt));
         sway += -s * 0.13 * w * (1 + run * 0.5); // weight shifts over the stance foot
         roll += -s * 0.05 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
         swingW = Math.max(swingW, w);
       } else if (f.punchStep) {
-        // the foot slides forward for the punch, staying low (a fighter's re-plant, no knee lift). It also PIVOTS:
-        // the rear foot rolls onto its ball and turns out with the shot, the lead foot turns in behind it.
-        const heel = i === 1 ? 0.07 : 0.01;
-        f.pitch = lerp(f.p0, restP[i] + 0.14 + heel, w);
+        // the foot slides forward for the punch, staying low and solid on the canvas
+        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
         f.yawOff = lerp(f.yawOff, restYaw[i] + (i === 1 ? -0.13 : 0.06) * w - this.punchYaw * w, 1 - Math.exp(-20 * dt));
         sway += -s * 0.055 * w;
       } else {
-        f.pitch = lerp(f.p0, restP[i] + 0.27, w);
+        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
         f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.75 * sp01), 1 - Math.exp(-14 * dt));
         sway += -s * 0.1 * w;
         roll += s * 0.05 * w;
@@ -940,26 +920,25 @@ export class Robot {
         f.stepping = false;
         f.stT = 0;
         f.follow = 0;
-        // touch-down NEVER snaps the ankle: it steps towards the landing pose by at most ~4 deg a frame, so the
-        // roll from the swing into the stance is continuous whatever pitch the foot happened to be carrying
+        // touch-down settles smoothly into flat grounded stance
         const settle = (target: number) => {
-          f.pitch += clamp(target - f.pitch, -0.07, 0.07);
+          f.pitch += clamp(target - f.pitch, -0.05, 0.05);
         };
         f.p0 = f.pitch; // the pitch this stance has to roll out of
         if (f.shuffle) {
           f.shuffle = false;
-          settle(restP[i] + 0.1);
+          settle(restP[i]);
           this.sLand.v -= 0.3;
         } else if (f.punchStep) {
           f.punchStep = false;
-          settle(restP[i] + 0.08);
+          settle(restP[i]);
           f.yawOff += i === 1 ? -0.05 : 0.02; // the pivot leaves a touch of turn behind; it eases out next stance
           this.sLand.v -= 0.24 + spd * 0.12; // the fist lands on the same beat as the foot
         } else if (f.gaitStep) {
           settle(landP); // heel strike (walk) / mid-foot strike (run)
           this.sLand.v -= 0.16 + spd * 0.08 + run * 0.35; // weight transfer; a sprint lands harder
         } else {
-          settle(restP[i] + 0.12);
+          settle(restP[i]);
           this.sLand.v -= 0.3 + spd * 0.2;
         }
         this.onStep?.(i, spd, f.x, f.z);
@@ -1583,9 +1562,8 @@ export class Robot {
       this.qd.setFromEuler(this.eu.set(f.pitch, yaw + f.yawOff, 0, 'YXZ'));
       this.qf.copy(this.qk).invert().multiply(this.qd);
       if (f.follow > 0.001) {
-        // mid-swing the foot hangs with the shin (slightly plantar-flexed) instead of staying level in the world —
-        // a level foot on a shin that is folded back is what produced the twisted-ankle look
-        this.qd.setFromEuler(this.eu.set(0.3, 0, 0, 'XYZ'));
+        // mid-swing the foot stays level and natural with the shin
+        this.qd.setFromEuler(this.eu.set(0.06, 0, 0, 'XYZ'));
         this.qf.slerp(this.qd, f.follow);
       }
       if (ik < 1) {

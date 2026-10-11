@@ -235,10 +235,10 @@ export const loadGloveSkin = (): number => {
 };
 
 export const OPPONENTS: OpponentDef[] = [
-  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.25, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
+  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.0, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
-  { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.08, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
+  { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.0, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
 ];
 // NYAWA LEBIH TEBAL 1.8×. The chassis of every fighter in the WRC is built on this one scale: the player's 100
 // baseline, the roster numbers above, and the Ultra Hard ×1.4 upgrade all end up 1.8× thicker, so the MATCH-UP
@@ -4904,22 +4904,22 @@ export class Game {
   }
 
   private startDodge(f: Fighter, dir: THREE.Vector2, kind: 'evade' | 'fwd' | 'back' | 'side' = 'evade') {
+    // Authentic Muhammad Ali & pro boxing footwork: explosive step-slide (1.1m - 1.35m boxing repositioning) instead of anime teleport
     const cfg = {
-      evade: { dur: 0.36, speed: 13.5, inv: true, cost: 9, cd: 0.22 },
-      fwd: { dur: 0.30, speed: 16.5, inv: false, cost: 6, cd: 0.2 },
-      back: { dur: 0.31, speed: 15.6, inv: true, cost: 7, cd: 0.22 },
-      // Shorter lateral travel keeps the body in range of its two planted recovery steps instead of skating across the ring.
-      side: { dur: 0.32, speed: 15.2, inv: true, cost: 6, cd: 0.2 },
+      evade: { dur: 0.28, speed: 5.6, inv: true, cost: 8, cd: 0.18 },
+      fwd: { dur: 0.25, speed: 6.0, inv: false, cost: 6, cd: 0.16 },
+      back: { dur: 0.28, speed: 5.2, inv: true, cost: 7, cd: 0.18 },
+      side: { dur: 0.28, speed: 5.5, inv: true, cost: 6, cd: 0.16 },
     }[kind];
     // the enemy's dodge gets cheaper as its IQ grows (a clever fighter wastes less energy), the player's cost never changes
     const cost = (f.isPlayer ? cfg.cost : cfg.cost / Math.pow(this.iq, 0.25)) * STAM_SCALE;
     if (f.dodgeCd > 0 || f.stam < cost || f.state !== 'idle') return false;
     f.dodgeT = cfg.dur;
     f.dodgeDur = cfg.dur;
-    f.dodgeTail = 0.24;
-    const rageBoost = f.isPlayer && f.rage ? 1.18 : 1;
+    f.dodgeTail = 0.14;
+    const rageBoost = f.isPlayer && f.rage ? 1.15 : 1;
     // Controlled footwork boost across all dash directions so recovery steps stay firmly planted under the hips
-    const fwBoost = f.isPlayer ? (kind === 'side' ? 1 + (this.fwMul - 1) * 0.05 : 1 + (this.fwMul - 1) * 0.07) : 1;
+    const fwBoost = f.isPlayer ? (kind === 'side' ? 1 + (this.fwMul - 1) * 0.04 : 1 + (this.fwMul - 1) * 0.05) : 1;
     f.dodgeSpeed = cfg.speed * fwBoost * rageBoost;
     // Player sidesteps/backsteps/evades and 3×+ AI dodges have full invulnerability mid-dodge so deadly punches can always be slipped!
     f.dodgeInv = cfg.inv || (f.isPlayer && kind !== 'fwd') || (!f.isPlayer && this.iq >= 3);
@@ -4931,9 +4931,8 @@ export class Game {
     f.stam -= cost;
     f.blocking = false;
     this.sfx.dodge();
-    this.fx.spark(new THREE.Vector3(f.pos.x, 0.3, f.pos.y), kind === 'evade' ? 14 : 22, 6, 0x8fd0ff, undefined, 1, 0.4, 3);
-    this.fx.ring(f.pos.x, f.pos.y, 0x8fd0ff, 3, 0.3, 0.07);
-    if (f.isPlayer) this.fovKick = kind === 'fwd' ? 0.9 : kind === 'back' ? -0.7 : 0.6;
+    // Authentic boxing canvas squeak & friction dust (subtle canvas dust, zero anime shockwave rings / neon flashes)
+    this.fx.spark(new THREE.Vector3(f.pos.x, 0.12, f.pos.y), 8, 3.2, 0xd0d8e8, undefined, 0.65, 0.22, 2);
     return true;
   }
 
@@ -6183,14 +6182,14 @@ export class Game {
           f.dodgeDir.lerp(wishDir, Math.min(1, dt * 4.5)).normalize();
         }
       }
-      // Athletic S-curve velocity profile: smooth push-off off the ball of the foot -> fast glide -> cushioned settle
-      const pushOff = u < 0.14 ? 0.38 + 0.62 * smooth(u / 0.14) : 1;
-      const glide = u < 0.14 ? 1 : Math.pow(Math.cos(((u - 0.14) / 0.86) * Math.PI * 0.5), 1.12);
-      f.vel.copy(f.dodgeDir).multiplyScalar(f.dodgeSpeed * pushOff * glide);
+      // Pro boxer footwork velocity profile: explosive push-off off the rear foot -> rapid pocket step -> high-traction plant
+      const pushOff = u < 0.18 ? 0.45 + 0.55 * smooth(u / 0.18) : 1;
+      const decel = u < 0.38 ? 1 : Math.pow(Math.cos(((u - 0.38) / 0.62) * Math.PI * 0.5), 1.3);
+      f.vel.copy(f.dodgeDir).multiplyScalar(f.dodgeSpeed * pushOff * decel);
       // Seamless momentum handover: blend into held footwork velocity (f.wish) over the second half of the dodge
-      // so holding W/A/S/D glides straight out of the dodge into fast footwork with zero stop-and-hitch!
-      if (u > 0.45 && f.state === 'idle' && f.wish.lengthSq() > 0.05) {
-        const handoff = smooth(THREE.MathUtils.clamp((u - 0.45) / 0.55, 0, 1));
+      // so holding W/A/S/D steps straight out of the dodge into crisp footwork with zero stop-and-hitch!
+      if (u > 0.52 && f.state === 'idle' && f.wish.lengthSq() > 0.05) {
+        const handoff = smooth(THREE.MathUtils.clamp((u - 0.52) / 0.48, 0, 1));
         f.vel.lerp(f.wish, handoff * 0.88);
       }
       // the dodge just finished — the advantage window is open: the next strike comes out faster and hits harder
@@ -6784,7 +6783,7 @@ export class Game {
 
     let dmg = m.dmg * a.dmgMul;
     if (a.robot.isZeus) {
-      dmg *= 1.25; // Kerusakan Zeus +25% lebih besar, menguras HP musuh lebih cepat
+      dmg *= 1.10; // Kekuatan attack serangan Zeus seperti Atlas cuma lebih kuat 10 persen (+10%)
     }
     let label = '';
     if (a.runStrike) {
@@ -8576,7 +8575,7 @@ export class Game {
         tilt: f.tilt,
         tiltZ: f.tiltZ,
         ragdoll: isAirRagdoll || ((f.state === 'down' || f.state === 'ko') && f.riseU <= 0.001 && e < 0.98) ? 1 : 0,
-        dash: (f.dodgeT > 0 || (f.dodgeTail > 0.05 && (f.vel.x * f.vel.x + f.vel.y * f.vel.y) > 4)) && f.state === 'idle' ? 1 : 0,
+        dash: f.dodgeT > 0 && f.state === 'idle' ? 1 : 0,
         dashF: f.dodgeDir.x * sy + f.dodgeDir.y * cy,
         dashL: f.dodgeDir.x * cy - f.dodgeDir.y * sy,
         sprint: f.sprinting ? 1 : 0,
