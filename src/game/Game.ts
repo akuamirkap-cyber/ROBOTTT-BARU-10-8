@@ -4668,7 +4668,7 @@ export class Game {
         x: foot === 0 ? -0.07 : 0.07,
         dur: 0.21,
         seq: 5000 + f.comboTaken + f.moveSeq * 10,
-        lift: 0.18,
+        lift: 0.3, // the recovery step has to be SEEN to come off the canvas (see the footwork pass in robot.ts)
       };
     }
     if (f.state !== 'attack' || !m) return none;

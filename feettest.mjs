@@ -411,6 +411,81 @@ console.log('=== 12. THE FOOTWORK ITSELF: NO SKATING, NO CROSSING, NO POPS ===')
   check('the ankles never pop', pop < 0.12, `worst pitch change ${pop.toFixed(4)} rad/frame`);
 }
 
+console.log('=== 13. THE BOOT REALLY LEAVES THE CANVAS (lift, heel-strike, toe-off roll) ===');
+{
+  // The complaint this section guards against: "his feet never come off the mat, they just stay welded to it".
+  // A boot's height above the canvas is measured on the REAL rig — the ankle joint's world height minus how far the
+  // pitched boot hangs below that ankle (the same geometry robot.ts plants with), in robot-local units (1.0 ≈ a full
+  // step, the machine is 8.0 units tall). It also checks the two things that make a step read as a step rather than
+  // a glide: the boot comes DOWN on its heel and ROLLS up over its toe before it leaves.
+  const SOLE = 0.21;
+  const TOE_Z = 1.24;
+  const HEEL_Z = 0.62;
+  const v = new THREE.Vector3();
+  const drop = (p) => Math.max(SOLE * Math.cos(p) + TOE_Z * Math.sin(p), SOLE * Math.cos(p) - HEEL_Z * Math.sin(p));
+  const clearance = (r, i) => {
+    r.robot.footJ[i].updateWorldMatrix(true, false);
+    r.robot.footJ[i].getWorldPosition(v);
+    return v.y / r.S - drop(r.feet[i].pitch);
+  };
+  /** drive a rig and report the widest the canvas gap ever got, plus every foot's pitch range */
+  const survey = (steps, drive) => {
+    const r = new Rig();
+    let peak = 0;
+    let clip = 0;
+    let pMin = 9;
+    let pMax = -9;
+    const planted = r.feet.map((f) => ({ x: f.x, z: f.z }));
+    let slide = 0;
+    for (let i = 0; i < steps; i++) {
+      const t = i / 60;
+      drive(r, t);
+      for (let k = 0; k < 2; k++) {
+        peak = Math.max(peak, clearance(r, k));
+        clip = Math.min(clip, clearance(r, k));
+        pMin = Math.min(pMin, r.feet[k].pitch);
+        pMax = Math.max(pMax, r.feet[k].pitch);
+        if (!r.feet[k].stepping) {
+          const d = Math.hypot(r.feet[k].x - planted[k].x, r.feet[k].z - planted[k].z) / r.S;
+          if (d > slide) slide = d;
+        }
+        planted[k].x = r.feet[k].x;
+        planted[k].z = r.feet[k].z;
+      }
+    }
+    return { r, peak, clip, pMin, pMax, slide };
+  };
+
+  const idle = survey(60 * 8, (r, t) => r.frame(0, 0));
+  check('standing still, the boots pick up off the canvas', idle.peak > 0.14, `peak clearance ${idle.peak.toFixed(3)} local`);
+  check('...without the contact point creeping (no skate)', idle.slide < 0.001, `worst planted move ${idle.slide.toFixed(4)} local`);
+  check('...and the rear heel rides the idle bounce', idle.pMax > 0.1, `rear heel peaks at ${idle.pMax.toFixed(2)} rad`);
+
+  const walk = survey(60 * 8, (r, t) => r.frame(5.7, 0));
+  check('a stride picks the boot off the canvas', walk.peak > 0.32, `peak clearance ${walk.peak.toFixed(3)} local`);
+  check('the boot lands heel-first', walk.pMin < -0.05, `landing pitch ${walk.pMin.toFixed(3)} rad`);
+  check('...and rolls up over the ball to push off', walk.pMax > 0.1, `toe-off pitch ${walk.pMax.toFixed(3)} rad`);
+  check('no boot is ever driven through the canvas', walk.clip > -0.004, `deepest point ${walk.clip.toFixed(4)} local`);
+
+  const run = survey(60 * 8, (r, t) => r.frame(11.2, 0, { sprint: 1 }));
+  check('a sprint drives the knee up (big clearance)', run.peak > 0.6, `peak clearance ${run.peak.toFixed(3)} local`);
+
+  const shot = survey(60 * 6, (r, t) => {
+    const seq = Math.floor(t / 0.9);
+    r.frame(0, 0, { punchFoot: seq % 2, punchZ: 0.42, punchX: 0, punchDur: 0.22, punchSeq: seq, strike: 1 });
+  });
+  check('a strike re-plant comes off the canvas too', shot.peak > 0.18, `peak clearance ${shot.peak.toFixed(3)} local`);
+  check('...and the standing boot pivots up onto its ball', shot.pMax > 0.15, `pivot heel peaks at ${shot.pMax.toFixed(2)} rad`);
+
+  const dodge = survey(60 * 6, (r, t) => {
+    const u = (t % 1.0) / 0.32;
+    const active = u < 1;
+    const sp = active ? 15.2 * (u < 0.14 ? 0.38 + 0.62 * (u / 0.14) : Math.pow(Math.cos(((u - 0.14) / 0.86) * Math.PI * 0.5), 1.12)) : 0;
+    r.frame(0, sp, { dash: active ? 1 : 0, dashF: 0, dashL: 1 });
+  });
+  check('a sidestep shuffle clears the canvas as well', dodge.peak > 0.28, `peak clearance ${dodge.peak.toFixed(3)} local`);
+}
+
 console.log('=== 10. BOTH BUILDS: NO BROKEN GEOMETRY, NO CLUTTER ===');
 for (const variant of ['atom', 'brute']) {
   const robot = new Robot({ ...STYLE, variant }, variant === 'brute' ? 1.22 : 1);
