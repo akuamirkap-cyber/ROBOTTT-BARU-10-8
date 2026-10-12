@@ -82,6 +82,7 @@ export interface AnimState {
   hitArm?: number;
   hitSeq?: number;
   hitPower?: number;
+  taunt?: boolean;
 }
 
 
@@ -203,6 +204,7 @@ export class Robot {
   private dashGo = [false, false];
   private dashLead = 0;
   private postDashT = 0;
+  private balanceCooldown = 0;
   private dashW = 0;
   private gaitW = 0;
   private back = false;
@@ -498,6 +500,7 @@ export class Robot {
     this.tapT = 0;
     this.punchSeq = -1;
     this.prevSpd = 0;
+    this.balanceCooldown = 0;
   }
 
   // ------------------------------------------------------------------ footwork
@@ -528,7 +531,7 @@ export class Robot {
     const run = this.runK;
 
     // Step length grows with speed (pro boxer gait: agile, grounded, never sliding)
-    const walkStride = clamp((0.45 + 0.24 * spdRaw) * (this.back ? 0.88 : 1), 0.85, 1.95);
+    const walkStride = clamp((0.55 + 0.25 * spdRaw) * (this.back ? 0.88 : 1), 0.95, 2.15);
     const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
     const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.0, 5.0), run);
     const HALF_MAX = 1.85;
@@ -553,10 +556,10 @@ export class Robot {
     const restP = zm ? [lerp(0.0, 0.02, guardStance), lerp(0.0, 0.04, guardStance)] : [0.01, 0.03];
     const restYaw = zm ? [lerp(0.06, 0.08, guardStance), lerp(-0.06, -0.36, guardStance)] : [0.1, -0.5];
 
-    this.bounce += dt * Math.PI * 2 * (1.8 + sp01 * 0.5);
+    this.bounce += dt * Math.PI * 2 * (1.15 + sp01 * 0.4);
     const h = 0.5 + 0.5 * Math.sin(this.bounce);
     const bounceAmt = clamp(a.idleBounce ?? 1, 0, 1) * (1 - this.gaitW);
-    const bob = (h - 0.5) * 0.12 * bounceAmt;
+    const bob = (h - 0.5) * 0.07 * bounceAmt;
 
     if (this.needSnap) {
       for (let i = 0; i < 2; i++) {
@@ -580,6 +583,28 @@ export class Robot {
       }
       this.gait = false;
       if (this.ikW > 0.85) this.needSnap = false;
+      this.storeFeetLocal(toL);
+      return { sway: 0, roll: 0, yaw: 0, bob: 0, swing: 0, arm: 0, flight: 0, run: 0, depth: 0 };
+    }
+
+    // ---- taunt / showcase lock: feet stay solidly and cleanly planted on the canvas ----
+    if (a.taunt) {
+      this.gait = false;
+      this.stepDist = 0;
+      this.dashOn = false;
+      for (let i = 0; i < 2; i++) {
+        const f = this.feet[i];
+        if (f.stepping) {
+          f.x = f.curX;
+          f.z = f.curZ;
+          f.stepping = false;
+        }
+        f.pitch = lerp(f.pitch, restP[i], 1 - Math.exp(-20 * dt));
+        f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-14 * dt));
+        f.curX = f.x;
+        f.curZ = f.z;
+        f.follow = 0;
+      }
       this.storeFeetLocal(toL);
       return { sway: 0, roll: 0, yaw: 0, bob: 0, swing: 0, arm: 0, flight: 0, run: 0, depth: 0 };
     }
@@ -618,15 +643,16 @@ export class Robot {
       this.movePeak = 0;
     }
     this.tapT = Math.max(0, this.tapT - dt);
+    this.balanceCooldown = Math.max(0, this.balanceCooldown - dt);
 
     // ---- responsive gait mode hysteresis ----
     const wasGait = this.gait;
     const dv = dt > 0 ? (spdRaw - this.prevSpd) / dt : 0;
     this.prevSpd = spdRaw;
     const accAlong = (a.vf * a.af + a.vl * a.al) / Math.max(0.5, spdRaw);
-    const braking = dv < -4.5 || accAlong < -2.0;
+    const braking = dv < -5.5 || (spdRaw < 1.6 && accAlong < -3.0);
     if (this.dashOn) this.gait = false;
-    else if (!this.gait && !braking && spdRaw > 1.0 && this.moveT > 0.09) {
+    else if (!this.gait && !braking && spdRaw > 0.8 && this.moveT > 0.082) {
       this.gait = true;
       this.firstStep = true;
     } else if (this.gait && (spdRaw < 0.35 || braking)) {
@@ -676,7 +702,7 @@ export class Robot {
         f.tx = ideal[pf].x + x;
         f.tz = ideal[pf].z + z;
         f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
-        f.lift = a.stepLift ?? 0.06 + Math.min(0.06, Math.abs(z) * 0.05);
+        f.lift = a.stepLift ?? (0.20 + Math.min(0.12, Math.abs(z) * 0.12));
         f.err = 0;
         this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
         planted = true;
@@ -704,7 +730,7 @@ export class Robot {
         f.p0 = f.pitch;
         f.dur = i === this.dashLead ? 0.17 : 0.20;
         // Clean, athletic foot clearance so feet lift off mat and never drag or clip
-        f.lift = 0.16;
+        f.lift = 0.24;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
@@ -714,14 +740,14 @@ export class Robot {
         if (f.stepping) continue;
         const l = toL(f.x, f.z);
         const behind = -(l.x * dirx + l.z * dirz);
-        if (behind > half * 1.15 + 0.22) {
+        if (behind > half * 1.25 + 0.26) {
           this.nextFoot = i;
           trigger = true;
         }
       }
       const f = this.feet[this.nextFoot];
       if (trigger && !f.stepping) {
-        this.stepDist = Math.max(0, this.stepDist - strideL * 0.88);
+        this.stepDist = Math.max(0, this.stepDist - strideL * 0.95);
         this.firstStep = false;
         const curL = toL(f.x, f.z);
         f.flx = curL.x;
@@ -731,8 +757,8 @@ export class Robot {
         f.u = 0;
         f.fx = f.x;
         f.fz = f.z;
-        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.12, 0.45);
-        f.lift = lerp(clamp(0.14 + spd * 0.025, 0.15, 0.28), 0.38, run);
+        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.16, 0.45);
+        f.lift = lerp(clamp(0.28 + spd * 0.035, 0.30, 0.46), 0.56, run);
         f.p0 = f.pitch;
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
@@ -741,8 +767,11 @@ export class Robot {
       this.stepDist = 0;
       let pick = -1;
       let best = 0;
-        const thr = a.rise !== undefined ? 1e9 : (this.postDashT > 0 ? 0.30 : 0.52) + this.tapT * 0.25;
-        const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
+      // Stance recovery threshold: calm, efficient, no fidgeting.
+      // When standing still (spdRaw < 0.6), stay firmly grounded unless stance error is genuinely large (> 0.85).
+      const thr = a.rise !== undefined || a.taunt ? 1e9 : (this.postDashT > 0 ? 0.28 : spdRaw > 0.6 ? 0.38 : 0.85) + this.tapT * 0.25;
+      const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
+      if (this.balanceCooldown <= 0) {
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           const o = this.feet[1 - i];
@@ -754,23 +783,25 @@ export class Robot {
             pick = i;
           }
         }
-        if (pick >= 0) {
-          const f = this.feet[pick];
-          const curL = toL(f.x, f.z);
-          f.flx = curL.x;
-          f.flz = curL.z;
-          f.punchStep = false;
-          f.stepping = true;
-          f.gaitStep = false;
-          f.u = 0;
-          f.p0 = f.pitch;
-          f.fx = f.x;
-          f.fz = f.z;
-          const rec = messy ? 0.78 : 1;
-          f.dur = clamp(0.22 - spd * 0.024, 0.1, 0.21) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
-          f.lift = (0.12 + sp01 * 0.13) * (1 - this.tapT * 0.4) * (messy ? 0.85 : 1);
-        }
       }
+      if (pick >= 0) {
+        this.balanceCooldown = 0.28; // prevent rapid consecutive balance steps
+        const f = this.feet[pick];
+        const curL = toL(f.x, f.z);
+        f.flx = curL.x;
+        f.flz = curL.z;
+        f.punchStep = false;
+        f.stepping = true;
+        f.gaitStep = false;
+        f.u = 0;
+        f.p0 = f.pitch;
+        f.fx = f.x;
+        f.fz = f.z;
+        const rec = messy ? 0.78 : 1;
+        f.dur = clamp(0.24 - spd * 0.024, 0.14, 0.24) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
+        f.lift = (0.22 + sp01 * 0.16) * (1 - this.tapT * 0.25) * (messy ? 0.9 : 1);
+      }
+    }
 
     // ---- animate each foot ----
     let sway = 0;
@@ -873,42 +904,38 @@ export class Robot {
       tw.z = clamp(tw.z, -this.footLimit, this.footLimit);
       // gait swings start and end with ~zero ground speed (no skidding on touch-down, no jerk at toe-off)
       const e = f.shuffle ? sm(u) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
-      if (f.shuffle || f.gaitStep) {
-        // Interpolate in robot-local space so the foot moves actively WITH the moving body,
-        // rather than lagging far behind at an old world coordinate stuck to the mat!
-        const curLx = f.flx + (tl.x - f.flx) * e;
-        const curLz = f.flz + (tl.z - f.flz) * e;
-        const curW = toW(curLx, curLz);
-        curW.x = clamp(curW.x, -this.footLimit, this.footLimit);
-        curW.z = clamp(curW.z, -this.footLimit, this.footLimit);
-        f.curX = curW.x;
-        f.curZ = curW.z;
-      } else {
-        f.curX = f.fx + (tw.x - f.fx) * e;
-        f.curZ = f.fz + (tw.z - f.fz) * e;
-      }
+      // Interpolate in robot-local space so the foot moves actively WITH the moving body,
+      // rather than lagging far behind at an old world coordinate stuck to the mat!
+      const curLx = f.flx + (tl.x - f.flx) * e;
+      const curLz = f.flz + (tl.z - f.flz) * e;
+      const curW = toW(curLx, curLz);
+      curW.x = clamp(curW.x, -this.footLimit, this.footLimit);
+      curW.z = clamp(curW.z, -this.footLimit, this.footLimit);
+      f.curX = curW.x;
+      f.curZ = curW.z;
       const w = Math.sin(Math.PI * u);
       if (f.shuffle) {
-        // skimming the floor cleanly with flat grounded sole compliance
-        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
+        // Clean, athletic boxing shuffle with visible push-off and crisp clearance
+        f.pitch = lerp(f.p0, restP[i] + 0.04 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.05 * w;
+        sway += -s * 0.07 * w;
       } else if (f.gaitStep) {
-        // level foot flight into a clean flat touch-down
-        f.pitch = lerp(f.p0, landP, sm(clamp(u * 1.1, 0, 1)));
-        // mid-swing the foot remains stable and level with minimal droop
-        f.follow = u < 0.92 ? 0.25 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
+        // Dynamic boxing stride: push-off rolls onto the ball of the foot (heel up),
+        // mid-swing clears the canvas cleanly, heel-strike lands softly into stance
+        const swingPitch = u < 0.35 ? lerp(f.p0, toeP * 1.2, sm(u / 0.35)) : lerp(toeP * 1.2, landP, sm((u - 0.35) / 0.65));
+        f.pitch = swingPitch;
+        f.follow = u < 0.92 ? 0.30 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
         f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.13 * w * (1 + run * 0.5); // weight shifts over the stance foot
-        roll += -s * 0.05 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
+        sway += -s * 0.14 * w * (1 + run * 0.5); // weight shifts over the stance foot
+        roll += -s * 0.06 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
         swingW = Math.max(swingW, w);
       } else if (f.punchStep) {
-        // the foot slides forward for the punch, staying low and solid on the canvas
-        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
+        // Deliberate step-in: foot lifts with intent and plants authoritative power into the canvas
+        f.pitch = lerp(f.p0, restP[i] + 0.05 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i] + (i === 1 ? -0.13 : 0.06) * w - this.punchYaw * w, 1 - Math.exp(-20 * dt));
-        sway += -s * 0.055 * w;
+        sway += -s * 0.06 * w;
       } else {
-        f.pitch = lerp(f.p0, restP[i] + 0.01, w);
+        f.pitch = lerp(f.p0, restP[i] + 0.04 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.75 * sp01), 1 - Math.exp(-14 * dt));
         sway += -s * 0.1 * w;
         roll += s * 0.05 * w;
@@ -1005,12 +1032,15 @@ export class Robot {
     const fs = fallStages(eSpan);
     const layE = fs.lay * 1.42; // the lie: 81° back and rolled onto one shoulder (not a flat 90° plank)
     const lieSide = fs.side * (1 - rs.side) * riseDir; // a little onto the shoulder he will get up over
-    // the head is the last thing to hit: as the torso arrives on the canvas the neck whips once
-    if (this.prevLay < 0.78 && fs.lay >= 0.78 && (a.rise === undefined || riseU <= 0.001)) {
-      this.sHeadX.v += 6.2;
-      this.sHeadZ.v += 2.6 * riseDir;
-      this.sHeadY.v += 1.4 * riseDir;
-      this.sMass.v += 0.85;
+    // the head is the last thing to hit: as the torso arrives on the canvas the neck whips and shoulders bounce
+    if (this.prevLay < 0.75 && fs.lay >= 0.75 && (a.rise === undefined || riseU <= 0.001)) {
+      this.sHeadX.v += 7.2;
+      this.sHeadZ.v += 3.2 * riseDir;
+      this.sHeadY.v += 2.0 * riseDir;
+      this.sMass.v += 1.1;
+      this.sRoll.v += 1.4 * riseDir;
+      this.sLean.v -= 1.6;
+      for (const sp of this.sShoulderLag) sp.v += 4.5;
     }
     this.prevLay = fs.lay;
     // ...and it does not unwind straight to zero: it passes through a deep forward fold, chest over the knees,
@@ -1224,29 +1254,42 @@ export class Robot {
       bodyZ + riseZ + slipLean * 0.16 * dodgeFlow,
     );
     this.body.rotation.set(
-      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35 + fs.slam * 0.06 * (1 - rs.unroll),
-      riseYaw + lieSide * 0.25, // the lie is rolled onto one shoulder (about the spine = the log-roll axis)
-      (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0) + lieSide * 0.12 * (1 - rs.unroll),
+      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35 + fs.slam * 0.08 * (1 - rs.unroll),
+      riseYaw + lieSide * 0.32 - riseDir * 0.16 * fs.buckle * (1 - rs.unroll), // fluid torsional rotation during buckle and roll
+      (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0) + lieSide * 0.22 * (1 - rs.unroll) + riseDir * 0.10 * fs.slam * (1 - rs.unroll),
     );
     // Living respiratory heave: rhythmic chest expansion & compression (~3.9s cycle)
     const breathe = Math.sin(t * 1.6) * 0.038;
-    // Core spinal dynamics: kurvatura tulang belakang saat jatuh (buckle & shock absorption) dan melengkung ke depan saat bangkit (eFold)
-    const spineFallCurl = fs.buckle * 0.22 - fs.slam * 0.08;
-    const spineImpactDecompress = fs.lay * 0.07 + fs.slam * 0.05;
+    // Core spinal dynamics: kurvatura tulang belakang luwes saat jatuh (buckle & shock absorption) dan melengkung ke depan saat bangkit (eFold)
+    const spineFallCurl = fs.buckle * 0.36 - fs.slam * 0.12;
+    const spineImpactDecompress = fs.lay * 0.08 + fs.slam * 0.10;
     const spineFold = eFold * 0.28;
-    this.pelvis.rotation.set(a.lean * 0.06 - spineFallCurl * 0.12 + spineFold * 0.1, pelvisYaw, gr - slipRoll * 0.14);
+    const spineFallRoll = lieSide * 0.24 * (1 - rs.unroll);
+    const spineFallYaw = riseDir * 0.16 * fs.side * (1 - rs.unroll);
+
+    this.pelvis.rotation.set(
+      a.lean * 0.06 - spineFallCurl * 0.25 + spineFold * 0.1,
+      pelvisYaw + spineFallYaw * 0.45,
+      gr - slipRoll * 0.14 + spineFallRoll * 0.35,
+    );
     this.waist.rotation.set(
-      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28 + spineFallCurl - spineImpactDecompress + spineFold,
-      wY - psi * 0.5 - gy * 0.7 + hYaw * 0.3,
-      -gr * 0.6 + hRoll * 0.3 + slipRoll * 0.36,
+      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28 + spineFallCurl * 0.85 - spineImpactDecompress + spineFold,
+      wY - psi * 0.5 - gy * 0.7 + hYaw * 0.3 - spineFallYaw * 0.35,
+      -gr * 0.6 + hRoll * 0.3 + slipRoll * 0.36 + spineFallRoll * 0.55,
     );
     this.chest.rotation.set(
-      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3) + spineFallCurl * 1.1 - spineImpactDecompress * 1.0 + spineFold * 1.2,
-      cY - psi * 0.4 - gy * 0.8 + hYaw * 0.55,
-      -rollA * 0.3 - gr * 0.4 + hRoll * 0.3 + slipRoll * 0.52,
+      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3) + spineFallCurl * 1.25 - spineImpactDecompress * 1.2 + spineFold * 1.2,
+      cY - psi * 0.4 - gy * 0.8 + hYaw * 0.55 + spineFallYaw * 0.75,
+      -rollA * 0.3 - gr * 0.4 + hRoll * 0.3 + slipRoll * 0.52 + spineFallRoll * 0.75,
     );
 
     // head: lags the chest and counter-rotates to keep eyes on the opponent, and flows smoothly with head-slips/weaves
+    // ...and during the fall the heavy head lags with inertia, then whips and rebounds on canvas impact
+    const headFallLag = -fs.lay * 0.26 * (1 - fs.slam) * (1 - rs.unroll);
+    const headImpactSlam = fs.slam * 0.32 * (1 - rs.unroll);
+    const headFallRoll = riseDir * 0.22 * fs.side * (1 - rs.side);
+    const headFallYaw = riseDir * 0.28 * fs.side * (1 - rs.side);
+
     // ...and during the get-up the head leads the whole move: chin tucked while he is flat, lifted early so he is
     // already looking at you before the torso arrives, then a small nod as he settles into the stance.
     const hRise =
@@ -1254,7 +1297,7 @@ export class Robot {
       + eSpan * 0.3 - rs.hipUp * 0.34 * (1 - rs.unroll) - eFold * 0.55 + rs.bounce * 0.1
       - riseOut * 0.06 * Math.sin(t * 11);
 
-    const baseHeadX = 0.02 - a.lean * 0.52 + hRise - leanA * 0.28;
+    const baseHeadX = 0.02 - a.lean * 0.52 + hRise - leanA * 0.28 + headFallLag + headImpactSlam;
     let hx: number;
     let hy: number;
     let hz: number;
@@ -1266,8 +1309,8 @@ export class Robot {
       const hSnap = 0.25 + hPt * 1.15;
       const headHz = lerp(4.8, 11.8, dodgeFlow);
       hx = this.sHeadX.update(baseHeadX + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
-      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0), headHz, 0.55, dt);
-      hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58, headHz, 0.55, dt);
+      hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0) + headFallYaw, headHz, 0.55, dt);
+      hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58 + headFallRoll, headHz, 0.55, dt);
     } else if (isJab) {
       // 1. JAB:
       // Kepala lawan terdorong/tersentak lurus ke belakang.
@@ -1530,8 +1573,8 @@ export class Robot {
       const lieLead = (riseDir > 0 ? 0 : 1) === i ? 1 : 0; // the leg on the side he lies towards
       const lieW = fs.side * (1 - rs.tuck) * (1 - rs.legs);
       const slamBounce = fs.slam * (1 - rs.tuck) * (1 - rs.legs);
-      const buckleK = fs.buckle * 1.24; // knees buckle dynamically under weight during the collapse
-      const buckleH = -fs.buckle * 0.62; // hips sink in 1:2 kinematic ratio with the knees
+      const buckleK = fs.buckle * 1.32 * (lieLead ? 1.12 : 0.88); // knees buckle dynamically under weight with organic asymmetry
+      const buckleH = -fs.buckle * 0.66 * (lieLead ? 1.08 : 0.92); // hips sink in kinematic ratio with the knees
       const fallHx = 0.02 * s + buckleH - (0.68 * lieLead + 0.22 * (1 - lieLead) + 0.12 * slamBounce) * lieW;
       const fallKx = 0.14 + buckleK + (1.20 * lieLead + 0.20 * (1 - lieLead) + 0.18 * slamBounce) * lieW;
       // GET-UP: the legs are the load-bearing part of the whole move, and they are posed here by hand (the IK
@@ -1546,11 +1589,13 @@ export class Robot {
       const trailW = 1 - leadW;
       const fkHx = lerp(fallHx, airHx, am) - 1.25 * leadW * tuckW - 0.3 * leadW * kneelW + 0.4 * trailW * kneelW - (1.75 + airHx) * flipTuck;
       const fkKx = lerp(fallKx, airKx, am) + 2.0 * leadW * tuckW + 1.6 * trailW * tuckW + (2.25 - airKx) * flipTuck;
-      const fkHz = lerp(s * (0.14 + 0.1 * lieLead * lieW), s * 0.22, am) + s * 0.34 * tuckW;
+      const fkHz = lerp(s * (0.16 + 0.14 * lieLead * lieW + 0.08 * fs.buckle), s * 0.22, am) + s * 0.34 * tuckW;
+      const hipFallYaw = s * (0.22 * lieLead + 0.12 * (1 - lieLead)) * (fs.buckle * 0.75 + lieW);
+      const fkHy = lerp(hipFallYaw, 0, am);
 
       const hxF = lerp(fkHx, ikHx, ik);
       const kxF = lerp(fkKx, kx, ik);
-      this.hipJ[i].rotation.set(hxF, 0, lerp(fkHz, g, ik));
+      this.hipJ[i].rotation.set(hxF, lerp(fkHy, 0, ik), lerp(fkHz, g, ik));
       this.kneeJ[i].rotation.x = kxF;
       const fd = this.faulds[i];
       if (fd) fd.rotation.x = hxF * 0.55; // hip skirts are gone; keep working if one is ever added back
@@ -1569,7 +1614,7 @@ export class Robot {
       if (ik < 1) {
         // Off the feet (in the air, knocked down, getting up) the boot stops chasing the floor: it hangs off the
         // shin the way a relaxed foot does — toes up while he is down, pointed while he is in the air.
-        this.qd.setFromEuler(this.eu.set(-0.22 + am * 0.48 + lieW * (lieLead ? 0.28 : 0.12), 0, s * 0.15 * lieW, 'XYZ'));
+        this.qd.setFromEuler(this.eu.set(-0.22 + am * 0.48 + lieW * (lieLead ? 0.28 : 0.12), s * 0.12 * lieW, s * 0.16 * lieW, 'XYZ'));
         this.qf.slerp(this.qd, 1 - ik);
       }
       this.footJ[i].quaternion.copy(this.qf);

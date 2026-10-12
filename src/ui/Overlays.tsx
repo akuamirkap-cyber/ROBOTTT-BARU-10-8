@@ -137,7 +137,7 @@ export function PauseMenu({
             onClick={onShowZeus}
             className="w-full cut mt-2.5 px-4 py-2.5 font-display text-lg tracking-[0.14em] border border-emerald-400/80 bg-gradient-to-r from-emerald-950 via-green-900 to-emerald-950 text-emerald-200 hover:text-white shadow-[0_0_15px_rgba(34,255,68,0.3)] flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>⚡ TAMPILKAN ZEUS (3D ASSET & EDITOR)</span>
+            <span>🎨 CUSTOM DESAIN ROBOT (3D PART EDITOR)</span>
           </button>
         )}
         <div className="mt-5 grid grid-cols-2 gap-3">

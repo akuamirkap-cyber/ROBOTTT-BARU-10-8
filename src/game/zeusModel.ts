@@ -961,7 +961,10 @@ export function mount100PercentZeus(
     const c = centerOf(m);
     const q = new THREE.Quaternion().setFromEuler(b.r);
     const v = a.v || [0, 0, 0];
-    return c.clone().multiply(b.s).applyQuaternion(q).add(b.p).add(new THREE.Vector3(v[0], v[1], v[2]));
+    const vx = typeof v[0] === 'number' && !isNaN(v[0]) ? v[0] : 0;
+    const vy = typeof v[1] === 'number' && !isNaN(v[1]) ? v[1] : 0;
+    const vz = typeof v[2] === 'number' && !isNaN(v[2]) ? v[2] : 0;
+    return c.clone().multiply(b.s).applyQuaternion(q).add(b.p).add(new THREE.Vector3(vx, vy, vz));
   };
 
   const applyBend = (m: THREE.Mesh, b?: [number, number]) => {
@@ -1009,14 +1012,25 @@ export function mount100PercentZeus(
 
   const applyAdj = (m: THREE.Mesh, a: Adj) => {
     const b = m.userData.base;
+    if (!b) return;
     const c = centerOf(m);
     const qb = new THREE.Quaternion().setFromEuler(b.r);
-    const sAdj = new THREE.Vector3(a.s[0] * a.u, a.s[1] * a.u, a.s[2] * a.u);
+    const u = typeof a.u === 'number' && !isNaN(a.u) ? a.u : 1;
+    const s0 = typeof a.s?.[0] === 'number' && !isNaN(a.s[0]) ? a.s[0] : 1;
+    const s1 = typeof a.s?.[1] === 'number' && !isNaN(a.s[1]) ? a.s[1] : 1;
+    const s2 = typeof a.s?.[2] === 'number' && !isNaN(a.s[2]) ? a.s[2] : 1;
+    const sAdj = new THREE.Vector3(s0 * u, s1 * u, s2 * u);
     const pos0 = c.clone().sub(c.clone().multiply(sAdj)).multiply(b.s).applyQuaternion(qb).add(b.p);
     const P = pivotOf(m, a);
-    const qa = new THREE.Quaternion().setFromEuler(new THREE.Euler(a.r[0] * D2R, a.r[1] * D2R, a.r[2] * D2R));
+    const r0 = typeof a.r?.[0] === 'number' && !isNaN(a.r[0]) ? a.r[0] : 0;
+    const r1 = typeof a.r?.[1] === 'number' && !isNaN(a.r[1]) ? a.r[1] : 0;
+    const r2 = typeof a.r?.[2] === 'number' && !isNaN(a.r[2]) ? a.r[2] : 0;
+    const qa = new THREE.Quaternion().setFromEuler(new THREE.Euler(r0 * D2R, r1 * D2R, r2 * D2R));
     const pos = pos0.sub(P).applyQuaternion(qa).add(P);
-    pos.add(new THREE.Vector3(a.p[0], a.p[1], a.p[2]));
+    const p0 = typeof a.p?.[0] === 'number' && !isNaN(a.p[0]) ? a.p[0] : 0;
+    const p1 = typeof a.p?.[1] === 'number' && !isNaN(a.p[1]) ? a.p[1] : 0;
+    const p2 = typeof a.p?.[2] === 'number' && !isNaN(a.p[2]) ? a.p[2] : 0;
+    pos.add(new THREE.Vector3(p0, p1, p2));
     m.position.copy(pos);
     m.quaternion.copy(qa.multiply(qb));
     m.scale.copy(b.s.clone().multiply(sAdj));

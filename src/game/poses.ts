@@ -528,11 +528,13 @@ export function freestylePose(style: number, u: number, t: number): Beat {
  */
 export function fallStages(e: number) {
   const ec = clamp(e, 0, 1.06);
-  const slam = Math.sin(Math.PI * S(ec, 0.52, 0.96)); // secondary canvas impact compression & rebound settle
+  // Secondary canvas impact compression & rebound settle, active right upon canvas slam
+  const slam = Math.sin(Math.PI * clamp((ec - 0.76) / 0.26, 0, 1));
+  const layBase = Math.pow(clamp((ec - 0.08) / 0.74, 0, 1), 1.55);
   return {
-    buckle: Math.sin(Math.PI * S(ec, 0.0, 0.58)), // the knees fold, the hips drop out from under the torso
-    lay: S(ec, 0.14, 0.96), // the torso goes over (late: the legs have already gone)
-    side: S(ec, 0.34, 0.98), // ...and settles onto one side, knee up — never a flat plank
+    buckle: Math.sin(Math.PI * S(ec, 0.0, 0.52)), // the knees fold, the hips drop out from under the torso
+    lay: clamp(layBase + slam * 0.04, 0, 1.0), // the torso accelerates with gravity into the canvas (never braking in mid-air!)
+    side: S(ec, 0.26, 0.94), // ...and settles organically onto one side, knee up — never a flat plank
     slam,
   };
 }
@@ -557,7 +559,7 @@ export function fallArms(e: number, dir: number, t = 0, isKo = false): Beat {
   const bounce = st.slam * (1 - S(ec, 0.88, 1.0));
   const drift = Math.sin(t * 3.6) * 0.04 * (1 - settleW);
 
-  // Airborne / buckling flail: asymmetric arms trailing the falling torso
+  // Airborne / buckling flail: asymmetric arms trailing the falling torso with loose limp compliance
   const FLAIL_LEAD = P(-0.48 + drift, 0.12 * d, 0.58, -0.82);
   const FLAIL_TRAIL = P(-0.64 - drift, -0.22 * d, 0.34, -1.28);
 
@@ -589,7 +591,7 @@ export function fallArms(e: number, dir: number, t = 0, isKo = false): Beat {
     ln: lerp(0.08 + st.buckle * 0.18 - bounce * 0.12, 0.08, settleW),
     dp: lerp(0.12 + st.buckle * 0.26, 0.12, settleW),
     rl: (d * 0.16 * st.buckle - d * 0.08 * bounce) * (1 - settleW) + (isKo ? d * 0.12 * settleW : 0),
-    kk: lerp(14, 20, settleW),
+    kk: lerp(5.5, 9.5, settleW), // compliant limp motor relaxation during fall, settling smoothly on mat
   };
 }
 

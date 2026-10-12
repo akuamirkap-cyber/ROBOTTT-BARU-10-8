@@ -1128,6 +1128,7 @@ class Fighter {
   riseSteps = 0; // how many of the two re-plants have fired
   riseServoPlayed = false;
   downDur = 2.0; // total time on the floor, get-up included
+  canvasSlammed = false; // true when torso impact and rebound have fired on canvas contact
   poise = POISE_MAX; // stability: how much punishment is left before a normal punch can knock you down
   poiseT = 0; // delay before the poise starts refilling
   poiseMax = POISE_MAX;
@@ -1242,6 +1243,7 @@ class Fighter {
     this.riseOut = 0;
     this.riseSteps = 0;
     this.riseServoPlayed = false;
+    this.canvasSlammed = false;
     this.downDur = 1.8;
     this.poiseMax = POISE_MAX * (this.isPlayer ? 1.25 : 1); // you are a little sturdier than the opponents
     this.poise = this.poiseMax;
@@ -1852,9 +1854,14 @@ export class Game {
     container.appendChild(this.warnEl);
     this.warnTag = this.warnEl.children[0] as HTMLElement;
 
-    const initIsZeus = this.helmetSkin === 1 && this.armorSkin === 1;
+    const initIsZeus = (this.helmetSkin === 1 && this.armorSkin === 1) || (typeof localStorage !== 'undefined' && localStorage.getItem('steel_titans_custom_robot_active') === '1');
+    if (initIsZeus) {
+      this.helmetSkin = 1;
+      this.armorSkin = 1;
+      this.gloveSkin = 1;
+    }
     const initPlayerHp = initIsZeus ? hpThick(Math.round(PLAYER_HP_BASE * 1.6)) : hpThick(PLAYER_HP_BASE);
-    this.player = this.makeFighter(true, { ...PLAYER_STYLE, helmetSkin: this.helmetSkin, gloveSkin: this.gloveSkin, armorSkin: this.armorSkin }, 1, initPlayerHp, 1, 1);
+    this.player = this.makeFighter(true, { ...PLAYER_STYLE, helmetSkin: this.helmetSkin, gloveSkin: this.gloveSkin, armorSkin: this.armorSkin, isZeus100: initIsZeus }, 1, initPlayerHp, 1, 1);
     this.prepareEnemy(0);
     this.toMenu();
 
@@ -2033,6 +2040,7 @@ export class Game {
       localStorage.setItem(LS_HELMET, String(this.helmetSkin));
       localStorage.setItem(LS_ARMOR, String(this.armorSkin));
       localStorage.setItem(LS_GLOVE, String(this.gloveSkin));
+      localStorage.setItem('steel_titans_custom_robot_active', active ? '1' : '0');
     } catch {
       /* ignore */
     }
@@ -2111,12 +2119,40 @@ export class Game {
   }
 
   /** Re-mount Zeus 100% on any active robots (lobby hero, player, enemy, VS cards) using current adjustments & groups */
-  reloadZeus() {
-    if (this.menuHero?.ctx.style.isZeus100) {
-      mount100PercentZeus(this.menuHero);
+  reloadZeus(forceEquipPlayer?: boolean) {
+    let customActive = false;
+    try {
+      customActive = localStorage.getItem('steel_titans_custom_robot_active') === '1';
+    } catch {}
+    const isCustomActive = !!forceEquipPlayer || customActive || (this.helmetSkin === 1 && this.armorSkin === 1);
+    if (isCustomActive) {
+      this.helmetSkin = 1;
+      this.armorSkin = 1;
+      this.gloveSkin = 1;
+      try {
+        localStorage.setItem(LS_HELMET, '1');
+        localStorage.setItem(LS_ARMOR, '1');
+        localStorage.setItem(LS_GLOVE, '1');
+        localStorage.setItem('steel_titans_custom_robot_active', '1');
+      } catch {}
+      if (this.menuHero) {
+        this.menuHero.ctx.style.isZeus100 = true;
+      }
+      if (this.player?.robot) {
+        this.player.robot.ctx.style.isZeus100 = true;
+      }
     }
-    if (this.player?.robot?.ctx.style.isZeus100) {
+
+    if (this.menuHero && (this.menuHero.ctx.style.isZeus100 || isCustomActive)) {
+      this.menuHero.ctx.style.isZeus100 = true;
+      mount100PercentZeus(this.menuHero);
+      for (const l of this.menuHero.eyeLights) l.removeFromParent();
+    }
+    if (this.player?.robot && (this.player.robot.ctx.style.isZeus100 || isCustomActive)) {
+      this.player.robot.ctx.style.isZeus100 = true;
       mount100PercentZeus(this.player.robot);
+      this.player.maxHp = this.getPlayerMaxHp();
+      this.player.hp = this.player.maxHp;
     }
     const z0 = this.enemyCache.get(0);
     if (z0) mount100PercentZeus(z0.robot, '#22ff44');
@@ -2131,6 +2167,7 @@ export class Game {
     if (this.vsFoe2 && (this.vsFoe2.robot.ctx.style.isZeus100 || this.vs?.idx2 === 0 || this.vs?.idx2 === 3)) {
       mount100PercentZeus(this.vsFoe2.robot, this.vs?.idx2 === 3 ? '#c070ff' : '#22ff44');
     }
+    this.emitHud(true);
   }
 
   /** Camera preset (see CAM_MODES). Applies instantly, in the menu, the pause screen or mid-fight. Remembered. */
@@ -2290,6 +2327,15 @@ export class Game {
     this.sfx.startMusic();
     this.sfx.click();
     this.prepareEnemy(idx);
+    const isPlayerZeus = !!(
+      this.player?.robot?.ctx?.style?.isZeus100 ||
+      (this.helmetSkin === 1 && this.armorSkin === 1) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('steel_titans_custom_robot_active') === '1')
+    );
+    if (isPlayerZeus && this.player?.robot) {
+      this.player.robot.ctx.style.isZeus100 = true;
+      mount100PercentZeus(this.player.robot);
+    }
     // the giant face boards get tonight's two fighters (3×4 busts straight out of the portrait studio)
     try {
       const me = this.capturePortrait(240, 320, 'bust', false);
@@ -4253,8 +4299,9 @@ export class Game {
       if (p.runStrike) {
         p.wish.addScaledVector(f, 3.4 * rageSpd); // a running punch keeps its forward momentum
       } else {
-        const free = (p.impacted ? 3.8 : 1.5) * rageSpd; // once the punch has landed you can already glide away / reposition
-        p.wish.addScaledVector(f, fwd * free).addScaledVector(r, lat * free * 1.15);
+        const atkDrive = p.impacted ? 3.8 : 2.8;
+        const driveSpeed = atkDrive * rageSpd;
+        p.wish.addScaledVector(f, fwd * driveSpeed).addScaledVector(r, lat * driveSpeed * 1.05);
       }
     }
   }
@@ -4677,11 +4724,59 @@ export class Game {
     const avg = Math.max(0.001, (f.scale + o.scale) * 0.5);
     const gap = f.pos.distanceTo(o.pos) / avg; // ~1 at the clinch, ~2.6 in punching range, 4+ out of range
     const far = THREE.MathUtils.clamp((gap - 1.15) / 1.9, 0, 1);
-    const z = (0.13 + far * 0.46) * (0.8 + m.power * 0.45) * (f.runStrike ? 1.25 : 1);
-    const x = (foot === 0 ? -0.05 : 0.07) * (0.5 + far * 0.8); // a small pivot towards the centre line
+
+    // Directional footwork inputs (W, A, S, D):
+    // When moving while punching, the stepping foot actively follows the intended direction:
+    // W (maju): decisive forward penetration into the pocket
+    // S (mundur): clean backward retreat step to catch balance and space
+    // A (kiri): lateral sidestep to the left
+    // D (kanan): lateral sidestep to the right
+    let fwd = 0;
+    let lat = 0;
+    if (f.isPlayer) {
+      const keys = this.dirKeys();
+      fwd = keys.fwd;
+      lat = keys.lat;
+    } else if (f.wish.lengthSq() > 0.05) {
+      const toO = this.toward(f, o);
+      const dot = f.wish.dot(toO);
+      const cross = f.wish.x * -toO.y + f.wish.y * toO.x;
+      fwd = dot > 0.35 ? 1 : dot < -0.35 ? -1 : 0;
+      lat = cross > 0.35 ? 1 : cross < -0.35 ? -1 : 0;
+    }
+
+    // Economical clinch footwork: if already in tight phone-booth distance and not commanding a directional step,
+    // stay firmly planted to deliver maximum body leverage without superfluous, wasteful foot movement
+    if (gap < 1.15 && fwd === 0 && lat === 0 && !f.runStrike && !isOD(m.id)) return none;
+
+    let z: number;
+    if (fwd > 0) {
+      // W (MAJU): Forward drive into the pocket
+      z = (0.28 + far * 0.36) * (0.85 + m.power * 0.45) * (f.runStrike ? 1.35 : 1);
+    } else if (fwd < 0) {
+      // S (MUNDUR): Crisp backward retreat step to catch balance & keep distance
+      z = -0.32 - far * 0.22;
+    } else {
+      // Neutral: standard boxing step-in
+      z = (0.16 + far * 0.42) * (0.8 + m.power * 0.45) * (f.runStrike ? 1.25 : 1);
+    }
+
+    let x: number;
+    if (lat < 0) {
+      // A (KIRI): Step out laterally to the left
+      x = (foot === 0 ? -0.38 : -0.26) - far * 0.12;
+    } else if (lat > 0) {
+      // D (KANAN): Step out laterally to the right
+      x = (foot === 1 ? 0.38 : 0.26) + far * 0.12;
+    } else {
+      // Neutral: subtle pivot towards center line
+      x = (foot === 0 ? -0.06 : 0.08) * (0.5 + far * 0.8);
+    }
+
     // the foot has to land on the same beat as the fist (the move clock runs at PACE × tscale, faster out of a dodge)
-    const dur = THREE.MathUtils.clamp(((m.impact - m.strikeAt * 0.4) * PACE * f.tscale) / Math.max(1, f.atkSpd), 0.1, 0.34);
-    return { foot, z, x, dur, seq: f.moveSeq, lift: undefined as number | undefined };
+    const dur = THREE.MathUtils.clamp(((m.impact - m.strikeAt * 0.4) * PACE * f.tscale) / Math.max(1, f.atkSpd), 0.12, 0.34);
+    const lift = 0.26 + Math.min(0.14, far * 0.16);
+    return { foot, z, x, dur, seq: f.moveSeq, lift };
   }
 
   /**
@@ -6469,6 +6564,7 @@ export class Game {
         f.riseOut = 0;
         f.riseSteps = 0;
         f.riseServoPlayed = false;
+        f.canvasSlammed = false;
         // which shoulder he rolls onto: the side the fight is on, so the roll brings him up facing his man
         const to = this.toward(f, this.foeOf(f));
         f.riseDir = to.x * Math.cos(f.yaw) - to.y * Math.sin(f.yaw) >= 0 ? 1 : -1;
@@ -6493,6 +6589,7 @@ export class Game {
         f.fallS.v = Math.min(2.2, 1.35 + imp * 0.045);
         f.tiltLand = f.tilt;
         f.tiltZLand = f.tiltZ;
+        f.canvasSlammed = false;
         if (Math.abs(f.tiltZ) > 0.15) f.riseDir = f.tiltZ > 0 ? 1 : -1;
         this.ragdollSlam(f, Math.min(1.2, imp / 15));
         f.kb.multiplyScalar(0.45);
@@ -7333,6 +7430,7 @@ export class Game {
       d.blocking = false;
       d.fallT = 0;
       d.fallS.set(0);
+      d.canvasSlammed = false;
       d.vy = Math.max(d.vy, 9);
       d.bounced = false;
       d.kb.copy(away).multiplyScalar(Math.max(d.kb.length(), 8));
@@ -7358,6 +7456,7 @@ export class Game {
     d.blocking = false;
     d.fallT = 0;
     d.fallS.set(0);
+    d.canvasSlammed = false;
     d.vy = Math.max(d.vy, 9);
     d.bounced = false;
     d.kb.copy(away).multiplyScalar(Math.max(d.kb.length(), 8));
@@ -8506,6 +8605,12 @@ export class Game {
       const lay = fallStages(f.fallS.x).lay;
       f.tilt = f.tiltLand * (1 - lay);
       f.tiltZ = f.tiltZLand * (1 - lay);
+      if (!f.canvasSlammed && f.fallS.x >= 0.76 && f.riseU <= 0.001) {
+        f.canvasSlammed = true;
+        this.ragdollSlam(f, 0.95);
+        this.landFx(f, 9.5);
+        this.trauma = Math.min(0.85, this.trauma + 0.16);
+      }
     } else {
       f.tilt = lerp(f.tilt, tiltTarget, 1 - Math.exp(-9 * dt));
       f.tiltZ = lerp(f.tiltZ, tiltZTarget, 1 - Math.exp(-(inAir ? 7 : 5) * dt));
@@ -8600,6 +8705,8 @@ export class Game {
         hitArm: f.hitArm,
         hitSeq: f.hitSeq,
         hitPower: f.hitPower,
+        taunt: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0),
+        idleBounce: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0) ? 0 : undefined,
       },
       dt,
     );

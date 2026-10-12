@@ -578,10 +578,10 @@ export function Menu({
               <button
                 onClick={act(onShowZeus)}
                 className="mw-ico !w-auto !px-3.5 !bg-gradient-to-r !from-emerald-950 !via-green-900 !to-emerald-950 border !border-emerald-400 text-emerald-300 hover:text-white hover:border-emerald-300 shadow-[0_0_16px_rgba(34,255,68,0.4)] flex items-center gap-1.5 font-display text-xs tracking-wider cursor-pointer"
-                title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor - halo-simple)"
+                title="Mode Custom Desain Robot 3D (Bongkar/Pindah Part & Pakai Saat Bertarung)"
               >
-                <span className="text-emerald-400 text-sm font-bold">⚡</span>
-                <span className="font-black text-sm">TAMPILKAN ZEUS</span>
+                <span className="text-emerald-400 text-sm font-bold">🎨</span>
+                <span className="font-black text-sm">CUSTOM DESAIN ROBOT</span>
               </button>
             )}
             <div className="mw-ico mw-ico-txt" title="Poin liga WRC">
@@ -674,10 +674,10 @@ export function Menu({
             <button
               onClick={act(onShowZeus)}
               className="aaa-tab font-display border !border-emerald-400/80 !bg-emerald-950/80 text-emerald-300 hover:text-white hover:!bg-emerald-900 shadow-[0_0_15px_rgba(34,255,68,0.35)] flex items-center gap-1.5 px-3 cursor-pointer"
-              title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor - halo-simple)"
+              title="Mode Custom Desain Robot 3D (Bongkar/Pindah Part & Pakai Saat Bertarung)"
             >
-              <span className="text-emerald-400">⚡</span>
-              <span className="font-black">TAMPILKAN ZEUS</span>
+              <span className="text-emerald-400">🎨</span>
+              <span className="font-black">CUSTOM DESAIN ROBOT</span>
             </button>
           )}
         </nav>
@@ -698,10 +698,10 @@ export function Menu({
             <button
               onClick={act(onShowZeus)}
               className="aaa-pill border-emerald-400/80 bg-emerald-950/80 text-emerald-300 hover:text-white hover:bg-emerald-900 shadow-[0_0_15px_rgba(34,255,68,0.3)] font-display tracking-wider cursor-pointer hidden lg:flex"
-              title="Tampilkan Zeus 3D (Real Steel 3D Asset & Editor)"
+              title="Mode Custom Desain Robot 3D (Atur Part & Pakai di Ring)"
             >
-              <span className="text-emerald-400 font-bold">⚡</span>
-              <span className="font-black">ZEUS 3D</span>
+              <span className="text-emerald-400 font-bold">🎨</span>
+              <span className="font-black">DESAIN ROBOT</span>
             </button>
           )}
           {/* Quick Overdrive Sound Toggle Button */}
@@ -856,11 +856,11 @@ export function Menu({
               <button
                 className="mw-item font-display !text-emerald-300 border-l-2 !border-emerald-400 hover:!text-emerald-100 hover:!bg-emerald-950/60 transition-all cursor-pointer"
                 onClick={act(onShowZeus)}
-                title="Buka Zeus Real Steel 3D Asset & Editor (halo-simple.zip)"
+                title="Buka Mode Custom Desain Robot 3D - Bongkar/Geser Part & Langsung Dipakai Bertarung"
               >
                 <span className="mw-item-t flex items-center gap-2">
-                  <span>⚡ TAMPILKAN ZEUS</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-200 border border-emerald-400/30 font-mono">3D ASSET</span>
+                  <span>🎨 CUSTOM DESAIN ROBOT</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-200 border border-emerald-400/30 font-mono">3D PART</span>
                 </span>
               </button>
             )}
@@ -1270,6 +1270,16 @@ export function Menu({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {onShowZeus && (
+                    <button
+                      onClick={act(onShowZeus)}
+                      className="cut-sm px-3 py-2 font-display text-xs tracking-wider font-bold bg-sky-950/80 border border-sky-400/70 text-sky-200 hover:bg-sky-900/80 shadow-[0_0_15px_rgba(56,189,248,0.35)] active:scale-95 transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                      title="Buka 3D Editor untuk Memindahkan dan Mengatur Part Robot Sesukamu"
+                    >
+                      <span>🎨</span>
+                      <span>CUSTOM PART 3D</span>
+                    </button>
+                  )}
                   <button
                     onClick={act(() => {
                       game?.equipZeus(true);

@@ -122,7 +122,7 @@ function lathe(pts: P2[], seg = 40) {
   return new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
 }
 
-export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
+export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; onEquip?: (active: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const modeRef = useRef<Mode>('auto');
   const [mode, setMode] = useState<Mode>('auto');
@@ -133,6 +133,34 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
   const [sel, setSel] = useState<SelInfo | null>(null);
   const [mirror, setMirror] = useState(true);
   const [toast, setToast] = useState('');
+  const [equipped, setEquipped] = useState(() => {
+    try {
+      return (
+        localStorage.getItem('steel_titans_custom_robot_active') === '1' ||
+        (localStorage.getItem('steel-titans-helmet-v1') === '1' && localStorage.getItem('steel-titans-armor-v1') === '1')
+      );
+    } catch {
+      return true;
+    }
+  });
+
+  const handleEquipToggle = () => {
+    apiRef.current?.bakeLinks();
+    const next = !equipped;
+    setEquipped(next);
+    try {
+      if (next) {
+        localStorage.setItem('steel_titans_custom_robot_active', '1');
+        localStorage.setItem('steel-titans-helmet-v1', '1');
+        localStorage.setItem('steel-titans-armor-v1', '1');
+        localStorage.setItem('steel-titans-glove-v1', '1');
+      } else {
+        localStorage.setItem('steel_titans_custom_robot_active', '0');
+      }
+    } catch {}
+    onEquip?.(next);
+    flash(next ? '⚡ SUKSES: Robot custom aktif & terpasang di ring!' : 'Robot custom dinonaktifkan');
+  };
   const fileRef = useRef<HTMLInputElement>(null);
   // ---- multi-select & groups ----
   const [selIds, setSelIds] = useState<string[]>([]);
@@ -1210,23 +1238,58 @@ export default function ZeusViewer({ onBack }: { onBack?: () => void }) {
     <div className="w-screen h-screen relative overflow-hidden bg-[#040608] z-50">
       <div ref={ref} className={`absolute inset-0 ${edit ? 'cursor-crosshair' : ''}`} />
 
-      {/* Back to Steel Titans Button */}
+      {/* Title Badge Top-Left */}
+      <div className="absolute top-6 left-6 z-40 bg-black/80 backdrop-blur-md rounded-2xl border border-emerald-500/40 px-3.5 py-2 pointer-events-none shadow-[0_0_20px_rgba(34,255,68,0.2)]">
+        <div className="flex items-center gap-2">
+          <span className="text-emerald-400 font-bold text-sm">🎨</span>
+          <span className="font-display font-black text-xs md:text-sm tracking-wider text-white">CUSTOM DESAIN ROBOT 3D</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">LIVE SYNC</span>
+        </div>
+        <p className="text-[10px] text-emerald-200/70 mt-0.5 max-w-xs">
+          Geser atau ubah letak part 3D sesukamu — Otomatis tersimpan &amp; terupdate langsung saat bertarung!
+        </p>
+      </div>
+
+      {/* Top Center Controls: Back + Equip to Player Button */}
       {onBack && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40">
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5">
           <button
             onClick={() => {
               apiRef.current?.bakeLinks();
+              // Otomatis aktifkan robot custom agar part yang dipindah langsung terpakai di pertandingan
+              try {
+                localStorage.setItem('steel_titans_custom_robot_active', '1');
+                localStorage.setItem('steel-titans-helmet-v1', '1');
+                localStorage.setItem('steel-titans-armor-v1', '1');
+                localStorage.setItem('steel-titans-glove-v1', '1');
+              } catch {}
+              onEquip?.(true);
               onBack();
             }}
-            className="group flex items-center gap-2.5 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-950/95 via-slate-900/95 to-sky-950/95 border border-sky-400/80 text-sky-100 hover:text-white hover:border-sky-300 font-display text-sm tracking-wider shadow-[0_0_25px_rgba(56,189,248,0.45)] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
-            title="Kembali ke Ring Tinju Steel Titans"
+            className="group flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-sky-950/95 via-slate-900/95 to-sky-950/95 border border-sky-400/80 text-sky-100 hover:text-white hover:border-sky-300 font-display text-xs tracking-wider shadow-[0_0_20px_rgba(56,189,248,0.4)] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+            title="Simpan part dan kembali ke ring tinju"
           >
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-sky-500/20 border border-sky-400/50 group-hover:bg-sky-400 group-hover:text-black transition-colors">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-sky-500/20 border border-sky-400/50 group-hover:bg-sky-400 group-hover:text-black transition-colors">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
               </svg>
             </span>
-            <span className="font-black text-sm">KEMBALI KE STEEL TITANS</span>
+            <span className="font-black">KEMBALI KE STEEL TITANS</span>
+          </button>
+
+          <button
+            onClick={handleEquipToggle}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl border font-display text-xs tracking-wider shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer ${
+              equipped
+                ? 'bg-gradient-to-r from-emerald-950/95 via-green-900/95 to-emerald-950/95 border-emerald-400 text-emerald-200 shadow-[0_0_20px_rgba(34,255,68,0.4)]'
+                : 'bg-gradient-to-r from-amber-950/95 via-slate-900/95 to-amber-950/95 border-amber-400/80 text-amber-200 hover:text-white'
+            }`}
+            title="Klik untuk memasang robot hasil desain custom ini sebagai petarung utama di pertandingan"
+          >
+            <span>{equipped ? '✓' : '⚡'}</span>
+            <span className="font-black">
+              {equipped ? 'TERPASANG DI ROBOT PEMAIN' : 'PASANG KE ROBOT PEMAIN'}
+            </span>
           </button>
         </div>
       )}

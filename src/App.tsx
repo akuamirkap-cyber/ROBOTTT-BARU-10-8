@@ -210,12 +210,15 @@ export default function App() {
     setShowZeus(true);
   };
 
-  const closeZeus = () => {
+  const closeZeus = (autoEquip = true) => {
     setShowZeus(false);
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
-    gameRef.current?.reloadZeus();
+    if (autoEquip) {
+      gameRef.current?.equipZeus(true);
+    }
+    gameRef.current?.reloadZeus(autoEquip);
   };
 
   const openRealSteelSim = () => {
@@ -610,7 +613,15 @@ export default function App() {
 
       {showZeus && (
         <div className="fixed inset-0 z-50">
-          <ZeusViewer onBack={closeZeus} />
+          <ZeusViewer
+            onBack={() => closeZeus(true)}
+            onEquip={(active) => {
+              if (active) {
+                gameRef.current?.equipZeus(true);
+              }
+              gameRef.current?.reloadZeus(active);
+            }}
+          />
         </div>
       )}
 

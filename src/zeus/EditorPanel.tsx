@@ -37,6 +37,10 @@ export default function EditorPanel({ sel, count = 1, mirror, setMirror, update,
           <div className="text-lg font-black text-green-300">{count > 1 ? `${count} part dipilih` : sel.label}</div>
           {count > 1 && <div className="text-[11px] text-cyan-300">Utama: {sel.label} · perubahan diterapkan ke semua</div>}
           <div className="text-[11px] text-green-200/60">ID: {sel.id} · Sisi: {sel.side}</div>
+          <div className="text-[10px] text-emerald-400 font-mono mt-0.5 flex items-center gap-1">
+            <span>⚡</span>
+            <span>Otomatis aktif &amp; terpakai di ring</span>
+          </div>
         </div>
         <button onClick={onClose} className="text-green-400 hover:text-white text-xl leading-none">×</button>
       </div>
