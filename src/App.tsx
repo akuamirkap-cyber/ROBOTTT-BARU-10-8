@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAM_MODES, DEFAULT_BLOOM_PCT, DEFAULT_BRIGHTNESS, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
+import { ATLAS_IDX, CAM_MODES, DEFAULT_BLOOM_PCT, DEFAULT_BRIGHTNESS, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
 import { loadSfxProfile, loadAllOverdrivePunch, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
@@ -248,6 +248,13 @@ export default function App() {
     if (!s) return;
     setMode(m);
     setSeries(s);
+    // LAWAN ATLAS: the player is put into the ZEUS set for the classic duel (the mode card says so; the skin can be
+    // swapped back at any time in the GARASI) and the dossier follows ATLAS PRIME so the lobby reads what it fights.
+    if (m === 'atlas') {
+      gameRef.current?.equipZeus(true);
+      gameRef.current?.reloadZeus(true);
+      setSel(ATLAS_IDX);
+    }
     // every mode goes through the VS screen (PLAY MATCH: the picked challenger is locked in there)
     if (m === 'tournament') setStage('bracket');
     else setStage('matchmaking');
@@ -443,9 +450,11 @@ export default function App() {
           }
           onMenu={() => {
             setSeries(null);
-            setSel(hud.oppIndex);
+            // never park the lobby on a Titan that is still locked (the LAWAN ATLAS bout can end on ATLAS PRIME)
+            const back = Math.min(unlocked, hud.oppIndex);
+            setSel(back);
             game?.toMenu();
-            game?.selectOpponent(hud.oppIndex);
+            game?.selectOpponent(back);
           }}
         />
       )}

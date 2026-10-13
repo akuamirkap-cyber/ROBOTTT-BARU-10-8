@@ -249,7 +249,14 @@ export const OPPONENTS: OpponentDef[] = [
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
   { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.0, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
+  // ATLAS PRIME — the reigning champion's OWN chassis (the machine the player drives), so the mirrored duel can be
+  // played straight from the roster and the LAWAN ATLAS mode locks onto him. Silver plating with champion gold
+  // trim: the same build as the player's robot, tuned like a boss (the fastest, hardest-hitting machine in the
+  // WRC, and it carries the twin advantages of the ATLAS chassis — 19% faster hands, see startMove/atkSpd).
+  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a } },
 ];
+/** where ATLAS PRIME sits in the roster — the LAWAN ATLAS mode locks the bout onto him */
+export const ATLAS_IDX = OPPONENTS.findIndex((o) => o.name === 'ATLAS PRIME');
 // NYAWA LEBIH TEBAL 1.8×. The chassis of every fighter in the WRC is built on this one scale: the player's 100
 // baseline, the roster numbers above, and the Ultra Hard ×1.4 upgrade all end up 1.8× thicker, so the MATCH-UP
 // ratios are exactly what they were — every fight just lasts longer. Chip damage and the guard teardown are
@@ -995,6 +1002,30 @@ const AIM_POISE = [1.0, 1.5];
 const AIM_STAM = [1.0, 1.9]; // guard-chip stamina multiplier — body shots exhaust a guard
 const AIM_DRAIN = [0.0, 1.2]; // stamina torn off on a clean hit (body only, wear the opponent down)
 const AIM_KNOCK = [1.06, 0.78]; // body shots push less: they sit you down by draining you, not by shoving you
+
+/**
+ * ZEUS HOLDS HIS GROUND — the 100% Zeus chassis is the heaviest machine in the WRC (two tons on a low, wide
+ * stance), so the shove that sends ATLAS skidding across the canvas barely rocks him. Every knockback that acts on
+ * a DEFENDER runs through these numbers: the boot-skid under a raised guard, the push of a landed hit, the juggle
+ * pop in mid-air, and the throw of a launch. They apply to whoever is wearing the ZEUS chassis — you or the AI.
+ */
+export const ZEUS_KNOCK_RESIST = 0.4; // a landed hit or a blocked guard drives him back 4/10 as far (was 0.833)
+export const ZEUS_LAUNCH_RESIST = 0.45; // when he IS swept off his feet he is thrown 45% of the usual distance...
+export const ZEUS_LAUNCH_LIFT = 0.62; // ...and lifts off at 62% of the height — he comes straight back down on his boots
+export const ZEUS_POISE_COST = 0.55; // his stability bank eats 55% of the punishment (≈ twice as many clean hits)
+export const ZEUS_POISE_COST_HJ = 0.12; // and a jab / hook barely dents it at all (was 0.25)
+/** the only strikes that still sweep a BRACED Zeus off his feet: the Overdrive specials, the throw and the skyhook
+ *  (everything else just rocks him — see the brace rule in resolveHit) */
+const ZEUS_LAUNCHERS: MoveId[] = ['slam', 'bolt', 'windmill', 'skyhook', 'grab'];
+
+/**
+ * DOES ZEUS BRACE? True = the strike rocks him but cannot take him off his feet (he eats it standing, "KEBAL TITAN!").
+ * A jab or a hook never moves him; an ordinary punch only gets through once he is SOFTENED — his stability bar nearly
+ * empty, already rocked by the previous shot, or nearly out of HP. The designated launchers (the Overdrive specials,
+ * the throw, the skyhook) always go through, and then throw him short and low (ZEUS_LAUNCH_*).
+ * Pure and exported so `zeustest.mjs` asserts the rule instead of trusting the reader.
+ */
+export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => !ZEUS_LAUNCHERS.includes(id) && (isHJ || !softened);
 
 /**
  * DODGE ADVANTAGE — the "whoever dodges first gets the hit" rule. A dodge (SPACE) can be cancelled straight into a
@@ -1974,11 +2005,16 @@ export class Game {
     return hpThick(base);
   }
 
-  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE), with Zeus +60% thicker HP and 2x IQ */
+  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE). The two HEAVY
+   *  chassis (Zeus and, for the LAWAN ATLAS duel, the champion's own ATLAS PRIME) are plated 60% thicker; Zeus in
+   *  addition is twice as smart (his 2× effective IQ). */
   private makeDef(idx: number) {
     const raw = this.ultra ? ultraDef(OPPONENTS[idx]) : OPPONENTS[idx];
     const isZeusOpp = raw.name.includes('ZEUS') || !!raw.style.isZeus100;
-    const tunedHp = isZeusOpp ? Math.round(raw.hp * 1.6) : raw.hp;
+    // ATLAS PRIME wears the champion's plating — the same 1.6× thickness as Zeus, so the LAWAN ATLAS duel is a real
+    // main event instead of a mirror match that ends in three exchanges (the brain stays his own; no IQ doubling).
+    const isHeavyChassis = isZeusOpp || raw.name.includes('ATLAS');
+    const tunedHp = isHeavyChassis ? Math.round(raw.hp * 1.6) : raw.hp;
     // Khusus Zeus: 2x lebih cerdas (IQ efektif digandakan 2×)
     const effectiveIq = isZeusOpp ? this.iq * 2 : this.iq;
     const d = smartDef({ ...raw, hp: tunedHp }, effectiveIq);
@@ -6932,7 +6968,7 @@ export class Game {
       d.stam = Math.max(0, d.stam - dmg * 0.10 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
 
       // Physical boot-skid pushback so the 2-ton punch force visibly shoves the defender's planted guard across the mat
-      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * (d.robot.isZeus ? 0.833 : 1);
+      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * (d.robot.isZeus ? ZEUS_KNOCK_RESIST : 1);
       d.kb.addScaledVector(away, blockPush);
       if (dist > 2.85 * avg) a.kb.addScaledVector(away, blockPush * 0.45);
 
@@ -7112,7 +7148,8 @@ export class Game {
     // drain stability; it only breaks after a sustained flurry of clean hits
     if (!wasAir && !armored) {
       const pCost = poiseCost(big) * AIM_POISE[aim] * (crit ? 1.6 : 1) * (epicComeback ? 1.45 : 1); // a counter-hit or comeback rocks much harder
-      d.poise -= (isZeusDef && isHJ ? pCost * 0.25 : pCost); // Zeus kokoh terhadap jab/hook biasa
+      // Zeus kokoh: bank stabilitasnya cuma kemakan 55% per pukulan bersih, dan jab/hook hampir tidak menggerusnya
+      d.poise -= pCost * (isZeusDef ? (isHJ ? ZEUS_POISE_COST_HJ : ZEUS_POISE_COST) : 1);
       d.poiseT = POISE_DELAY;
     }
     // ---- WHEN DOES HE GO DOWN? Only when it is earned. A robot that falls over from every uppercut or every running
@@ -7148,8 +7185,8 @@ export class Game {
         } else {
           // Uppercut di udara juga tidak melempar terlalu tinggi (pop rendah agar tidak terbang jauh)
           const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : m.id === 'upper' ? 4.5 : 10) * (d.juggle >= 3 ? 0.75 : 1);
-          d.vy = pop;
-          d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? 0.833 : 1));
+          d.vy = pop * (isZeusDef ? ZEUS_LAUNCH_LIFT : 1);
+          d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? ZEUS_KNOCK_RESIST : 1));
           label = label || `JUGGLE x${d.juggle}`;
         }
       }
@@ -7157,9 +7194,14 @@ export class Game {
     // or a flurry that has emptied your stability. Ordinary jabs / crosses / hooks — even on a counter-hit — no
     // longer sweep you off your feet; they stagger you instead.
     } else if (!armored && (launcher || broken || runLaunch || ippoLaunch)) {
-      if (isZeusDef && isHJ) {
-        // ZEUS LEBIH KEBAL TERBANG DAN JATUH KALO CUMA DIPENCET H/J:
-        // Berdiri tegak tak tergoyahkan, tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
+      // ZEUS LEBIH SULIT TERPENTAL. The 2-ton chassis digs its boots in: a jab or a hook never moves him at all, and
+      // neither does any ordinary punch (a running cross, an uppercut, a flurry that empties his stability bar) until
+      // he is genuinely SOFTENED — stability nearly gone, already rocked by the shot before, or nearly out of HP.
+      // Only the designated launchers go through on a fresh Zeus: the Overdrive specials, the throw, the skyhook.
+      // Everything that DOES take him off his feet throws him far less far and less high (see ZEUS_LAUNCH_*).
+      const zeusBraced = isZeusDef && zeusBraces(m.id, isHJ, softened);
+      if (zeusBraced) {
+        // Berdiri tegak tak tergoyahkan: tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
         d.state = 'stagger';
         d.move = null;
         d.queued = null;
@@ -7188,11 +7230,12 @@ export class Game {
         pd.normalize();
         const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
         const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
-        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5);
+        // Zeus is thrown like a bag of anvils: much shorter across the canvas and a lower arc (ZEUS_LAUNCH_*)
+        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5) * (isZeusDef ? ZEUS_LAUNCH_RESIST : 1);
         // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
         // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
         // Uppercut biasa yang menembus pertahanan saat broken/KO tidak melempar ke angkasa (vertikal rendah & realistis)
-        const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
+        const vert = (m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5) * (isZeusDef ? ZEUS_LAUNCH_LIFT : 1);
         d.vy = vert;
         d.kb.copy(dir).multiplyScalar(m.id === 'upper' ? Math.min(horiz, 6.5) : horiz);
         // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
@@ -7206,7 +7249,7 @@ export class Game {
       // BOXING HIT PUSHBACK & RING DOMINANCE:
       // Each landed strike noticeably drives the defender backward across the canvas while the attacker steps in to press the advantage!
       const heavyNoDrop = (m.id === 'upper' || (a.runStrike && m.id === 'cross') || brokenRaw) ? 1.35 : 1; // kept on his feet, but driven back hard — often into the ropes
-      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * (isZeusDef ? 0.833 : 1);
+      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * (isZeusDef ? ZEUS_KNOCK_RESIST : 1);
       d.kb.addScaledVector(away, m.knock * pushMul);
       if (dist > 2.85 * avg) {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));

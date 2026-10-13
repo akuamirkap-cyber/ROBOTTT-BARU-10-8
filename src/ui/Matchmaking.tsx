@@ -76,6 +76,7 @@ export function Matchmaking({
   const isTeam = series.mode === 'team';
   const isTourney = series.mode === 'tournament';
   const isPlay = series.mode === 'play';
+  const isAtlas = series.mode === 'atlas'; // LAWAN ATLAS: one locked bout against ATLAS PRIME
   const oppIdx = series.queue[series.step] ?? series.queue[0];
   const opp2Idx = isTeam ? (series.queue[1] ?? -1) : -1;
   const defOf = (i: number) => smartDef(ultra ? ultraDef(OPPONENTS[i]) : OPPONENTS[i], iq);
@@ -86,7 +87,8 @@ export function Matchmaking({
   const me: Stats = useMemo(() => ({ power: 0.62 + lv.level * 0.006, speed: 0.72 + lv.level * 0.004, armor: 0.58 + lv.level * 0.006, iq: 0.55 + Math.min(0.4, profile.wins * 0.01) }), [lv.level, profile.wins]);
   const foe = statsOf(opp, iq);
 
-  const searchFor = useMemo(() => (isTourney || isPlay ? 1.2 : 1.8 + Math.random() * 0.8), [isTourney, isPlay]);
+  // a locked duel (LAWAN ATLAS) has nothing to search for: it goes to the reveal like the quick fights do
+  const searchFor = useMemo(() => (isTourney || isPlay || isAtlas ? 1.2 : 1.8 + Math.random() * 0.8), [isTourney, isPlay, isAtlas]);
   const [phase, setPhase] = useState<Phase>('search');
   const phaseAt = useRef(performance.now());
   const enterPhase = (next: Phase) => {
@@ -194,7 +196,15 @@ export function Matchmaking({
     return () => window.removeEventListener('keydown', onKey);
   }, [phase, game, onCancel]);
 
-  const stage = isTourney ? TOURNEY_STAGES[Math.min(series.step, TOURNEY_STAGES.length - 1)] : isTeam ? '2V2 TAG TEAM' : isPlay ? 'BEST OF 3' : `${tier.name} ${['', 'I', 'II', 'III'][division]}`;
+  const stage = isTourney
+    ? TOURNEY_STAGES[Math.min(series.step, TOURNEY_STAGES.length - 1)]
+    : isTeam
+      ? '2V2 TAG TEAM'
+      : isAtlas
+        ? 'DUEL ZEUS vs ATLAS PRIME'
+        : isPlay
+          ? 'BEST OF 3'
+          : `${tier.name} ${['', 'I', 'II', 'III'][division]}`;
   const foeName = found ? opp.name : SCAN_NAMES[scan % SCAN_NAMES.length];
   const prog = Math.min(1, t / searchFor);
   const lockFrac = phase === 'lock' ? 1 - ((pt % VS_LOCK_BEAT) / VS_LOCK_BEAT) : 0;

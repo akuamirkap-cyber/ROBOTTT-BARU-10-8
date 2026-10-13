@@ -7,7 +7,7 @@ export const ACCOUNT_NAME = 'AMIRALBANI';
 export const ACCOUNT_TAG = '#WRC-7731';
 export const ACCOUNT_REGION = 'ID · YOGYAKARTA';
 
-export type ModeId = 'play' | 'rank' | 'tournament' | 'team' | 'leaderboard';
+export type ModeId = 'play' | 'atlas' | 'rank' | 'tournament' | 'team' | 'leaderboard';
 
 export interface ModeMeta {
   id: ModeId;
@@ -21,6 +21,7 @@ export interface ModeMeta {
 
 export const MODES: ModeMeta[] = [
   { id: 'play', name: 'PLAY MATCH', sub: 'Quick Fight · Best of 3', icon: '⚔', color: '#45d6ff', desc: 'Duel cepat lawan Titan pilihanmu dari roster. Tidak mempengaruhi Rank Points — tempat sempurna untuk latihan jurus & skin baru.', reward: '+80 XP · +60 WRC/menang' },
+  { id: 'atlas', name: 'LAWAN ATLAS', sub: 'Duel Klasik · Zeus vs ATLAS PRIME', icon: '⚡', color: '#7fe4ff', desc: 'Mode khusus: kamu otomatis memakai set ZEUS — model asli 100% — dan langsung diturunkan melawan ATLAS PRIME, chassis sang juara bertahan (mesin tercepat & terkeras di roster). Satu pertandingan, Best of 3 ronde. Skin bisa diganti lagi kapan saja di GARASI.', reward: '+120 XP · +140 Pts' },
   { id: 'rank', name: 'RANK MODE', sub: 'Competitive Ladder · RP', icon: '🏅', color: '#ffd34a', desc: 'Pertandingan kompetitif. Lawan dipilih otomatis oleh matchmaking sesuai tier rank-mu. Menang +28 RP, kalah −16 RP. Naik tier dari BRONZE sampai TITAN.', reward: '+150 XP · ±RP · +140 WRC' },
   { id: 'tournament', name: 'TOURNAMENT', sub: 'Bracket 16 Titan · Single Elimination', icon: '🏆', color: '#c070ff', desc: 'Turnamen gugur 16 Titan, 4 babak: 16 Besar → Perempat Final → Semifinal → Grand Final. Kalah sekali = tersingkir. Juarai semuanya untuk gelar WRC CHAMPION.', reward: '+400 XP · +600 WRC · Gelar' },
   { id: 'team', name: 'TEAM MATCH', sub: '2v2 Tag Team · Best of 3 Ronde', icon: '🤝', color: '#5effb0', desc: 'Pertarungan tim 2 lawan 2 di ring yang lebih lebar: kamu dan partner MK-II melawan dua Titan sekaligus. Satu robot tumbang, partnernya terus bertarung — tim yang berdiri terakhir menang ronde.', reward: '+220 XP · +260 WRC' },
@@ -163,14 +164,14 @@ export interface MatchOutcome {
 export const applyOutcome = (p0: Profile, o: MatchOutcome): Profile => {
   const p = { ...loadWeek(p0) };
   const mult = o.ultra ? 1.4 : 1;
-  const base = o.mode === 'rank' ? 150 : o.mode === 'tournament' ? 180 : o.mode === 'team' ? 130 : 80;
+  const base = o.mode === 'rank' ? 150 : o.mode === 'tournament' ? 180 : o.mode === 'team' ? 130 : o.mode === 'atlas' ? 120 : 80;
   if (o.win) {
     p.wins++;
     p.streak++;
     p.bestStreak = Math.max(p.bestStreak, p.streak);
     p.xp += Math.round(base * mult + Math.min(5, p.streak) * 10);
     p.weekWins++;
-    p.weekPts += Math.round((o.mode === 'rank' ? 140 : o.mode === 'tournament' ? 160 : o.mode === 'team' ? 120 : 100) * mult);
+    p.weekPts += Math.round((o.mode === 'rank' ? 140 : o.mode === 'tournament' ? 160 : o.mode === 'team' ? 120 : o.mode === 'atlas' ? 140 : 100) * mult);
     if (o.mode === 'rank') {
       p.rankWins++;
       p.rp += 28;
@@ -290,6 +291,10 @@ export const makeSeries = (mode: ModeId, rosterSize: number, rp: number, selecte
     while (queue.length < 2) queue.push(Math.floor(Math.random() * rosterSize));
     return { mode, queue, step: 0, wins: 0, losses: 0, done: false, won: false };
   }
+  if (mode === 'atlas') {
+    // LAWAN ATLAS: one bout, locked onto ATLAS PRIME — the last Titan in the roster (Game.ts OPPONENTS/ATLAS_IDX).
+    return { mode, queue: [Math.max(0, rosterSize - 1)], step: 0, wins: 0, losses: 0, done: false, won: false };
+  }
   if (mode === 'rank') {
     return { mode, queue: [rankOpponent(rp, rosterSize)], step: 0, wins: 0, losses: 0, done: false, won: false };
   }
@@ -315,6 +320,7 @@ export const seriesLabel = (s: Series | null): string => {
   if (!s) return '';
   if (s.mode === 'tournament') return `TOURNAMENT · ${TOURNEY_STAGES[Math.min(s.step, TOURNEY_STAGES.length - 1)]}`;
   if (s.mode === 'team') return 'TEAM MATCH · 2v2 TAG TEAM';
+  if (s.mode === 'atlas') return 'DUEL ZEUS vs ATLAS PRIME';
   if (s.mode === 'rank') return 'RANK MODE · RANKED BOUT';
   return 'PLAY MATCH';
 };

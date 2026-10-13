@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import {
+  ATLAS_IDX,
   CAM_MODES,
   FOOTWORK_STEPS,
   GFX_MODES,
@@ -189,7 +190,10 @@ export function Menu({
   const [armorId, setArmorId] = useState<number>(loadArmorSkin);
   const dragRef = useRef({ dragging: false, startX: 0 });
 
-  const def = smartDef(ultra ? ultraDef(OPPONENTS[sel]) : OPPONENTS[sel], iq);
+  // LAWAN ATLAS locks the opponent slot: the dock shows ATLAS PRIME (and the arrows stop hunting the roster)
+  const atlasMode = mode === 'atlas';
+  const foeDef = OPPONENTS[atlasMode ? ATLAS_IDX : sel] ?? OPPONENTS[0];
+  const def = smartDef(ultra ? ultraDef(foeDef) : foeDef, iq);
   const col = ultra ? ULTRA_COLOR : def.color;
 
   // sync skins from the live game when they change in-fight
@@ -232,6 +236,7 @@ export function Menu({
         return;
       }
       if (panel !== 'main') return;
+      if (atlasMode) return; // the roster keys are dead in LAWAN ATLAS: the duel is locked onto ATLAS PRIME
       const n = Number(e.key);
       if (n >= 1 && n <= OPPONENTS.length && n - 1 <= unlocked) {
         if (n - 1 !== sel) onSel(n - 1);
@@ -245,7 +250,7 @@ export function Menu({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, sel, unlocked, onSel, mode, onStart, onStartMode]);
+  }, [panel, sel, unlocked, onSel, mode, onStart, onStartMode, atlasMode]);
 
   // drag to rotate the 3D hero
   const onPointerDown = (e: React.PointerEvent) => {
@@ -319,24 +324,24 @@ export function Menu({
                 <button
                   className="hc-arrow"
                   onClick={act(() => onSel(Math.max(0, sel - 1)))}
-                  disabled={sel <= 0}
+                  disabled={atlasMode || sel <= 0}
                   title="Lawan sebelumnya"
                 >
                   ◀
                 </button>
                 <div className="hc-opp-body">
-                  <div className="hc-opp-k">PILIH LAWAN</div>
+                  <div className="hc-opp-k">{atlasMode ? 'LAWAN TERKUNCI · MODE' : 'PILIH LAWAN'}</div>
                   <div className="hc-opp-name font-display" style={{ color: col, textShadow: `0 0 26px ${col}66` }}>
                     {def.name}
                   </div>
                   <div className="hc-opp-sub">
-                    {def.title} · LAWAN {sel + 1} DARI {OPPONENTS.length}
+                    {def.title} · {atlasMode ? 'KAMU PAKAI SET ZEUS' : `LAWAN ${sel + 1} DARI ${OPPONENTS.length}`}
                   </div>
                 </div>
                 <button
                   className="hc-arrow"
                   onClick={act(() => onSel(Math.min(unlocked, sel + 1)))}
-                  disabled={sel >= unlocked}
+                  disabled={atlasMode || sel >= unlocked}
                   title="Lawan berikutnya"
                 >
                   ▶
@@ -371,7 +376,12 @@ export function Menu({
                   key={m.id}
                   className={`hc-chip ${mode === m.id ? 'hc-chip-on' : ''}`}
                   style={mode === m.id ? { background: m.color, borderColor: '#fff' } : undefined}
-                  onClick={act(() => onMode(m.id))}
+                  onClick={act(() => {
+                    onMode(m.id);
+                    // keep the hangar in step with the dock: LAWAN ATLAS stages the champion, every other mode the
+                    // rival the dock is showing (so switching back out of the duel restores the pick)
+                    game?.selectOpponent(m.id === 'atlas' ? ATLAS_IDX : Math.min(unlocked, sel));
+                  })}
                   title={m.desc}
                 >
                   <span className="hc-chip-led" style={{ background: m.color, color: m.color }} />
