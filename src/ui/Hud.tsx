@@ -223,6 +223,26 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
         </div>
       )}
 
+      {/* ---------- PANJER: the load on the held punch button (hold H/J/K/X for a full second = 2× punch) ---------- */}
+      {h.panjer > 0 && h.phase === 'fight' && (
+        <div className="absolute bottom-[104px] left-1/2 w-[min(360px,42%)] -translate-x-1/2 sm:bottom-[118px]">
+          <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">
+            <span className={h.panjerReady ? 'text-amber-200' : 'text-white/65'}>💪 PANJER</span>
+            {h.panjerReady ? (
+              <span className="animate-pulse text-amber-200">SIAP — LEPAS TOMBOLNYA! 2× PUKULAN</span>
+            ) : (
+              <span className="text-white/45">TAHAN TOMBOLNYA… {Math.floor(h.panjer * 100)}%</span>
+            )}
+          </div>
+          <div className={`od-frame ${h.panjerReady ? 'meter-ready' : ''}`} style={{ height: 12 }}>
+            <div className="od-in">
+              <div className="h-full transition-[width] duration-75" style={{ width: `${Math.min(100, h.panjer * 100)}%`, background: 'linear-gradient(90deg,#a16207,#ffd34a,#fff3c4)' }} />
+              <div className="od-ticks" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------- THE N COMBO: which link of H-H-J-J-K is next, and whether the finisher is paid for ---------- */}
       {(h.nCombo >= 0 || h.nComboLocked) && (
         <div className="absolute bottom-[64px] left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-[76px]">

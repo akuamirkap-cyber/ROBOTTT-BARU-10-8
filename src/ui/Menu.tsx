@@ -99,6 +99,7 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['J'], text: 'HOOK samping' },
   { keys: ['K'], text: 'UPPERCUT ke udara' },
   { keys: ['X'], text: 'STRAIGHT kuat' },
+  { keys: ['💪'], text: 'PANJER: TAHAN tombol pukulan (H/J/K/X) lebih dari 1 detik lalu LEPAS = pukulan itu 2× lebih kuat & hajarannya 2× lebih jauh. Di bawah 1 detik = pukulan normal — pukulannya keluar saat tombol dilepas, dan ancang-ancangnya kelihatan (tangan ditarik + kepalan menyala)' },
   { keys: ['P'], text: 'GRAB banting (tembus blok)' },
   { keys: ['L'], text: 'COUNTER tangkis & balas' },
   { keys: ['SPACE'], text: 'DODGE menghindar (muat tenaga — hindaran telat bakal kena hajar)' },

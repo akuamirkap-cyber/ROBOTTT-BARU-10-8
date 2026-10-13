@@ -363,6 +363,10 @@ export interface HudState {
   autoGuard: boolean;
   /** ALI STYLE is equipped (the HUD shows it, so the low guard is never a mystery) */
   ali: boolean;
+  /** PANJER: 0..1 of the load the player is building on a held strike button (0 = nothing loading) */
+  panjer: number;
+  /** ...and true once that load is FULL: the next release lands the 2× punch */
+  panjerReady: boolean;
   /** THE N COMBO: which link of COMBO_SCRIPT is next (-1 = the script is not running). The HUD reads it as "3/6". */
   nCombo: number;
   /** ...and true while N is on the post-combo cooldown (so the badge can say WHY nothing happened) */
@@ -1043,6 +1047,54 @@ export const aliFloat = (t: number) => (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE 
 export const aliStanceWeight = (state: string, blocking: boolean, moving: boolean) => (state === 'idle' && !blocking ? (moving ? ALI_CARRY : 1) : 0);
 
 /**
+ * ============================== PANJER — hold a punch button to load it ==============================
+ * "PANJER" = TAHAN tombol pukulan. The four strike keys (H jab · J/C hook · K/V upper · X straight) no longer fire
+ * on the press: they LOAD while they are held, and the punch comes out the moment the button is let go.
+ *   • released before PANJER_T  → the ordinary punch, exactly the punch the game has always thrown;
+ *   • held for PANJER_T or more → the SAME punch, landed PANJER_DMG× as hard and driving him PANJER_KNOCK× as far
+ *     (both the standing pushback AND the launch of a knockdown).
+ * The price is the second spent standing there with the arm coiled back and the fist burning — the load is
+ * telegraphed all the way (the move's own coil pose, sparks on the fist, a rising tick, the HUD gauge), so the
+ * trade cuts both ways: your opponent can see it coming and the answer to it is simply not to be there.
+ * The AI loads one up under the same rule — the same 1 s, the same 2× (see panjerAiRate).
+ * The keys that have to stay instant keep their old semantics on purpose: L (COUNTER) answers a punch that is
+ * already in the air, P (grab) is a throw, and N / R are the scripted combo and the Overdrive — not loadable.
+ */
+export const PANJER_T = 1.0; // seconds of HOLD before the load is full
+export const PANJER_DMG = 2.0; // ×damage on a fully loaded punch
+export const PANJER_KNOCK = 2.0; // ×knockback on a fully loaded punch (the pushback AND the launch)
+export const PANJER_KEYS: Record<string, MoveId> = {
+  KeyH: 'jab',
+  KeyJ: 'hook',
+  KeyC: 'hook',
+  KeyK: 'upper',
+  KeyV: 'upper',
+  KeyX: 'cross',
+};
+/** the one rule, in one place: a hold counts as loaded once it has been held for PANJER_T */
+/** the four punches a load can ride on — and the ONLY moves it can ride on */
+export const PANJER_LOADABLE: MoveId[] = ['jab', 'hook', 'upper', 'cross'];
+export const panjerLoaded = (held: number) => held >= PANJER_T;
+/**
+ * ...and the whole decision a RELEASE turns into, as one pure function: a tap gives back exactly the punch the
+ * game has always thrown (×1 damage, ×1 knockback), a full load gives back the PANJER. `panjertest.mjs` asserts
+ * both halves of that sentence, including the edge at exactly PANJER_T.
+ */
+export const panjerShot = (held: number) => {
+  const armed = panjerLoaded(held);
+  return { armed, dmgMul: armed ? PANJER_DMG : 1, knockMul: armed ? PANJER_KNOCK : 1 };
+};
+/** how much of the load is showing on the body: 0 the instant it is pressed, 1 when the arm is fully coiled */
+export const panjerVis = (held: number) => Math.min(1, Math.max(0, held / PANJER_T));
+/** the AI's appetite for a loaded punch, per second of opportunity. It grows with the difficulty and with how hurt
+ *  the player looks, and it is CAPPED: a loaded fist has to stay an event you can read, never a rhythm. */
+export const PANJER_AI_RATE = 0.3;
+export const panjerAiRate = (react: number, foeSoft: boolean) => Math.min(0.85, PANJER_AI_RATE + react * 0.35 + (foeSoft ? 0.2 : 0));
+export const PANJER_AI_STAM = 40; // he will not gamble the tank on a load
+export const PANJER_AI_CD_MIN = 7; // ...and after one, this is how long before he even thinks about the next
+export const PANJER_AI_CD_MAX = 13;
+
+/**
  * ============================== SWING DYNAMICS — the boxer's kinetic chain ==============================
  * What makes a Boxing Star punch land is that the whole machine throws itself, not just the arm. The data in
  * `MOVES[*].keys` is the arm's own journey (coil → extension → overshoot → settle); this is the layer that rides on
@@ -1275,7 +1327,8 @@ export const STAR_OD_STAM = 20; // the finisher assist waits until the player ha
 /** AUTO-RANGE: where should the auto-step push, given the gap? -1 = step in, +1 = step out, 0 = hold the pocket. */
 export const starAutoStep = (dist: number) => (dist > STAR_POCKET + STAR_DEAD ? -1 : dist < STAR_POCKET - STAR_DEAD ? 1 : 0);
 /** AUTO-GUARD: the guard is up whenever the fighter is standing there doing nothing else. */
-export const starShouldGuard = (state: string, dodgeT: number, tauntT: number) => state === 'idle' && dodgeT <= 0 && tauntT <= 0;
+export const starShouldGuard = (state: string, dodgeT: number, tauntT: number, loading = false) =>
+  state === 'idle' && dodgeT <= 0 && tauntT <= 0 && !loading; // a fist being LOADED is not a resting fighter (PANJER)
 /** FINISHER ASSIST: fire the Overdrive by itself? Only with a full meter, an open opponent and something left in the tank. */
 export const starShouldFireOd = (meter: number, enemyOpen: boolean, stam: number) => meter >= 100 && enemyOpen && stam > STAR_OD_STAM;
 
@@ -1546,6 +1599,17 @@ class Fighter {
   rollCharge = 0; // DEMPSEY ROLL charge 0..1 (builds while weaving)
   ippoStrike = false; // the current punch is a charged Dempsey punch
   strikeCharge = 0; // how much charge that punch carries
+  // ---- PANJER (hold a strike button to load it — see the PANJER block above the strike data) ----
+  panjerId: MoveId | null = null; // the punch the held button is loading (null = nothing held)
+  panjerKey: string | null = null; // PLAYER: which key is doing the holding — the RELEASE is what throws it
+  panjerHold = 0; // seconds it has been held
+  panjerReady = false; // the load is full: this punch will land 2× and drive him 2× as far
+  panjerNext = false; // ...and it rides on the punch that is about to come out (consumed by startMove)
+  panjer = false; // THIS swing came out of a full load (read by resolveHit)
+  pkVis = 0; // smoothed 0..1 for the loading pose (see animateFighter)
+  pkTick = 0; // the loading tick's own clock (the sound)
+  pkTick2 = 0; // ...and the spark clock on a full load
+  panjerSince = 0; // performance.now() the button went down on: the load is timed on the clock, not on frames
   slipCd = 0; // short cooldown between two slips
   tellT = 0; // ENEMY wind-up warning left (the attack indicator is on screen while this runs)
   tellTotal = 0;
@@ -1579,6 +1643,19 @@ class Fighter {
     this.resetSprings();
   }
 
+  /**
+   * Drop the load without throwing it: the arm was taken away from the punch — he took a hit, he raised a guard,
+   * the bell went, the window lost focus. A load is a commitment, never a buff you get to keep.
+   */
+  clearPanjer() {
+    this.panjerId = null;
+    this.panjerKey = null;
+    this.panjerHold = 0;
+    this.panjerReady = false;
+    this.panjerNext = false;
+    this.panjerSince = 0;
+  }
+
   resetSprings() {
     for (let i = 0; i < 2; i++) {
       const g = [GUARD.sx, GUARD.sy, GUARD.sz, GUARD.ex];
@@ -1596,6 +1673,9 @@ class Fighter {
     this.rollCharge = 0;
     this.ippoStrike = false;
     this.strikeCharge = 0;
+    this.clearPanjer();
+    this.panjer = false;
+    this.pkVis = 0;
     this.slipCd = 0;
     this.tellT = 0;
     this.tellTotal = 0;
@@ -3447,6 +3527,9 @@ export class Game {
   release(code: string) {
     if (code === 'KeyW' || code === 'ArrowUp') this.runLatch = false;
     this.keys.delete(code);
+    // PANJER: the loaded punch is thrown the moment the button is let go — release before PANJER_T and it is the
+    // ordinary punch, hold it for the full second and it lands 2× as hard and drives him 2× as far.
+    if (this.player && this.player.panjerKey === code) this.firePanjer(this.player);
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -3464,6 +3547,8 @@ export class Game {
     this.keys.clear();
     this.runLatch = false;
     this.shiftHeld = false;
+    // a lost focus must never throw a punch: the load is dropped, not released
+    this.player?.clearPanjer();
   };
 
   /** coming back from another tab: the clock never counts the time we were away (one huge frameMs would upset the governor) */
@@ -3528,22 +3613,22 @@ export class Game {
       case 'KeyU':
         this.toggleRage();
         break;
+      // ---------------- PANJER: HOLD A PUNCH TO LOAD IT ----------------
+      // These keys stopped firing on the press. Pressing one starts a LOAD (the arm coils back into the pose the
+      // punch is about to be thrown out of); the punch itself comes out on RELEASE, in `release()`. Held for a full
+      // second it is a PANJER — 2× damage, 2× knockback. Everything that can take the arm away from the load is
+      // checked every frame in updatePanjer.
       case 'KeyH':
-        this.tryAttack(p, 'jab');
-        break;
       case 'KeyJ':
       case 'KeyC':
-        this.tryAttack(p, 'hook');
-        break;
       case 'KeyK':
       case 'KeyV':
-        this.tryAttack(p, 'upper');
+      case 'KeyX':
+        this.beginPanjer(p, PANJER_KEYS[code], code);
         break;
+      // L stays INSTANT — it is the reactive counter, the one punch that has to answer a fist already in flight.
       case 'KeyL':
         this.tryAttack(p, 'counter');
-        break;
-      case 'KeyX': // bonus straight kept from the old kit
-        this.tryAttack(p, 'cross');
         break;
       case 'KeyQ': // TARGET SWITCH: head ↔ body (T does the same)
       case 'KeyT':
@@ -4591,6 +4676,7 @@ export class Game {
         this.comboT -= dt;
         if (this.comboT <= 0) this.combo = 0;
         this.playerInput();
+        this.updatePanjer(dt);
         this.updateNCombo(dt);
         this.updateEnemyAI(dt);
         if (this.teamMode && this.ally && this.enemy2) {
@@ -4631,6 +4717,113 @@ export class Game {
     return v.multiplyScalar(1 / l);
   }
 
+  /**
+   * PANJER — a strike key went DOWN. Nothing is thrown yet: the load starts here, and the punch itself comes out of
+   * `firePanjer` when the button is released. The newest key wins, so the button you are actually holding is the
+   * one that is loading.
+   */
+  private beginPanjer(f: Fighter, id: MoveId, key: string | null) {
+    if (this.phase !== 'fight' || this.paused) return;
+    if (f.state === 'legend' || f.state === 'legendHit' || f.state === 'ko') return;
+    f.panjerId = id;
+    f.panjerKey = key;
+    f.panjerHold = 0;
+    f.panjerReady = false;
+    f.panjerSince = performance.now(); // the load is timed on the wall clock: a 1.01 s hold is a 1.01 s hold
+    f.pkTick = 0;
+  }
+
+  /**
+   * The button came up (or the AI decided to let it go): throw the punch it was holding.
+   * `armed` is the whole point of the mechanic — a full load rides on the swing as `f.panjer`, and that is what
+   * resolveHit reads to double the damage and the knockback. A short tap throws exactly the punch the game has
+   * always thrown. Either way the load is spent.
+   */
+  private firePanjer(f: Fighter) {
+    const id = f.panjerId;
+    // THE DECISION. Timed on the clock (so the frame the release lands on cannot change the answer), and taken
+    // AFTER clearPanjer so a tap and a full load can never be confused with each other.
+    const held = f.panjerSince > 0 ? Math.max(f.panjerHold, (performance.now() - f.panjerSince) / 1000) : f.panjerHold;
+    const armed = !!id && panjerShot(held).armed;
+    f.clearPanjer();
+    if (!id || this.phase !== 'fight' || this.paused) return;
+    f.panjerNext = armed;
+    if (f.isPlayer) {
+      this.tryAttack(f, id);
+    } else {
+      // the AI's own release: the moment the load is full he lets it go
+      this.startMove(f, id);
+      this.ai.panjerCd = PANJER_AI_CD_MIN + Math.random() * (PANJER_AI_CD_MAX - PANJER_AI_CD_MIN);
+      this.ai.combo = 0;
+      this.ai.cool = this.def.rest * (0.7 + Math.random() * 0.5);
+      this.ai.lastId = id;
+    }
+  }
+
+  /** the load just came FULL: the fist answers — a ring of sparks, a glow on the knuckles and a shout */
+  private panjerReady(f: Fighter) {
+    const arm = f.panjerId ? this.armOf(f, MOVES[f.panjerId]) : 0;
+    const fist = f.robot.fists[arm === 1 ? 1 : 0];
+    fist.localToWorld(this.aimTmp.set(0, 0, 0));
+    if (f.isPlayer) {
+      this.popup(new THREE.Vector3(f.pos.x, 7.0 * f.scale, f.pos.y), '💪 PANJER SIAP!', 'pop-crit');
+      this.sfx.ready();
+      this.fx.ring(f.pos.x, f.pos.y, 0xffd34a, 3.2, 0.32, 0.1);
+    } else {
+      // the opponent's load has to be READABLE: the same shout, in the other direction
+      this.popup(new THREE.Vector3(f.pos.x, 7.2 * f.scale, f.pos.y), '⚠️ PANJER MUSUH!', 'pop-block');
+      this.sfx.warn(true);
+      this.fx.ring(f.pos.x, f.pos.y, 0xff5a3c, 3.2, 0.32, 0.1);
+    }
+    this.fx.spark(this.aimTmp, 10, 6, f.isPlayer ? 0xffd34a : 0xff5a3c, undefined, 1.4, 0.5, 8);
+  }
+
+  /**
+   * PANJER, the clock. Runs every frame of the fight for the player AND for the opponent:
+   *   • the hold counts up while the button is down (the player) or while the AI's load is running;
+   *   • at PANJER_T the load is full — the fist answers, and the AI lets it go;
+   *   • anything that would take the arm away from the load cancels it: a hit, being launched or put down, raising
+   *     a guard, the bell, a pause, the button disappearing with the window's focus. No punch, no refund.
+   */
+  private updatePanjer(dt: number) {
+    this.panjerStep(this.player, dt, true);
+    this.panjerStep(this.enemy, dt, false);
+  }
+
+  private panjerStep(f: Fighter, dt: number, isPlayer: boolean) {
+    if (!f.panjerId) {
+      f.panjerReady = false;
+      return;
+    }
+    const dead =
+      this.phase !== 'fight' ||
+      this.paused ||
+      f.blocking ||
+      f.autoGuard ||
+      f.state === 'ko' ||
+      f.state === 'down' ||
+      f.state === 'air' ||
+      f.state === 'stagger' ||
+      f.state === 'legend' ||
+      f.state === 'legendHit';
+    // the player's load also dies with the key itself (focus loss, an OS that swallowed the key-up)
+    if (dead || (isPlayer && (!f.panjerKey || !this.keys.has(f.panjerKey)))) {
+      f.clearPanjer();
+      return;
+    }
+    f.panjerHold = f.panjerSince > 0 ? (performance.now() - f.panjerSince) / 1000 : f.panjerHold + dt;
+    f.pkTick -= dt;
+    if (f.pkTick <= 0) {
+      f.pkTick = 0.15;
+      if (f.isPlayer) this.sfx.tick(0.3 + 0.45 * panjerVis(f.panjerHold)); // the tick rises with the load
+    }
+    if (!f.panjerReady && panjerLoaded(f.panjerHold)) {
+      f.panjerReady = true;
+      this.panjerReady(f);
+    }
+    if (!isPlayer && f.panjerReady) this.firePanjer(f); // he lets it go the moment it is full
+  }
+
   private playerInput() {
     const p = this.player;
     if (p.state === 'legend' || p.state === 'legendHit') return; // the paired sequence owns the body
@@ -4665,7 +4858,9 @@ export class Game {
     // ...and ALI STYLE switches the auto-guard off. A low loose guard is the OPPOSITE of a raised one, so the two
     // cannot both be on: the style says "hands down, feet dancing". Holding G is still the strong block — the style
     // never takes the manual guard away from the player.
-    if (this.starMode && !this.aliStyle && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT) && p.stam > 2) {
+    // ...and the assist steps aside for PANJER as well: the auto-guard would cancel the load it is supposed to
+    // protect (a raised guard and a loading fist cannot be the same arm at the same time).
+    if (this.starMode && !this.aliStyle && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT, !!p.panjerId) && p.stam > 2) {
       p.autoGuard = true;
     }
     if (p.state === 'idle' && p.dodgeT <= 0) {
@@ -5580,6 +5775,8 @@ export class Game {
    * price of the finisher, and the finisher then pays half a meter for itself.
    */
   private startNCombo() {
+    // the script owns the body: a loaded fist never rides into the automatic combo (the load is spent, not banked)
+    this.player.clearPanjer();
     const p = this.player;
     if (p.state === 'legend' || p.state === 'legendHit' || p.state === 'ko' || p.state === 'air' || p.state === 'down') return;
     if (this.nComboIdx >= 0) return; // already running: N is not a speed-up
@@ -5848,6 +6045,17 @@ export class Game {
       f.aim = this.pickMixAim(f, id);
     }
     f.strikeCharge = f.ippoStrike ? f.rollCharge : 0;
+    // PANJER: the load that was on the button when it was let go rides on THIS swing — and only on a punch that
+    // can be loaded, and only for one swing (it is consumed here, so an ordinary punch after it is ordinary
+    // again). Anything else that reaches for the arm — an Overdrive, a throw, a scripted combo link — takes the
+    // load away with it instead of inheriting it: a 2× Overdrive is not a thing this game hands out.
+    if (PANJER_LOADABLE.includes(id)) {
+      f.panjer = f.panjerNext;
+      f.panjerNext = false;
+    } else {
+      f.panjer = false;
+      f.clearPanjer();
+    }
     if (f.ippoStrike) {
       f.rollCharge = 0;
       this.fovKick = 2.5;
@@ -5999,6 +6207,7 @@ export class Game {
       holdOD: 0, // how long it has been saving its Overdrive for the right moment
       zeusComboOD: false, // Zeus signature: combos player with punch combinations before Overdrive finisher
       zeusODStep: 0,
+      panjerCd: 4, // PANJER: how long before he even thinks about loading one up again (see updateEnemyAI)
     };
   }
 
@@ -6616,6 +6825,28 @@ export class Game {
           return;
         }
       }
+    }
+
+    // ---- PANJER (AI): sometimes he does not tap — he LOADS. Same rule as the player's: the button goes down, the
+    // arm coils back for a full second, and the punch that comes out of it lands 2× / drives 2×. The load is
+    // telegraphed exactly the way yours is (coiled pose, sparks on the fist, a rising tick, a warning shout when it
+    // comes full), and it dies the same way if you hit him out of it. He only gambles on it with a real tank, and
+    // only now and then (panjerAiRate + the cooldown) — a loaded fist has to stay an event you can read.
+    if (ai.panjerCd > 0) ai.panjerCd = Math.max(0, ai.panjerCd - dt);
+    if (
+      ai.cool <= 0 &&
+      !e.panjerId &&
+      ai.panjerCd <= 0 &&
+      !pDown &&
+      !e.blocking &&
+      canAtk &&
+      dist <= reachNow &&
+      e.stam > PANJER_AI_STAM &&
+      Math.random() < dt * panjerAiRate(def.react, p.poise < p.poiseMax * 0.45 || p.stam < 35 || p.hp <= p.maxHp * 0.3)
+    ) {
+      const loadId: MoveId = dist > 3.9 * e.scale ? 'cross' : Math.random() < 0.55 ? 'hook' : 'upper';
+      this.beginPanjer(e, loadId, null);
+      return;
     }
 
     if (ai.cool <= 0 && dist <= reachNow && !e.blocking && canAtk) {
@@ -7601,6 +7832,9 @@ export class Game {
     }
 
     let dmg = m.dmg * a.dmgMul;
+    // PANJER: the punch that was LOADED for a full second arrives with the whole machine behind it.
+    const panjerKb = a.panjer ? PANJER_KNOCK : 1;
+    if (a.panjer) dmg *= PANJER_DMG;
     if (a.robot.isZeus) {
       dmg *= 1.10; // Kekuatan attack serangan Zeus seperti Atlas cuma lebih kuat 10 persen (+10%)
     }
@@ -7651,6 +7885,12 @@ export class Game {
     // the last punch has a name and it says it (set AFTER the crit/comeback book-keeping, so the finisher does not
     // quietly inherit the counter-hit bonus just by being called something)
     if (m.id === 'finisher') label = '☠️ PUKULAN MEMATIKAN!';
+    // PANJER names itself (and only itself: the charge is the story of this punch, and it says so out loud)
+    if (a.panjer) {
+      label = '💪 PANJER! 2×';
+      this.fx.ring(d.pos.x, d.pos.y, 0xffd34a, 6.5, 0.45, 0.1);
+      this.trauma = Math.min(0.7, this.trauma + 0.16);
+    }
 
     // PEEK-A-BOO: the weaving head slips jabs and crosses completely (but not hooks, uppercuts, throws or Overdrive)
     if (d.ippo && d.state === 'idle' && d.slipCd <= 0 && (m.id === 'jab' || m.id === 'cross')) {
@@ -7945,9 +8185,10 @@ export class Game {
         if (pd.lengthSq() < 1e-4) pd.copy(away);
         pd.normalize();
         const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
-        const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
+        const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1) * panjerKb;
         // Zeus is thrown like a bag of anvils: much shorter across the canvas and a lower arc (ZEUS_LAUNCH_*)
-        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5) * chassisLaunch(chassis);
+        // ...and a PANJER is allowed to throw him past the ordinary ceiling: that is what the 2× is for.
+        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5 * panjerKb) * chassisLaunch(chassis);
         // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
         // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
         // Uppercut biasa yang menembus pertahanan saat broken/KO tidak melempar ke angkasa (vertikal rendah & realistis)
@@ -7965,7 +8206,7 @@ export class Game {
       // BOXING HIT PUSHBACK & RING DOMINANCE:
       // Each landed strike noticeably drives the defender backward across the canvas while the attacker steps in to press the advantage!
       const heavyNoDrop = (m.id === 'upper' || (a.runStrike && m.id === 'cross') || brokenRaw) ? 1.35 : 1; // kept on his feet, but driven back hard — often into the ropes
-      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * chassisKnock(chassis);
+      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * panjerKb * chassisKnock(chassis);
       d.kb.addScaledVector(away, m.knock * pushMul);
       if (dist > 2.85 * avg) {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));
@@ -8823,6 +9064,8 @@ export class Game {
     let kk = 15;
     const t = f.animT;
     f.headYaw = 0;
+    // PANJER: the loading pose eases in and out (never a pop), driven by whether a punch is being held
+    f.pkVis += ((f.panjerId ? 1 : 0) - f.pkVis) * Math.min(1, dt * 14);
 
     const isAirRagdoll = (f.state === 'air' || (f.state === 'ko' && (f.y > 0.02 || f.vy > 0))) && this.phase !== 'walk' && this.phase !== 'menu';
 
@@ -9153,6 +9396,32 @@ export class Game {
           f.headYaw = aliHead(t) * fl; // the head rides with the weave: a moving target, never a static face
         }
       }
+      // ---------------- PANJER: THE FIST THAT IS LOADING ----------------
+      // The loading arm pulls back into the move's OWN coil key — the pose the punch is about to be thrown out of —
+      // and deepens as the second runs out, with a strain in it and the knuckles burning once the load is full.
+      // This is the tell that pays for the 2×: from the far side of the ring you can see him wind it up.
+      if (f.panjerId && f.pkVis > 0.01) {
+        const ld = MOVES[f.panjerId];
+        const coil = ld.keys[1] ?? ld.keys[0];
+        const vis = f.pkVis * panjerVis(f.panjerHold);
+        const grow = 0.62 + 0.38 * panjerVis(f.panjerHold); // the coil deepens over the second
+        const strain = (0.015 + 0.03 * panjerVis(f.panjerHold)) * Math.sin(t * (26 + 20 * panjerVis(f.panjerHold)));
+        const load = P(coil.p.sx - 0.16 * grow + strain, coil.p.sy + 0.14 * grow, coil.p.sz + 0.1 * grow, coil.p.ex - 0.18 * grow);
+        const lm = this.armOf(f, ld);
+        if (lm === 1) {
+          a1 = lerpPose(a1, load, vis);
+        } else if (lm === 2) {
+          a0 = lerpPose(a0, load, vis);
+          a1 = lerpPose(a1, load, vis);
+        } else {
+          a0 = lerpPose(a0, load, vis);
+        }
+        // the whole body coils with the arm: the shoulder turns away from the target and the hips sink under it
+        tw += coil.twist * 0.6 * grow * vis;
+        ln += coil.lean * 0.55 * grow * vis;
+        dp += coil.dip * 0.4 * grow * vis;
+        kk = Math.max(kk, 34);
+      }
       ln = lerp(ln, 0.1 + stalk * 0.05, stalk); // chin down, chest over the hips: he walks INTO the fight
       dp = 0.15 + stalk * 0.08 + Math.sin(t * 5.2) * 0.035 * idle; // a lower, springier stance than standing
       rl = Math.sin(t * 2.6) * 0.03 * idle;
@@ -9440,6 +9709,16 @@ export class Game {
       f.acc.y += (az - f.acc.y) * k;
     }
     f.prevV.set(mvx, mvz);
+    // PANJER: a full load spits sparks off the knuckles — the last, loudest part of the tell
+    if (f.panjerReady && f.panjerId) {
+      f.pkTick2 -= dt;
+      if (f.pkTick2 <= 0) {
+        f.pkTick2 = 0.07;
+        const arm = this.armOf(f, MOVES[f.panjerId]);
+        f.robot.fists[arm === 1 ? 1 : 0].localToWorld(this.aimTmp.set(0, 0, 0));
+        this.fx.spark(this.aimTmp, 2, 3.4, 0xffd34a, undefined, 1.1, 0.28, 3);
+      }
+    }
     const pw = this.punchStepOf(f, o);
     // STRIKE OPTICS: 0 → 1 as the fist pulls out of the guard, 1 at the moment it is released. The eyes read
     // this every frame and fire their lock-on pulse on the crossing.
@@ -9473,7 +9752,12 @@ export class Game {
         hitSpin: f.hitSpin,
         fall: e,
         time: f.animT,
-        glow: f.glowBoost + (f.counterT > 0 ? 1.2 : 0) + (f.isPlayer && f.meter >= 100 ? 1.0 + Math.sin(f.animT * 10) * 0.6 : 0),
+        glow:
+          f.glowBoost +
+          (f.counterT > 0 ? 1.2 : 0) +
+          // PANJER: the load glows on the body — brightest in the last frames before it is full
+          (f.panjerId ? 0.4 + 0.9 * panjerVis(f.panjerHold) : 0) +
+          (f.isPlayer && f.meter >= 100 ? 1.0 + Math.sin(f.animT * 10) * 0.6 : 0),
         flash: f.flash,
         tilt: f.tilt,
         tiltZ: f.tiltZ,
@@ -10255,6 +10539,8 @@ export class Game {
       autoGuard: this.player.autoGuard,
       meter: this.player.meter,
       ali: this.aliStyle,
+      panjer: this.player.panjerId ? panjerVis(this.player.panjerHold) : 0,
+      panjerReady: this.player.panjerReady && !!this.player.panjerId,
       nCombo: this.nComboIdx,
       nComboLocked: this.nComboCd > 0,
       combo: this.combo,

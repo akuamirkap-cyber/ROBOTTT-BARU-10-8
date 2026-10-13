@@ -126,7 +126,9 @@ console.log('\n§4  a stance, not a buff');
   ok('...and it did not touch the dodge economy', ['evade', 'fwd', 'back', 'side'].every((k) => DODGE_CFG[k].cost === before[k][0] && Math.abs(DODGE_CFG[k].cd - before[k][1]) < 1e-9) && STAM_SCALE === 0.6, Object.keys(before).map((k) => `${k} ${DODGE_CFG[k].cost} stam · ${DODGE_CFG[k].cd}s`).join(' · '));
   ok('the punch book is untouched (same six basics, same Overdrive family)', MOVES.jab.dmg === 7 && MOVES.cross.dmg === 11 && MOVES.hook.dmg === 13 && MOVES.upper.dmg === 15 && MOVES.bolt.dmg === 32, 'jab 7 · cross 11 · hook 13 · upper 15 · bolt 32');
   const srcG = readFileSync(new URL('./src/game/Game.ts', import.meta.url), 'utf8');
-  const block = srcG.slice(srcG.indexOf('ALI STYLE — float like a butterfly'), srcG.indexOf('SWING DYNAMICS — the boxer'));
+  // the slice has to end where the ALI STYLE block ends: PANJER (the hold-to-load mechanic) sits between it and
+  // SWING DYNAMICS and is a different feature with its own numbers
+  const block = srcG.slice(srcG.indexOf('ALI STYLE — float like a butterfly'), srcG.indexOf('PANJER — hold a punch button'));
   ok('the style touches no damage, stamina, tell or dodge number', !/dmg|stam|cost|TELL|DODGE_CFG|knock/.test(block), 'only posture, cadence and pace');
   ok('...and no randomness anywhere in it', !/Math\.random/.test(block));
 }
