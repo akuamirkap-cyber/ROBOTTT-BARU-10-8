@@ -229,9 +229,9 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
           <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">
             <span className={h.panjerReady ? 'text-amber-200' : 'text-white/65'}>💪 PANJER</span>
             {h.panjerReady ? (
-              <span className="animate-pulse text-amber-200">SIAP — LEPAS TOMBOLNYA! 2× PUKULAN</span>
+              <span className="animate-pulse text-amber-200">SIAP — LEPAS! ×2,0 PUKULAN & HAJAR</span>
             ) : (
-              <span className="text-white/45">TAHAN TOMBOLNYA… {Math.floor(h.panjer * 100)}%</span>
+              <span className="text-white/45">MAKIN LAMA MAKIN KUAT — SEKARANG ×{h.panjerMul}</span>
             )}
           </div>
           <div className={`od-frame ${h.panjerReady ? 'meter-ready' : ''}`} style={{ height: 12 }}>

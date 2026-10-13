@@ -3,12 +3,15 @@
 //     node panjertest.mjs
 // (or just `npm run test:panjer`, which does both)
 //
-// The rule the user asked for, in their words: "pukulan yg tombolnya saya pencet panjer lebih dari 1 detik lalu
-// lepas maka pukulan itu lebih kuat 2x dan daya hajarnya 2x lebih kuat; kalo dibawah 1 detik maka ya pukulan normal."
-// So the whole feature reduces to ONE decision taken at the moment the button comes up — and this file audits it
-// from both ends: the pure rule (panjerShot) and the live path (the source the game actually runs), plus the things
-// that must NOT have changed when you just tap the button.
-//   §1  THE RULE — under 1 s is the ordinary punch, 1 s and over is the 2× PANJER (including the edge at exactly 1 s)
+// The rule the user asked for, in their words, twice:
+//   "pukulan yg tombolnya saya pencet panjer lebih dari 1 detik lalu lepas maka pukulan itu lebih kuat 2x dan daya
+//    hajarnya 2x lebih kuat jadi kalo dibawah 1 detik maka ya pukulan normal."
+//   "pastikan kalo 0.1-0.3 detik tu atau cuma sekelibat pencet maka normal tapi kalo diatas 0.4-1 detik lebih lagi
+//    maka semakin lama semakin kuat."
+// So the whole feature reduces to ONE decision taken at the moment the button comes up — pukulanShot(held) — and
+// this file audits it from both ends: the pure curve and the live path (the source the game actually runs), plus
+// the things that must NOT have changed when you just flick the button.
+//   §1  THE RULE — a flick (≤0.4 s) is the ordinary punch; 0.4→1 s RAMPS ×1→×2 (the longer the harder); ≥1 s is 2×
 //   §2  THE BUTTON — the strike keys load on the press and throw on the RELEASE (and the counter stays instant)
 //   §3  THE LOAD IS VISIBLE — the coil pose, the strain, the glow, the sparks, the HUD gauge
 //   §4  THE PAYOFF — 2× damage and 2× knockback, on BOTH the launch and the standing pushback
@@ -18,6 +21,7 @@
 import { readFileSync } from 'node:fs';
 import {
   ALI_SPEED,
+  PANJER_FREE,
   PANJER_LOADABLE,
   DODGE_CFG,
   MOVES,
@@ -30,9 +34,11 @@ import {
   PANJER_KNOCK,
   PANJER_T,
   panjerAiRate,
+  panjerCharge,
+  panjerLabel,
   panjerLoaded,
+  panjerPower,
   panjerShot,
-  panjerVis,
   starShouldGuard,
 } from './.__game.mjs';
 
@@ -55,17 +61,36 @@ const slice = (from, to, len = 4000) => {
 };
 
 // ==================================================================== §1 the rule
-console.log('\n§1  the rule — a tap is a punch, a second is a PANJER');
+console.log('\n§1  the rule — a flick is a punch, and above it the longer the harder');
 {
-  ok('the threshold is the second the user asked for', PANJER_T === 1.0, `${f(PANJER_T)} s`);
-  ok('the payoff is exactly 2× damage and 2× knockback', PANJER_DMG === 2 && PANJER_KNOCK === 2, `${f(PANJER_DMG)}× / ${f(PANJER_KNOCK)}×`);
+  ok('a flick window exists at all (the user\'s 0.1-0.3 s)', PANJER_FREE === 0.4 && PANJER_FREE < PANJER_T, `free ≤ ${f(PANJER_FREE)} s, full at ${f(PANJER_T)} s`);
+  ok('the ceiling is the 2× the user asked for', PANJER_DMG === 2 && PANJER_KNOCK === 2, `${f(PANJER_DMG)}× / ${f(PANJER_KNOCK)}×`);
   // ...and the rule itself: what a RELEASE turns into
-  const tap = panjerShot(0.42);
-  ok('a tap under a second is the ORDINARY punch (no multiplier at all)', tap.armed === false && tap.dmgMul === 1 && tap.knockMul === 1, `held 0.42 s → ${f(tap.dmgMul)}× / ${f(tap.knockMul)}×`);
-  ok('...right up to the last frame before the second', panjerShot(0.999).dmgMul === 1 && panjerLoaded(0.999) === false);
-  ok('...and the full second flips it to the PANJER', panjerShot(1.0).armed === true && panjerShot(1.0).dmgMul === PANJER_DMG && panjerShot(1.0).knockMul === PANJER_KNOCK, 'held 1.000 s → 2× / 2×');
-  ok('holding it longer does not stack (2× is the ceiling)', panjerShot(9.5).dmgMul === PANJER_DMG && panjerShot(9.5).knockMul === PANJER_KNOCK);
-  ok('the load bar reads 0 → 1 over that same second and stops there', panjerVis(0) === 0 && panjerVis(0.5) === 0.5 && panjerVis(PANJER_T) === 1 && panjerVis(4) === 1);
+  for (const held of [0.05, 0.1, 0.2, 0.3]) {
+    const shot = panjerShot(held);
+    ok(`a blink of ${held} s is the ORDINARY punch (no multiplier at all)`, shot.dmgMul === 1 && shot.knockMul === 1 && panjerShot(held).armed === false, '×1 / ×1');
+  }
+  ok('...the boundary itself is still ordinary (0.4 s exactly)', panjerShot(PANJER_FREE).dmgMul === 1 && panjerShot(0.399).dmgMul === 1);
+  // THE RAMP: above the flick window every extra moment is worth more, all the way to the full second
+  ok('just above the flick window it has already started to grow', panjerShot(0.42).dmgMul > 1 && panjerShot(0.5).dmgMul > 1, `0.5 s → ${f(panjerShot(0.5).dmgMul)}×`);
+  ok('...and it grows the whole way (strictly harder every 0.05 s)', (() => {
+    for (let h = PANJER_FREE + 0.05; h <= PANJER_T; h += 0.05) if (!(panjerShot(h).dmgMul > panjerShot(h - 0.05).dmgMul)) return false;
+    return true;
+  })());
+  ok('the middle of the ramp is the middle of the punch', Math.abs(panjerShot(0.7).dmgMul - 1.5) < 1e-9 && Math.abs(panjerShot(0.55).dmgMul - 1.25) < 1e-9, `0.55 s → ${f(panjerShot(0.55).dmgMul)}× · 0.7 s → ${f(panjerShot(0.7).dmgMul)}×`);
+  ok('the full second is exactly the 2× the user asked for', panjerShot(1.0).dmgMul === 2 && panjerShot(1.0).knockMul === 2 && panjerLoaded(1.0) === true, 'held 1.000 s → 2× / 2×');
+  ok('...and holding it longer does not stack past it', panjerShot(3).dmgMul === 2 && panjerShot(30).dmgMul === 2);
+  ok('the curve never dips and never leaves [1, 2]', (() => {
+    for (let h = 0; h <= 3.001; h += 0.01) {
+      const m = panjerShot(h).dmgMul;
+      if (m < 1 || m > PANJER_DMG) return false;
+      if (h > 0.01 && m < panjerShot(h - 0.01).dmgMul - 1e-9) return false;
+    }
+    return true;
+  })(), 'sampled every 10 ms from 0 to 3 s');
+  ok('the knockback rides the same curve (hajar grows with the hold too)', Math.abs(panjerShot(0.7).knockMul - 1.5) < 1e-9 && panjerShot(0.3).knockMul === 1 && panjerShot(1).knockMul === PANJER_KNOCK);
+  ok('the load bar is the same curve normalised 0..1 (what you see is what you throw)', panjerCharge(0) === 0 && panjerCharge(0.4) === 0 && panjerCharge(0.7) === 0.5 && panjerCharge(1) === 1 && panjerCharge(9) === 1);
+  ok('the multiplier is printed the way an Indonesian HUD writes it', panjerLabel(1.5) === '×1,5' && panjerLabel(2) === '×2,0');
   ok('the load is timed on the CLOCK, not on the frame count', /panjerSince = performance\.now\(\)/.test(src) && /performance\.now\(\) - f\.panjerSince\) \/ 1000/.test(src));
 }
 
@@ -90,32 +115,36 @@ console.log('\n§3  the tell — you can SEE him wind it up (that is what pays f
 {
   const pose = slice('PANJER: THE FIST THAT IS LOADING', 'ln = lerp(ln, 0.1 + stalk');
   ok('the loading arm pulls back into the move\'s own COIL key', /const coil = ld\.keys\[1\] \?\? ld\.keys\[0\];/.test(pose) && /lerpPose\((a0|a1), load, vis\)/.test(pose));
-  ok('...and the coil DEEPENS over the second', /0\.62 \+ 0\.38 \* panjerVis\(f\.panjerHold\)/.test(pose));
-  ok('...with a strain in it (a tremble that grows)', /Math\.sin\(t \* \(26 \+ 20 \* panjerVis/.test(pose));
+  ok('...and the coil DEEPENS as the load grows', /0\.62 \+ 0\.38 \* ch/.test(pose));
+  ok('...with a strain in it (a tremble that grows)', /Math\.sin\(t \* \(26 \+ 20 \* ch\)/.test(pose));
+  ok('...and the pose reads the CHARGE curve, so what you see is what you throw', /const ch = panjerCharge\(f\.panjerHold\)/.test(pose) && /f\.pkVis \* ch/.test(pose));
   ok('the shoulder turns away from the target while it loads', /tw \+= coil\.twist \* 0\.6/.test(pose) && /dp \+= coil\.dip \* 0\.4/.test(pose));
-  ok('the body glows brighter as the load fills', /f\.panjerId \? 0\.4 \+ 0\.9 \* panjerVis\(f\.panjerHold\) : 0/.test(src));
+  ok('the body glows brighter as the load fills', /f\.panjerId \? 0\.4 \+ 0\.9 \* panjerCharge\(f\.panjerHold\) : 0/.test(src));
   ok('a full load sparks off the knuckles', /f\.panjerReady && f\.panjerId/.test(src) && /f\.pkTick2 = 0\.07;/.test(src));
   ok('it answers out loud when it comes full — for BOTH fighters', /'💪 PANJER SIAP!'/.test(src) && /'⚠️ PANJER MUSUH!'/.test(src) && /this\.sfx\.ready\(\)/.test(src));
-  ok('the loading tick rises with the load', /this\.sfx\.tick\(0\.3 \+ 0\.45 \* panjerVis\(f\.panjerHold\)\)/.test(src));
-  ok('the HUD carries a PANJER gauge and a SIAP shout', /h\.panjer > 0/.test(hud) && /PANJER SIAP|SIAP — LEPAS TOMBOLNYA! 2× PUKULAN/.test(hud));
+  ok('the loading tick rises with the load', /this\.sfx\.tick\(0\.3 \+ 0\.45 \* panjerCharge\(f\.panjerHold\)\)/.test(src));
+  ok('the HUD carries a PANJER gauge', /h\.panjer > 0/.test(hud) && /h\.panjerReady \?/.test(hud));
+  ok('...that prints the multiplier LIVE while you hold (so you can see it grow)', /h\.panjerMul/.test(hud) && /MAKIN LAMA MAKIN KUAT/.test(hud));
+  ok('...and shouts when the load is full', /SIAP — LEPAS! ×2,0/.test(hud));
   ok('the guide explains the hold', /PANJER/.test(menu) && /LEPAS/.test(menu));
 }
 
 // ==================================================================== §4 the payoff
 console.log('\n§4  the payoff — 2× damage, 2× hajar');
 {
-  ok('damage is multiplied by PANJER_DMG', /if \(a\.panjer\) dmg \*= PANJER_DMG;/.test(src));
-  ok('the multiplier rides on the swing as a one-shot (`panjer`), consumed by startMove', /if \(PANJER_LOADABLE\.includes\(id\)\) \{\s*\n\s*f\.panjer = f\.panjerNext;\s*\n\s*f\.panjerNext = false;/.test(src));
+  ok('damage is multiplied by the load\'s own number', /if \(a\.panjer > 1\) dmg \*= a\.panjer;/.test(src));
+  ok('...which is the value the ramp had reached, not a flag', /f\.panjer = f\.panjerNext > 1 \? f\.panjerNext : 1;/.test(src) && /f\.panjer = 1;/.test(src));
+  ok('the multiplier rides on the swing as a one-shot (`panjer`), consumed by startMove', /if \(PANJER_LOADABLE\.includes\(id\)\) \{\s*\n\s*f\.panjer = f\.panjerNext > 1/.test(src) && /f\.panjerNext : 1;[\s\S]{0,90}f\.panjerNext = 0;/.test(src));
   ok('...and only a LOADABLE punch can carry it (never an Overdrive, a throw or a scripted link)', PANJER_LOADABLE.join(',') === 'jab,hook,upper,cross' && MOVES.finisher !== undefined && !PANJER_LOADABLE.includes('finisher') && !PANJER_LOADABLE.includes('skyhook') && !PANJER_LOADABLE.includes('grab') && PANJER_LOADABLE.every((id) => Object.values(PANJER_KEYS).includes(id)));
-  ok('...and starting anything else takes the load away instead', /\} else \{\s*\n\s*f\.panjer = false;\s*\n\s*f\.clearPanjer\(\);/.test(src));
-  ok('...and it is set from the release, nowhere else', (src.match(/f\.panjerNext = armed;/g) ?? []).length === 1);
+  ok('...and starting anything else takes the load away instead', /\} else \{\s*\n\s*f\.panjer = 1;\s*\n\s*f\.clearPanjer\(\);/.test(src));
+  ok('...and it is set from the release, nowhere else', (src.match(/f\.panjerNext = id && PANJER_LOADABLE\.includes\(id\) \? shot\.dmgMul : 0;/g) ?? []).length === 1);
   const launch = slice('const force = m.knock * (0.72 + big * 0.5)', 'd.airSpin', 1600);
-  ok('the LAUNCH of a knockdown is doubled', /\* panjerKb;/.test(launch) && /const panjerKb = a\.panjer \? PANJER_KNOCK : 1;/.test(src));
+  ok('the LAUNCH of a knockdown is scaled by the same number', /\* panjerKb;/.test(launch) && /const panjerKb = a\.panjer;/.test(src));
   ok('...and the launch ceiling opens up with it (2× has to actually go 2×)', /clamp\(force \* 0\.95, 4\.5, 13\.5 \* panjerKb\)/.test(launch));
   const push = slice('const pushMul = (1.85', 'd.kb.addScaledVector(away, m.knock * pushMul);', 900);
   ok('the standing PUSHBACK is doubled too', /heavyNoDrop \* panjerKb \* chassisKnock\(chassis\)/.test(push) && /d\.kb\.addScaledVector\(away, m\.knock \* pushMul\);/.test(src));
-  ok('the loaded punch names itself on screen', /'💪 PANJER! 2×'/.test(src));
-  ok('...and hits the camera like a special (ring + trauma)', /PANJER! 2×'[\s\S]{0,220}this\.trauma = Math\.min\(0\.7/.test(src));
+  ok('the loaded punch names itself with the REAL number', /label = `💪 PANJER! \$\{panjerLabel\(a\.panjer\)\}`;/.test(src));
+  ok('...and hits the camera like a special (ring + trauma)', /PANJER! \$\{panjerLabel[\s\S]{0,240}this\.trauma = Math\.min\(0\.7/.test(src));
 }
 
 // ==================================================================== §5 the commitment
@@ -126,7 +155,7 @@ console.log('\n§5  the load is a COMMITMENT, not a buff');
   ok('...by CLEARING it (a cancelled load never turns into a punch)', /f\.clearPanjer\(\);\s*\n\s*return;/.test(step));
   ok('the AI lets go the moment the load is full; the player has to let go himself', /if \(!isPlayer && f\.panjerReady\) this\.firePanjer\(f\);/.test(step));
   ok('the automatic N combo spends the load (a scripted script cannot bank a loaded fist)', /private startNCombo\([\s\S]{0,240}this\.player\.clearPanjer\(\);/.test(src));
-  ok('...and a cancelled load never re-arms the next punch', /const armed = !!id && panjerShot\(held\)\.armed;/.test(src) && /f\.panjerNext = false;/.test(src));
+  ok('...and a cancelled load never re-arms the next punch', /const shot = panjerShot\(held\);/.test(src) && /f\.panjerNext\b/.test(src) && /f\.panjerNext = 0;/.test(src));
   ok('the STAR MODE auto-guard steps aside for a loading fist', /starShouldGuard\(p\.state, p\.dodgeT, p\.tauntT, !!p\.panjerId\)/.test(src) && starShouldGuard('idle', 0, 0, true) === false && starShouldGuard('idle', 0, 0, false) === true);
   ok('...while the manual guard is still the manual guard', starShouldGuard('idle', 0, 0) === true);
 }
@@ -138,7 +167,7 @@ console.log('\n§6  the opponent loads one up under the same rule');
   ok('...it only gambles with a real tank', /e\.stam > PANJER_AI_STAM/.test(src) && PANJER_AI_STAM >= 30);
   ok('...and it is rare enough to read (a capped rate + a cooldown)', panjerAiRate(1, true) < 1 && panjerAiRate(1, true) <= 0.85 && PANJER_AI_CD_MIN >= 5 && PANJER_AI_CD_MAX > PANJER_AI_CD_MIN, `rate ${f(panjerAiRate(1, true))}/s, cd ${PANJER_AI_CD_MIN}-${PANJER_AI_CD_MAX} s`);
   ok('...harder opponents (and a softened player) load more often', panjerAiRate(0.1, false) < panjerAiRate(0.9, false) && panjerAiRate(0.5, false) < panjerAiRate(0.5, true), `${f(panjerAiRate(0.1, false))} < ${f(panjerAiRate(0.9, false))} · soft +${f(panjerAiRate(0.5, true) - panjerAiRate(0.5, false))}`);
-  ok('...and it is the SAME 2× (one rule for both corners)', (src.match(/PANJER_DMG/g) ?? []).length >= 3 && !/PANJER_AI_DMG/.test(src));
+  ok('...and it is the SAME curve (one rule for both corners)', !/PANJER_AI_DMG/.test(src) && !/PANJER_AI_KNOCK/.test(src) && /this\.firePanjer\(f\)/.test(src) && (src.match(/panjerShot\(held\)/g) ?? []).length === 1);
   ok('the opponent\'s load is timed by the same clock and the same threshold', !/PANJER_AI_T\b/.test(src) && /panjerLoaded\(f\.panjerHold\)/.test(src));
 }
 

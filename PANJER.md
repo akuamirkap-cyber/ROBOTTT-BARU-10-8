@@ -1,21 +1,34 @@
-# 💪 PANJER — tahan tombol pukulannya, lepas, hajar 2×
+# 💪 PANJER — tahan tombol pukulannya, lepas: makin lama makin kuat
 
-> **PANJER**: *tombol pukulan ditahan lebih dari 1 detik, lalu dilepas.* Pukulan yang keluar = **2× lebih kuat** dan
-> **hajarnya 2× lebih jauh**. Di bawah 1 detik? Pukulan biasa, persis seperti sebelumnya.
+> **PANJER**: *tombol pukulan ditahan, lalu dilepas.* Sekelibat cuma nge-tap? **Pukulan biasa.** Ditahan makin lama?
+> **Makin kuat** — dari ×1 naik terus sampai **×2 damage & ×2 hajar** di tahanan 1 detik.
 
 Berlaku untuk empat pukulan dasar: **H** (jab) · **J / C** (hook) · **K / V** (uppercut) · **X** (straight).
 Kerja di semua mode, dan lawan bisa melakukannya juga ke kamu.
 
 ---
 
-## 1. Aturannya
+## 1. Aturannya — ada tiga zona
 
-| Tombol ditahan | Yang keluar saat dilepas | Damage | Hajar (knockback) |
-|---|---|---|---|
-| **< 1 detik** (tap biasa) | pukulan normal — sama persis seperti dulu | **×1** | **×1** |
-| **≥ 1 detik** | **PANJER** | **×2** | **×2** |
+| Ditahan | Yang keluar saat dilepas |
+|---|---|
+| **0 – 0,4 detik** (sekelibat / tap biasa, 0,1–0,3 dtk) | **pukulan normal** — ×1 damage, ×1 hajar, sama persis seperti dulu |
+| **0,4 – 1 detik** | **naik terus, makin lama makin kuat**: ×1 → ×2 (lihat tabel di bawah) |
+| **1 detik ke atas** | **mentok ×2** — dua detik bukan berarti 4× |
 
-Angka nyatanya, pakai buku jurus yang sudah ada:
+Kurvanya satu garis lurus dari 0,4 ke 1,0 detik, jadi gampang dirasakan: tambahan 0,1 detik = tambahan ±0,17× kekuatan.
+
+| Ditahan | Kekuatan | Uppercut jadi |
+|---|---|---|
+| 0,30 s (sekelibat) | ×1,00 | 15 dmg · hajar 8 |
+| 0,40 s | ×1,00 | 15 dmg · hajar 8 |
+| 0,55 s | ×1,25 | 18,8 dmg · hajar 10 |
+| 0,70 s | ×1,50 | 22,5 dmg · hajar 12 |
+| 0,85 s | ×1,75 | 26,3 dmg · hajar 14 |
+| **1,00 s** | **×2,00** | **30 dmg · hajar 16** |
+| 1,50 s | ×2,00 | 30 dmg · hajar 16 |
+
+Angka lengkap empat pukulan dasarnya, pakai buku jurus yang sudah ada:
 
 | Pukulan | Normal | **PANJER** |
 |---|---|---|
@@ -24,21 +37,26 @@ Angka nyatanya, pakai buku jurus yang sudah ada:
 | HOOK (J/C) | 13 dmg · hajar 7 | **26 dmg · hajar 14** |
 | UPPERCUT (K/V) | 15 dmg · hajar 8 | **30 dmg · hajar 16** |
 
-Batasnya **tepat 1,00 detik** — 0,99 detik masih pukulan biasa, 1,00 detik sudah PANJER. Dan waktunya dihitung pakai
-**jam**, bukan hitungan frame, jadi tombol yang kamu tahan 1,01 detik tetap dihitung 1,01 detik.
+Batas-batasnya **tepat**: 0,39 detik masih normal, 0,40 detik mulai naik, 0,99 detik = ×1,98, **1,00 detik = ×2,00**.
+Dan waktunya dihitung pakai **jam** (`performance.now()`), bukan hitungan frame, jadi tombol yang kamu tahan 1,01 detik
+tetap dihitung 1,01 detik (tidak bisa "ketelan" satu frame).
 
-Hajar 2× berlaku untuk **dua-duanya**: dorongan saat lawan tetap berdiri, **dan** lemparan saat lawan sampai
-terpental-jatuh (plafon jarak lemparnya ikut dibuka 2× — kalau tidak, "2×" cuma jadi angka di layar).
+**Damage dan hajar naik bersama** — dua-duanya memakai angka yang sama (jadi di 0,7 detik kamu dapat ×1,5 damage
+**dan** ×1,5 hajar). Hajar itu berlaku untuk **dua-duanya**: dorongan saat lawan tetap berdiri, **dan** lemparan saat
+lawan terpental-jatuh (plafon jarak lemparnya ikut dibuka sebesar itu — kalau tidak, angkanya cuma jadi angka di layar).
 
 ## 2. Apa yang kamu bayar
 
-Satu detik berdiri dengan **tangan ditarik ke belakang**. Dan itu kelihatan:
+Satu detik berdiri dengan **tangan ditarik ke belakang**. Dan itu kelihatan — **sebesar kekuatan yang sedang kamu
+kumpulkan** (tap sekelibat hampir tidak kelihatan; makin lama, makin jelas):
 
 - tangan pukulnya mundur ke **pose ancang-ancang pukulan itu sendiri** (bukan pose karangan baru) dan makin dalam
-  sepanjang detiknya;
+  seiring kekuatannya naik;
 - ada **getaran menahan** di bahu yang makin kuat, bahu berputar menjauh dari lawan, dan panggul turun;
-- tubihnya **menyala** makin terang, dan begitu load-nya penuh ada **percikan api di kepalan** + suara;
-- di HUD ada **bar PANJER** dan tulisan `TAHAN TOMBOLNYA… x%` → `SIAP — LEPAS TOMBOLNYA! 2× PUKULAN`.
+- tubuhnya **menyala** makin terang, dan begitu load-nya penuh ada **percikan api di kepalan** + suara;
+- di HUD ada **bar PANJER** yang mengisi seiring naiknya kekuatan, dengan angka hidup di sebelahnya:
+  `MAKIN LAMA MAKIN KUAT — SEKARANG ×1,4` → `SIAP — LEPAS! ×2,0 PUKULAN & HAJAR` (bar-nya baru muncul di atas
+  0,4 detik, jadi tap sekelibat tidak bikin UI berkedip).
 
 Jadi lawan bisa melihat kamu sedang mengisi pukulan — dan jawabannya sederhana: **jangan ada di situ**, atau
 **pukul duluan**. Kalau kamu kena pukul / terpental / jatuh / angkat guard / bel / pause / window-nya kehilangan
@@ -95,15 +113,25 @@ Sesuai permintaan: **cuma damage dan hajar**. Jadi sengaja tidak diubah:
 ## 6. Verifikasi
 
 ```bash
-npm run test:panjer   # 7 seksi: aturan · tombol · tell · bayaran · komitmen · AI · "yang lain tidak bergerak" → ALL PASS
+npm run test:panjer   # 7 seksi: aturan & kurva · tombol · tell · bayaran · komitmen · AI · "yang lain tidak bergerak"
 npm test              # feet/pose/cam/crowd/zeus/balance/star/combo/swing/ali/panjer PASS
 npx tsc --noEmit      # bersih
-npm run build         # ✓ 1.772,78 kB / gzip 497,56 kB
+npm run build         # ✓
 ```
 
-Yang dikunci harness-nya: **tepat di 1,00 detik** batasnya (`panjerShot(0.999)` = pukulan biasa, `panjerShot(1.0)` =
-2×), waktu load pakai jam bukan frame, enam tombol pukulan benar-benar melepas `tryAttack` dari jalur `press`,
-pukulan keluar dari jalur `release`, counter (L) tetap instan, tell-nya lengkap (pose + getaran + glow + percikan +
-bar HUD), damage ×2 dan hajar ×2 di **kedua** jalur (lemparan & dorongan) dengan plafonnya ikut dibuka, load mati
-oleh pukulan/guard/jatuh/bel/pause/blur, kombo-N menghabiskan load, auto-guard STAR MODE minggir saat ada load, dan
-AI memakai aturan + angka yang sama dengan peluang yang dibatasi.
+Yang dikunci harness-nya (`panjertest.mjs`, §1–§7):
+
+- **tap sekelibat 0,05 / 0,1 / 0,2 / 0,3 detik semuanya ×1** (dan 0,39 detik juga), batas 0,4 detik mulai naik;
+- **kurvanya naik terus**: tiap tambahan 0,05 detik dari 0,4 ke 1,0 selalu lebih kuat, di sampel 10 ms dari 0 sampai
+  3 detik tidak pernah turun dan tidak pernah keluar dari [×1, ×2]; 0,55 s = ×1,25 · 0,7 s = ×1,5 · 0,85 s = ×1,75;
+- **1,00 detik tepat ×2,00**, dan 3 detik / 30 detik tetap ×2 (mentok);
+- **hajar memakai kurva yang sama** (0,7 detik = ×1,5 hajar, bukan ×2);
+- waktu load pakai **jam** bukan frame;
+- enam tombol pukulan benar-benar melepas `tryAttack` dari jalur `press`, pukulan keluar dari jalur `release`,
+  counter (L) tetap instan;
+- tell-nya lengkap dan **membaca kurva yang sama** dengan pukulannya (pose coil sedalam kekuatannya + getaran +
+  glow + percikan + bar HUD dengan angka hidup);
+- damage & hajar dikali angka load di **kedua** jalur (lemparan & dorongan) dengan plafonnya ikut dibuka;
+- load mati oleh pukulan/guard/jatuh/bel/pause/blur, kombo-N menghabiskan load, dan **tidak bisa menumpang** ke
+  Overdrive/grab/jurus skrip apa pun;
+- auto-guard STAR MODE minggir saat ada load; dan AI memakai **kurva + angka yang sama** dengan peluang yang dibatasi.
