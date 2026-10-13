@@ -22,6 +22,9 @@
     "test:swing": "esbuild src/game/Game.ts --bundle --format=esm --platform=node --outfile=.__game.mjs --external:three && node swingtest.mjs",
     "test:combo": "esbuild src/game/Game.ts --bundle --format=esm --platform=node --outfile=.__game.mjs --external:three && esbuild src/game/poses.ts --bundle --format=esm --platform=node --outfile=.__poses.mjs --external:three && node combotest.mjs",
     "test:star": "esbuild src/game/Game.ts --bundle --format=esm --platform=node --outfile=.__game.mjs --external:three && esbuild src/game/progress.ts --bundle --format=esm --platform=node --outfile=.__progress.mjs && esbuild src/game/cammath.ts --bundle --format=esm --platform=node --outfile=.__cammath.mjs --external:three && node startest.mjs",
+    "test:size": "esbuild src/game/robot.ts --bundle --format=esm --platform=node --outfile=.__robot.mjs --external:three && esbuild src/sim/rig.ts --bundle --format=esm --platform=node --outfile=.__simrig.mjs --external:three && esbuild src/game/bodySpec.ts --bundle --format=esm --platform=node --outfile=.__bodyspec.mjs && node sizetest.mjs",
+    "doc:spec": "esbuild src/game/bodySpec.ts --bundle --format=esm --platform=node --outfile=.__bodyspec.mjs && node specdoc.mjs",
+    "probe:hull": "node hullprobe.mjs",
     "test:all": "node runtests.mjs"
   },
   "dependencies": {

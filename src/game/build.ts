@@ -3,6 +3,11 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Robot, RobotStyle } from './robot';
 import { L1, L2, HIP_Y, CY, UP } from './rig';
+import {
+  ARM_PARTS, BOOT_PARTS, CAP_PARTS, CHEST_PARTS, CHASSIS, CLAV_PARTS, FORE_PARTS, HEAD_PARTS, HIP_PARTS,
+  KNEE_PARTS, KNEECAP_PARTS, NECK_PARTS, PELVIS_PARTS, SHIN_PARTS, THIGH_PARTS, WAIST_PARTS,
+  type MatKey, type SpecPart,
+} from './bodySpec';
 
 export interface Ctx {
   main: THREE.MeshStandardMaterial; // outer armour
@@ -80,7 +85,8 @@ const glareBrow = (s: number): Pts =>
   ).map(([x, y]) => [x * s, y]);
 
 // ---------------------------------------------------------------- geometry helpers
-const RB = (w: number, h: number, d: number, r = 0.07) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2.2, h / 2.2, d / 2.2));
+/** kotak bersudut tumpul. `seg` = subdivisi (3 = badan ATLAS lama yang halus, 2/1 = badan simple yang faceted) */
+const RB = (w: number, h: number, d: number, r = 0.07, seg = 3) => new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2.2, h / 2.2, d / 2.2));
 const tcyl = (rt: number, rb: number, h: number, seg = 20) => new THREE.CylinderGeometry(rt, rb, h, seg);
 const sph = (r: number, ws = 20, hs = 14) => new THREE.SphereGeometry(r, ws, hs);
 const torus = (r: number, t: number, seg = 28) => new THREE.TorusGeometry(r, t, 8, seg);
@@ -160,6 +166,194 @@ class Batch {
   }
 }
 
+// ---------------------------------------------------------------- SIMPLE REAL STEEL CHASSIS
+/**
+ * Badan "SIMPLE REAL STEEL" — seluruh BENTUK dan UKURANNYA hidup di src/game/bodySpec.ts (satu sumber
+ * kebenaran, tabelnya ada di DESAIN_ROBOT.md). Di sini hanya penerjemahnya: satu bagian spec = satu primitif.
+ *
+ * Yang TIDAK berubah sedikit pun dari badan ATLAS lama (dibekukan, lihat DESAIN_ROBOT.md §5):
+ *   • setiap pivot & panjang tulang (rig.ts): pinggul ±0.74/2.85, lutut −L1, mata kaki −L2, pinggang 3.45,
+ *     dada +CY, leher 2.14−CY, kepala 0.36 (skala 1.04), selangka ±0.88/1.55, bahu ±0.8/−0.32,
+ *     siku −1.05, pergelangan −0.975, dan grup paha/betis yang diskalakan L1/1.5 & L2/1.42;
+ *   • jejak boot (sol 0.21 di bawah mata kaki, jari +1.24, tumit −0.62) → IK kaki & test:feet tetap sah;
+ *   • sarung tinju (hull-nya diukur harness test:clash dari mesh nyata) → tetap buildFistMesh;
+ *   • reaktor arc di sternum (identitas ATLAS + anchor FX) → koordinat persis sama;
+ *   • optik mata (addAtomEyes) di (±0.155, −0.02, 0.43) → iris/pupil/scan/flare/lock-on/streak tetap.
+ */
+/** Segmen rendah sengaja: badan Real Steel itu pelat datar & silinder faceted, dan ini yang memangkas
+// segitiga badan dari 141.640 (ATLAS) jadi jauh lebih ringan tanpa mengubah satu pun ukuran. */
+function specGeo(p: SpecPart): THREE.BufferGeometry {
+  const s = p.s;
+  switch (p.g) {
+    case 'box': return RB(s[0], s[1], s[2], s[3] ?? 0.04, s[4] ?? 2);
+    case 'cyl': return tcyl(s[0], s[1], s[2], s[3] ?? 16);
+    case 'sph': return sph(s[0], s[1] ?? 16, s[2] ?? 12);
+    case 'cone': return new THREE.ConeGeometry(s[0], s[1], s[2] ?? 8);
+    case 'torus': return torus(s[0], s[1], s[2] ?? 20);
+    case 'cap': return new THREE.CapsuleGeometry(s[0], s[1], 6, 12);
+  }
+}
+
+/**
+ * Terjemahkan satu daftar bagian spec ke geometri pada `parent`.
+ * `side` = 0 untuk segmen tengah (bagian mirror dibangun dua kali, ±x) atau tanda sisi (+1 kiri / −1 kanan)
+ * untuk segmen anggota (bagian mirror mengikuti sisi anggota itu).
+ */
+function addParts(b: Batch, parent: THREE.Object3D, list: SpecPart[], c: Ctx, o: Opt, side: number) {
+  const matOf = (k: MatKey) => c[k] as THREE.Material;
+  for (const part of list) {
+    const k = part.f ? o[part.f] / ATOM_OPT[part.f] : 1; // varian brute memakai faktor Opt yang sama
+    const signs = part.mirror ? (side === 0 ? [1, -1] : [side]) : [1];
+    const reps = part.repeat?.count ?? 1;
+    for (const sg of signs) {
+      for (let rep = 0; rep < reps; rep++) {
+        const sc: V3 = [(part.sc?.[0] ?? 1) * k, (part.sc?.[1] ?? 1) * k, (part.sc?.[2] ?? 1) * k];
+        b.add(
+          parent,
+          specGeo(part), // geometri baru tiap penempatan: Batch memutar/menggeser geometri itu sendiri
+          matOf(part.m),
+          sg * part.p[0] + (part.repeat?.dx ?? 0) * rep,
+          part.p[1] + (part.repeat?.dy ?? 0) * rep,
+          part.p[2] + (part.repeat?.dz ?? 0) * rep,
+          [part.r?.[0] ?? 0, sg * (part.r?.[1] ?? 0), sg * (part.r?.[2] ?? 0)],
+          sc,
+        );
+      }
+    }
+  }
+}
+
+/** DADA simple — juga yang dipakai rebuildHelmetAndGloves saat armorSkin 0 */
+function buildSimpleChestMesh(C: THREE.Group, b: Batch, c: Ctx, o: Opt) {
+  addParts(b, C, CHEST_PARTS, c, o, 0);
+}
+
+/** PAULDRON simple — juga yang dipakai rebuildHelmetAndGloves saat armorSkin 0 */
+function buildSimpleCapMesh(cap: THREE.Group, b: Batch, c: Ctx, o: Opt, s: number) {
+  addParts(b, cap, CAP_PARTS, c, o, s);
+}
+
+/** KEPALA simple (daftar bagian rig Real Steel) + optik mata ATLAS yang tidak berubah */
+function buildSimpleHeadMesh(r: Robot, H: THREE.Group, b: Batch, c: Ctx, o: Opt) {
+  addParts(b, H, HEAD_PARTS, c, o, 0);
+  addAtomEyes(r, H, b, c); // (±0.155, −0.02, 0.43) — persis posisi optik badan lama
+}
+
+/**
+ * CHASSIS SIMPLE: membuat SETIAP joint dengan angka yang persis sama seperti badan lama (jadi semua
+ * animasi, IK, kamera dan gameplay tidak merasakan perbedaan apa pun), lalu menempelkan bagian spec.
+ */
+function buildSimpleChassis(r: Robot, b: Batch, c: Ctx, o: Opt) {
+  // ---------------- panggul ----------------
+  addParts(b, r.pelvis, PELVIS_PARTS, c, o, 0);
+
+  // ---------------- pinggang → dada ----------------
+  const W = r.waist;
+  W.position.set(0, 3.45, 0);
+  r.pelvis.add(W);
+  addParts(b, W, WAIST_PARTS, c, o, 0);
+
+  const C = r.chest;
+  C.position.set(0, CY, 0);
+  r.waist.add(C);
+  buildSimpleChestMesh(C, b, c, o);
+
+  // ---------------- leher → kepala ----------------
+  const N = r.neck;
+  N.position.set(0, 2.14 - CY, 0.08);
+  r.chest.add(N);
+  addParts(b, N, NECK_PARTS, c, o, 0);
+
+  const H = r.head;
+  H.position.set(0, 0.36, 0.06); // real-steel head stand-off (neck→head 0.09u)
+  H.scale.setScalar(1.04);
+  N.add(H);
+  buildSimpleHeadMesh(r, H, b, c, o);
+
+  // ---------------- lengan ----------------
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1;
+
+    const clav = new THREE.Group();
+    clav.position.set(s * 0.88, 1.9 - CY, 0);
+    r.chest.add(clav);
+    r.clavs.push(clav);
+    addParts(b, clav, CLAV_PARTS, c, o, s);
+
+    const sh = new THREE.Group();
+    sh.position.set(s * 0.8, -0.32, 0);
+    sh.rotation.order = 'YXZ';
+    clav.add(sh);
+    r.shoulders.push(sh);
+
+    const cap = new THREE.Group();
+    cap.position.copy(sh.position);
+    clav.add(cap);
+    r.caps.push(cap);
+    buildSimpleCapMesh(cap, b, c, o, s);
+
+    addParts(b, sh, ARM_PARTS, c, o, s);
+
+    const el = new THREE.Group();
+    el.position.y = -1.05; // Real-steel golden arm: upper 0.28u
+    sh.add(el);
+    r.elbows.push(el);
+    addParts(b, el, FORE_PARTS, c, o, s);
+
+    const wr = new THREE.Group();
+    wr.position.y = -0.975; // Real-steel golden arm: forearm 0.26u
+    el.add(wr);
+    r.wrists.push(wr);
+
+    const fist = new THREE.Group();
+    wr.add(fist);
+    r.fists.push(fist);
+    buildFistMesh(r, fist, b, c, o, s); // sarung tinju = hull BEKU (test:clash mengukurnya)
+  }
+
+  // ---------------- kaki ----------------
+  const sy1 = L1 / 1.5; // grup paha dimodelkan sepanjang 1.5 lalu diregangkan ke tulang sebenarnya
+  const sy2 = L2 / 1.42;
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1;
+
+    const hip = new THREE.Group();
+    hip.position.set(s * 0.74, HIP_Y, 0);
+    hip.rotation.order = 'ZXY';
+    r.pelvis.add(hip);
+    r.hipJ.push(hip);
+    addParts(b, hip, HIP_PARTS, c, o, s);
+
+    const thigh = new THREE.Group();
+    thigh.scale.set(1, sy1, 1);
+    hip.add(thigh);
+    addParts(b, thigh, THIGH_PARTS, c, o, s);
+
+    const knee = new THREE.Group();
+    knee.position.y = -L1;
+    hip.add(knee);
+    r.kneeJ.push(knee);
+    addParts(b, knee, KNEE_PARTS, c, o, s);
+
+    const kc = new THREE.Group(); // tempurung lutut melayang — tetap dianimasikan robot.ts
+    kc.position.set(0, 0, 0.28 * o.lt);
+    knee.add(kc);
+    r.kneeCaps.push(kc);
+    addParts(b, kc, KNEECAP_PARTS, c, o, s);
+
+    const shin = new THREE.Group();
+    shin.scale.set(1, sy2, 1);
+    knee.add(shin);
+    addParts(b, shin, SHIN_PARTS, c, o, s);
+
+    const ankle = new THREE.Group();
+    ankle.position.y = -L2;
+    knee.add(ankle);
+    r.footJ.push(ankle);
+    addParts(b, ankle, BOOT_PARTS, c, o, s);
+  }
+}
+
 // ---------------------------------------------------------------- public entry
 export function applyArmorPalette(r: Robot, c: Ctx, o: Opt) {
   if (o.variant !== 'atom') return;
@@ -196,12 +390,18 @@ export function buildRobot(r: Robot, c: Ctx, o: Opt) {
   applyArmorPalette(r, c, o);
   const b = new Batch();
   r.pelvis.position.y = UP; // longer legs lift everything above the hips
-  buildPelvis(r, b, c);
-  buildLegs(r, b, c, o);
-  buildWaist(r, b, c);
-  buildChest(r, b, c, o);
-  buildNeckAndHead(r, b, c, o);
-  buildArms(r, b, c, o);
+  if (CHASSIS === 'simple') {
+    // DESAIN BARU: badan simple ala Real Steel (bentuk & ukuran di src/game/bodySpec.ts)
+    buildSimpleChassis(r, b, c, o);
+  } else {
+    // badan ATLAS lama yang detail — masih utuh, tinggal dipilih lewat CHASSIS di bodySpec.ts
+    buildPelvis(r, b, c);
+    buildLegs(r, b, c, o);
+    buildWaist(r, b, c);
+    buildChest(r, b, c, o);
+    buildNeckAndHead(r, b, c, o);
+    buildArms(r, b, c, o);
+  }
   b.flush();
   addBodyKit(r, c, o);
 }
@@ -640,6 +840,10 @@ function buildChest(r: Robot, b: Batch, c: Ctx, o: Opt) {
 }
 
 function buildChestMesh(C: THREE.Group, b: Batch, c: Ctx, o: Opt) {
+  if (CHASSIS === 'simple' && (c.style.armorSkin ?? 0) === 0) {
+    buildSimpleChestMesh(C, b, c, o); // armorSkin 0 = chassis simple; skin 1..11 tetap memakai seni ATLAS
+    return;
+  }
   const W = o.cw;
   const atom = o.variant === 'atom';
   const X = (p: Pts): Pts => p.map(([x, y]) => [x * W, y]);
@@ -943,6 +1147,10 @@ function buildNeckAndHead(r: Robot, b: Batch, c: Ctx, o: Opt) {
 
 function buildHeadMesh(r: Robot, H: THREE.Group, b: Batch, c: Ctx, o: Opt) {
   const skin = c.style.helmetSkin ?? 0;
+  if (CHASSIS === 'simple' && skin === 0) {
+    buildSimpleHeadMesh(r, H, b, c, o); // helm bawaan = kepala simple Real Steel; skin 1..9 tetap ada
+    return;
+  }
   if (skin > 0 && o.variant === 'atom') {
     customAtomHelmet(r, H, b, c, skin);
   } else if (o.variant === 'atom') {
@@ -1753,6 +1961,10 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
 
 /** Deltoid pauldron: base dome + per-armor-skin signature shoulder details (skin 0 = clean G2 default) */
 function buildCapMesh(cap: THREE.Group, b: Batch, c: Ctx, o: Opt, s: number) {
+  if (CHASSIS === 'simple' && (c.style.armorSkin ?? 0) === 0) {
+    buildSimpleCapMesh(cap, b, c, o, s);
+    return;
+  }
   const th = o.th;
   const skin = o.variant === 'atom' ? (c.style.armorSkin ?? 0) : 0;
   // one smooth deltoid dome, one under-plate and a single accent ribbon
