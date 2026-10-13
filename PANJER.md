@@ -2,6 +2,7 @@
 
 > **Males nahan tombol?** Tekan **SHIFT** sekali → **PANJER OTOMATIS**: setiap pukulan (H/J/K/X) langsung
 > **mentok maks** — **×2 damage & ×2 hajar** — dan keluar **seketika saat tombol ditekan**, kecepatan normal.
+> **Mau spam?** Di mode itu, **tahan** tombolnya: pukulannya keluar terus, dan meleset pun tidak mengunci.
 >
 > **Mau atur sendiri?** Mode otomatisnya mati → **tahan** tombol pukulannya lalu **lepas**: sekelibat = pukulan
 > biasa, makin lama ditahan makin kuat, sampai ×2 di 1 detik.
@@ -19,7 +20,8 @@ Kerja di semua mode, dan lawan bisa melakukannya juga ke kamu (dengan aturan yan
 | Kecepatan pukulan | **normal** — keluar saat tombol **ditekan** | sepanjang tahanan (0,4–1 detik) |
 | Kekuatan | **mentok ×2** selalu | ×1 → ×2 sesuai lama tahanan |
 | Ancang-ancang | tidak ada (pukulan langsung) | kelihatan jelas (tangan ditarik + menyala) |
-| Kelebihan | cepat + maks, tidak perlu ditahan | bisa pilih kekuatan (×1,3 · ×1,5 · ×1,7 · ×2) |
+| Spam | **tahan tombolnya = keluar terus**, meleset tidak mengunci | tidak bisa (harus nekan ulang) |
+| Kelebihan | cepat + maks + bisa di-spam | bisa pilih kekuatan (×1,3 · ×1,5 · ×1,7 · ×2) |
 
 - **SHIFT** bisa ditekan di mana saja: di lobby, saat jalan ke ring, di tarung, maupun saat jeda. Tekan lagi = mati.
 - Ingatannya disimpan, jadi sekali dinyalakan dia tetap nyala besok-besok (sampai kamu matikan).
@@ -31,6 +33,35 @@ Kerja di semua mode, dan lawan bisa melakukannya juga ke kamu (dengan aturan yan
   mentok maks". Tombol RUN di HP tetap sama (F).
 - ⚠️ Ini saklar **khusus pemain**: lawan tidak ikut dapat ×2 permanen — dia tetap memakai cara lamanya (sesekali
   memuat satu pukulan). Jadi pertandingan jadi lebih ringan buat kamu; bilang saja kalau mau lawannya disamakan.
+
+---
+
+## 0b. SPAM — tahan tombolnya, pukulannya keluar terus
+
+Di **PANJER OTOMATIS**, kamu tidak perlu nekan-nekan lagi: **tahan** tombol pukulannya (H/J/K/X) dan dia **memukul
+terus** sampai tombolnya dilepas. Dua hal yang dulu menghentikan aliran pukulan dilepas di mode ini:
+
+| | Normal | **PANJER OTOMATIS (spam)** |
+|---|---|---|
+| Pukulan meleset | **terkunci** ~0,42 detik (badannya keburu jalan) — tidak bisa buru-buru mukul lagi | **tidak mengunci** — boleh langsung mukul lagi |
+| Mukul berkali-kali | harus nekan tombolnya berulang | **tahan saja**, keluar sendiri |
+
+Yang **tidak** dilepas: **irama pukulannya tetap dari animasinya sendiri** — pukulan berikutnya keluar saat jendela
+cancel swing-nya kebuka, dan rantai jab (1-1-1-1) tetap bikin tiap link makin cepat. Jadi pukulannya tetap terlihat
+seperti pukulan, bukan getaran. Angka nyatanya (dari buku jurus yang ada):
+
+| Kondisi | Irama | Dengan ×2 |
+|---|---|---|
+| jab meleset (rantai 0 → 4) | 2,6 → **3,4 pukulan/detik** | 37 → 48 dps |
+| jab **kena** (rantai 0 → 4) | 3,4 → **4,5 pukulan/detik** | 48 → 63 dps |
+
+Dan harganya tetap **tenaga**: 1 jab = 2,4 tenaga, jadi tank penuh ≈ **42 pukulan** (±11 detik nembak terus) sebelum
+GASSED — habis itu tangan melambat. (Shout `TENAGA HABIS` sekarang dibatasi 0,7 detik sekali, tidak lagi tiap
+percobaan, jadi tidak berkedip-kedip di layar.)
+
+⚠️ Aturan "pukulan meleset" itu bagian dari balancing yang kamu minta dulu (biar strategis), jadi **hanya dilepas di
+mode ini** dan **hanya untuk kamu** — lawan tetap kena aturan lamanya. Kalau mau aturannya dilepas buat dua-duanya
+(atau dilepas di mode biasa juga), bilang saja.
 
 ---
 
@@ -141,7 +172,7 @@ Sesuai permintaan: **cuma damage dan hajar**. Jadi sengaja tidak diubah:
 ## 6. Verifikasi
 
 ```bash
-npm run test:panjer   # 7 seksi: aturan & kurva · tombol · tell · bayaran · komitmen · AI · "yang lain tidak bergerak"
+npm run test:panjer   # 9 seksi: aturan & kurva · tombol · tell · bayaran · komitmen · AI · "yang lain tidak bergerak" · PANJER OTOMATIS · SPAM
 npm test              # feet/pose/cam/crowd/zeus/balance/star/combo/swing/ali/panjer PASS
 npx tsc --noEmit      # bersih
 npm run build         # ✓
@@ -166,4 +197,9 @@ Yang dikunci harness-nya (`panjertest.mjs`, §1–§7):
 - **PANJER OTOMATIS**: SHIFT dibaca sebelum gerbang tarung (jadi hidup di lobby juga), saat mode nyala pukulan keluar
   dari jalur **press** (bukan release) dengan pengali **mentok `PANJER_DMG`**, tidak ada load yang dibangun, ingatannya
   disimpan, tell-nya jadi STATE (kepalan menyala + badge HUD + tombol tap di HP), dan **SHIFT sudah bukan sprint lagi**
-  (sprint = F, tombol RUN di HP tetap F).
+  (sprint = F, tombol RUN di HP tetap F);
+- **SPAM**: `updateAutoFire()` jalan tiap frame tarung **hanya** di mode itu, membaca tombol pukulan yang **masih
+  ditahan** (yang terakhir ditekan menang, `PANJER_AUTO_ORDER` cuma tie-break), berhenti begitu tombolnya dilepas, mati
+  saat KO/jatuh/di udara — dan **whiff-lockout dilepas hanya untuk pemain di mode ini** (`spam = this.panjerMode &&
+  f.isPlayer`), sementara ekor lambatnya tetap main, dodge-cancel tetap terkunci saat meleset, biaya tenaga per pukulan
+  tidak berubah, dan shout `TENAGA HABIS` dibatasi 0,7 detik.

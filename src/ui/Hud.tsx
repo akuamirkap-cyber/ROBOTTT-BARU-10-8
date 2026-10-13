@@ -235,9 +235,9 @@ export function Hud({ h, touch, onPanjerMode }: { h: HudState; touch: boolean; o
             h.panjerMode ? 'animate-pulse bg-amber-300/95 text-black shadow-[0_0_22px_rgba(255,211,74,0.6)]' : 'bg-white/12 text-white/55'
           }`}
           style={{ top: h.ali ? 146 : 112 }}
-          title="PANJER OTOMATIS (SHIFT): tiap pukulan H/J/K/X langsung keluar saat tombol ditekan — mentok maks ×2 damage & ×2 hajar. Nggak perlu ditahan lagi. Tekan SHIFT lagi = kembali ke cara lama (tahan tombolnya buat ngisi kekuatan)."
+          title="PANJER OTOMATIS (SHIFT): tiap pukulan H/J/K/X langsung keluar saat tombol ditekan — mentok maks ×2 damage & ×2 hajar — dan TAHAN tombolnya = pukulan keluar terus (spam), meleset pun nggak ngunci. Tekan SHIFT lagi = kembali ke cara lama."
         >
-          💪 PANJER OTOMATIS {h.panjerMode ? '· ×2 MAKS' : 'OFF'}
+          💪 PANJER OTOMATIS {h.panjerMode ? '· ×2 MAKS · SPAM' : 'OFF'}
         </button>
       )}
 

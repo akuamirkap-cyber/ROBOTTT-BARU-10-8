@@ -19,10 +19,12 @@
 //   §6  THE OPPONENT CAN DO IT TOO (same rule, same 1 s) — and not too often
 //   §7  NOTHING ELSE MOVED — the punch book, the tells and the dodge table are exactly what they were
 //   §8  PANJER OTOMATIS (SHIFT) — one press and every punch is a full one, thrown at normal speed
+//   §9  SPAM — a held punch button keeps punching, and a miss no longer locks the next punch out
 import { readFileSync } from 'node:fs';
 import {
   ALI_SPEED,
   PANJER_FREE,
+  PANJER_AUTO_ORDER,
   PANJER_LOADABLE,
   PANJER_MODE_KEYS,
   DODGE_CFG,
@@ -35,6 +37,10 @@ import {
   PANJER_KEYS,
   PANJER_KNOCK,
   PANJER_T,
+  STAM_SCALE,
+  TANK_POP_CD,
+  WHIFF_SLOW,
+  WHIFF_TAIL,
   panjerAiRate,
   panjerCharge,
   panjerLabel,
@@ -101,7 +107,7 @@ console.log('\n§2  the button — load on the press, throw on the RELEASE');
 {
   const edge = slice('const tk = tapKind[code];', 'private heroAnimState', 3000);
   ok('the six strike keys no longer fire on the press by themselves', !/case 'KeyH':\s*this\.tryAttack/.test(src) && !/case 'KeyX':[^\n]*\n[^\n]*this\.tryAttack/.test(src));
-  ok('...they start a LOAD instead (unless PANJER OTOMATIS is on)', /this\.panjerMode\) this\.panjerMax\(p, PANJER_KEYS\[code\]\);\s*\n\s*else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(edge) && /case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyV':\s*\n\s*case 'KeyX':/.test(edge));
+  ok('...they start a LOAD instead (unless PANJER OTOMATIS is on)', /if \(this\.panjerMode\) \{[\s\S]{0,200}this\.panjerMax\(p, PANJER_KEYS\[code\]\);\s*\n\s*\} else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(edge) && /case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyV':\s*\n\s*case 'KeyX':/.test(edge));
   ok('...and the RELEASE is what throws the punch', /release\(code: string\)[\s\S]{0,700}if \(this\.player && this\.player\.panjerKey === code\) this\.firePanjer\(this\.player\);/.test(src));
   ok('the reactive COUNTER (L) still fires on the press — it has to answer a fist already in flight', /case 'KeyL':\s*\n\s*this\.tryAttack\(p, 'counter'\);/.test(src));
   ok('...and the throw (P) and the Overdrive (R) are untouched', PANJER_KEYS.KeyP === undefined && PANJER_KEYS.KeyL === undefined && PANJER_KEYS.KeyN === undefined && PANJER_KEYS.KeyR === undefined);
@@ -199,7 +205,7 @@ console.log('\n§8  PANJER OTOMATIS (SHIFT) — full power, normal speed, no hol
     const edge = slice('private onEdge(', 'const p = this.player;', 2600);
     return /PANJER_MODE_KEYS\.includes\(code\)[\s\S]{0,260}this\.togglePanjerMode\(\);/.test(edge);
   })());
-  ok('with the mode on the punch leaves ON THE PRESS (no release, no wait)', /if \(this\.panjerMode\) this\.panjerMax\(p, PANJER_KEYS\[code\]\);/.test(src));
+  ok('with the mode on the punch leaves ON THE PRESS (no release, no wait)', /if \(this\.panjerMode\) \{[\s\S]{0,200}this\.panjerMax\(p, PANJER_KEYS\[code\]\);/.test(src));
   ok('...and it leaves at the CEILING', /private panjerMax\(f: Fighter, id: MoveId\) \{\s*\n\s*f\.panjerNext = PANJER_DMG;/.test(src));
   ok('...at full speed: it is the ordinary press path (tryAttack), not the release one', slice('private panjerMax(', 'togglePanjerMode()').includes('this.tryAttack(f, id);'));
   ok('...and in the automatic mode nothing is ever LOADED (no hold to wait for)', !/beginPanjer/.test(slice('private panjerMax(', 'togglePanjerMode()')) && !/panjerHold/.test(slice('private panjerMax(', 'togglePanjerMode()')));
@@ -222,7 +228,34 @@ console.log('\n§8  PANJER OTOMATIS (SHIFT) — full power, normal speed, no hol
   // the editor screens use SHIFT+click: the game must not be listening at all while they are up
   ok('the game stops reading keys while a full-screen editor/sim is open', /if \(this\.inputOff\) return;/.test(src) && /setInputOff\(true\)/.test(readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8')) && /setInputOff\(false\)/.test(readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8')));
   // ...and the whole mode is a PLAYER switch: the AI fights the way it always did
-  ok('the automatic mode is the player\'s switch (the AI\'s own panjer is unchanged)', /this\.panjerMode \? PANJER_DMG : 1|this\.panjerMode\) this\.panjerMax\(p,/.test(src) && /\(p, PANJER_KEYS\[code\]\)/.test(src));
+  ok('the automatic mode is the player\'s switch (it only ever touches `this.player`)', /this\.panjerMax\(p, PANJER_KEYS\[code\]\)/.test(src) && /const p = this\.player;\s*\n\s*if \(!this\.panjerMode \|\| this\.phase !== 'fight'/.test(src));
+  ok('...and the opponent\'s own panjer is exactly what it was', /if \(!isPlayer && f\.panjerReady\) this\.firePanjer\(f\);/.test(src) && /this\.beginPanjer\(e, loadId, null\);/.test(src));
+}
+
+// ==================================================================== §9 SPAM
+// "saya mau saya bsa spam pukulan" — the two things that stopped a punch STREAM were the whiff lockout and having to
+// press the button again. In PANJER OTOMATIS both are lifted for the player; the swing's own cancel window is still
+// the metronome, so the animation stays honest.
+console.log('\n§9  SPAM — a held button keeps punching (PANJER OTOMATIS only)');
+{
+  const spamFn = slice('private updateAutoFire()', 'private playerInput()', 2200);
+  ok('holding a punch button re-fires it every frame (the press is not needed again)', /private updateAutoFire\(\)/.test(src) && /this\.panjerMax\(p, PANJER_KEYS\[code\]\);/.test(spamFn));
+  ok('...it runs every frame of the fight', /this\.panjerStep\(this\.enemy, dt, false\);\s*\n\s*this\.updateAutoFire\(\);/.test(src));
+  ok('...only in PANJER OTOMATIS (the manual hold mechanic is untouched)', /if \(!this\.panjerMode \|\| this\.phase !== 'fight' \|\| this\.paused\) return;/.test(spamFn));
+  ok('...and it stops when the button comes up', /if \(this\.player && this\.player\.autoFireKey === code\) this\.player\.autoFireKey = null;/.test(src));
+  ok('the last button PRESSED wins, with a fixed tie-break while two are held', /let code = p\.autoFireKey && this\.keys\.has\(p\.autoFireKey\) \? p\.autoFireKey : null;/.test(spamFn) && /for \(const c of PANJER_AUTO_ORDER\)/.test(spamFn) && PANJER_AUTO_ORDER.join(',') === 'KeyH,KeyJ,KeyC,KeyK,KeyV,KeyX');
+  ok('the held button is remembered on the press', /p\.autoFireKey = code;/.test(slice("case 'KeyX':", 'break;', 400)));
+  ok('nothing is thrown while he is on the floor, in the air or out of the round', /p\.state === 'ko' \|\| p\.state === 'down' \|\| p\.state === 'air'/.test(spamFn));
+  // THE WHIFF LOCKOUT — the balance rule the user asked to be able to ignore
+  ok('a MISS no longer locks the next punch out in this mode', /const spam = this\.panjerMode && f\.isPlayer;/.test(src) && /if \(whiffGates\(f\.whiffT\) && !isOD\(id\) && !spam\) return;/.test(src));
+  ok('...but the slow tail still plays (the body still has to come back)', /whiffRecovery/.test(src) && WHIFF_TAIL === 0.42 && WHIFF_SLOW === 0.6);
+  ok('...and only for the PLAYER: the opponent\'s over-commitment is untouched', !/spam = this\.panjerMode && !f\.isPlayer/.test(src));
+  ok('...the dodge-cancel out of a whiffed swing is NOT lifted (that punishment stays)', /canBailOut = \(whiffT: number, incomingDeadly: boolean\) => !whiffGates\(whiffT\) \|\| incomingDeadly/.test(src));
+  // stamina is still the price of a stream (and it no longer shouts every frame)
+  ok('the stamina cost of every punch is untouched (a stream still empties the tank)', MOVES.jab.cost === 4 && STAM_SCALE === 0.6);
+  ok('...and the empty-tank shout is throttled instead of firing every attempt', /f\.tankPopT = TANK_POP_CD;/.test(src) && TANK_POP_CD >= 0.4 && /if \(f\.isPlayer && f\.tankPopT <= 0\)/.test(src));
+  ok('the HUD badge says the mode spams', /SPAM/.test(hud));
+  ok('the guide says it too (and says the miss rule is relaxed inside the mode)', /SPAM/.test(menu) && /PUKULAN MELESET[\s\S]{0,120}PANJER OTOMATIS/.test(menu));
 }
 
 console.log(fails === 0 ? '\nPANJER: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);

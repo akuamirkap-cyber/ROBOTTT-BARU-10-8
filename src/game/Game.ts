@@ -1073,6 +1073,11 @@ export const PANJER_KNOCK = 2.0; // ×knockback at a full load (the pushback AND
  * four punch keys fire ON THE PRESS again (full speed, nothing to hold) and every one of them comes out at the
  * ceiling — PANJER_DMG× damage and PANJER_KNOCK× hajar. That is the "pukulan otomatis yang mentok maks" the user
  * asked for: no more holding H/J/K/X to get the big punch.
+ * ...and it is also the SPAM switch ("saya mau saya bisa spam pukulan"): while it is on you may simply KEEP THE
+ * BUTTON DOWN and he keeps punching. The rhythm is still the swing's own cancel window (the animation stays honest),
+ * but the two things that used to stop a punch stream are lifted for the player in this mode:
+ *   • the WHIFF LOCKOUT — missing no longer locks the next punch out for WHIFF_TAIL (the slow tail still plays);
+ *   • having to press again — the held button re-fires itself (updateAutoFire).
  * The tell does not disappear with the wind-up — it moves from the punch to the FIGHTER: while the mode is on his
  * fists burn (glow + sparks) and the HUD says so, so the other corner can still read what he is holding.
  * SHIFT used to be the sprint key; the sprint now lives on F (and on the double-tap W run latch), because one key
@@ -1103,6 +1108,11 @@ export const PANJER_KEYS: Record<string, MoveId> = {
   KeyX: 'cross',
 };
 /** the one rule, in one place: a hold counts as loaded once it has been held for PANJER_T */
+/** PANJER OTOMATIS SPAM: the order the held buttons are read in — the last one you PRESSED wins, this is only the
+ *  tie-break when you are holding two of them at once */
+export const PANJER_AUTO_ORDER: readonly string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX'];
+/** ...and how often the empty-tank shout may repeat while a button is held down (it used to fire every attempt) */
+export const TANK_POP_CD = 0.7;
 /** the four punches a load can ride on — and the ONLY moves it can ride on */
 export const PANJER_LOADABLE: MoveId[] = ['jab', 'hook', 'upper', 'cross'];
 /**
@@ -1655,6 +1665,8 @@ class Fighter {
   pkVis = 0; // smoothed 0..1 for the loading pose (see animateFighter)
   pkTick = 0; // the loading tick's own clock (the sound)
   pkTick2 = 0; // ...and the spark clock on a full load
+  autoFireKey: string | null = null; // PANJER OTOMATIS: which punch button is being HELD (the spam repeat reads it)
+  tankPopT = 0; // throttle on the empty-tank shout, so a held button cannot shout it 60 times a second
   panjerSince = 0; // performance.now() the button went down on: the load is timed on the clock, not on frames
   slipCd = 0; // short cooldown between two slips
   tellT = 0; // ENEMY wind-up warning left (the attack indicator is on screen while this runs)
@@ -1722,6 +1734,8 @@ class Fighter {
     this.clearPanjer();
     this.panjer = 1;
     this.pkVis = 0;
+    this.autoFireKey = null;
+    this.tankPopT = 0;
     this.slipCd = 0;
     this.tellT = 0;
     this.tellTotal = 0;
@@ -3588,6 +3602,7 @@ export class Game {
     // PANJER: the loaded punch is thrown the moment the button is let go — release before PANJER_T and it is the
     // ordinary punch, hold it for the full second and it lands 2× as hard and drives him 2× as far.
     if (this.player && this.player.panjerKey === code) this.firePanjer(this.player);
+    if (this.player && this.player.autoFireKey === code) this.player.autoFireKey = null; // the spam repeat stops
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -3685,9 +3700,12 @@ export class Game {
       case 'KeyK':
       case 'KeyV':
       case 'KeyX':
-        // PANJER OTOMATIS: nothing to hold — the punch comes out ON THE PRESS and it comes out full.
-        if (this.panjerMode) this.panjerMax(p, PANJER_KEYS[code]);
-        else this.beginPanjer(p, PANJER_KEYS[code], code);
+        // PANJER OTOMATIS: nothing to HOLD FOR — the punch comes out on the press, full, and keeping the button
+        // down keeps it coming (see updateAutoFire). Without the mode the key loads instead.
+        if (this.panjerMode) {
+          p.autoFireKey = code; // the last punch button pressed is the one the spam repeat throws
+          this.panjerMax(p, PANJER_KEYS[code]);
+        } else this.beginPanjer(p, PANJER_KEYS[code], code);
         break;
       // L stays INSTANT — it is the reactive counter, the one punch that has to answer a fist already in flight.
       case 'KeyL':
@@ -4873,7 +4891,7 @@ export class Game {
       this.sfx.ready();
       this.sfx.say('Panjer otomatis!');
     } else this.sfx.click();
-    this.showBanner('PANJER OTOMATIS', on ? 'PUKULAN MENTOK MAKS ×2 DAMAGE ×2 HAJAR' : 'KEMBALI KE CARA LAMA (TAHAN TOMBOLNYA)', on ? 'fight' : 'round', 1.6);
+    this.showBanner('PANJER OTOMATIS', on ? 'MAKS ×2 · TAHAN TOMBOLNYA BUAT SPAM PUKULAN' : 'KEMBALI KE CARA LAMA (TAHAN TOMBOLNYA BUAT NGISI KEKUATAN)', on ? 'fight' : 'round', 1.6);
     if (this.phase !== 'menu' && p) {
       this.flashAmt = Math.max(this.flashAmt, on ? 0.5 : 0.25);
       this.trauma = Math.min(0.5, this.trauma + (on ? 0.2 : 0.08));
@@ -4894,9 +4912,31 @@ export class Game {
   private updatePanjer(dt: number) {
     this.panjerStep(this.player, dt, true);
     this.panjerStep(this.enemy, dt, false);
+    this.updateAutoFire();
+  }
+
+  /**
+   * THE SPAM ENGINE (PANJER OTOMATIS only). While the mode is on, a punch button that stays DOWN keeps punching:
+   * every frame we ask for the punch again and `tryAttack` decides — an idle fighter throws it, a fighter mid-swing
+   * gets it queued and it leaves the instant the cancel window opens, a fighter on his back gets nothing. So the
+   * CADENCE IS STILL THE ANIMATION (the swing's own cancel window is the metronome, and the jab chain keeps
+   * speeding it up exactly the way a hand-thrown 1-1-1-1 does), while the two gates that used to stop a punch
+   * stream are lifted in this mode: the whiff lockout (see tryAttack) and having to press the button again.
+   * The last button you pressed wins; the fixed order is only the tie-break when two are held at once.
+   */
+  private updateAutoFire() {
+    const p = this.player;
+    if (!this.panjerMode || this.phase !== 'fight' || this.paused) return;
+    if (p.state === 'ko' || p.state === 'down' || p.state === 'air' || p.state === 'legend' || p.state === 'legendHit') return;
+    let code = p.autoFireKey && this.keys.has(p.autoFireKey) ? p.autoFireKey : null;
+    if (!code) for (const c of PANJER_AUTO_ORDER) if (this.keys.has(c)) code = c; // fallback: whatever is still down
+    if (!code) return;
+    p.autoFireKey = code;
+    this.panjerMax(p, PANJER_KEYS[code]);
   }
 
   private panjerStep(f: Fighter, dt: number, isPlayer: boolean) {
+    if (f.tankPopT > 0) f.tankPopT = Math.max(0, f.tankPopT - dt);
     if (!f.panjerId) {
       f.panjerReady = false;
       return;
@@ -6088,9 +6128,16 @@ export class Game {
     }
     // OVER-COMMITMENT GATE: a punch thrown into empty air cannot be followed by another until the swing has played
     // out (the Overdrive is exempt — spending a full meter to cover a mistake is a legitimate escape).
-    if (whiffGates(f.whiffT) && !isOD(id)) return;
+    // PANJER OTOMATIS = the spam switch: inside it a missed punch no longer locks the next one out for WHIFF_TAIL
+    // (the slow tail still plays — the body still has to come back — you are simply allowed to keep swinging), and
+    // the empty-tank shout is throttled below so a held button cannot fire it sixty times a second.
+    const spam = this.panjerMode && f.isPlayer;
+    if (whiffGates(f.whiffT) && !isOD(id) && !spam) return;
     if (f.stam < Math.min(m.cost * STAM_SCALE, 4)) {
-      if (f.isPlayer) this.popup(new THREE.Vector3(f.pos.x, 5.8, f.pos.y), 'TENAGA HABIS', 'pop-info');
+      if (f.isPlayer && f.tankPopT <= 0) {
+        f.tankPopT = TANK_POP_CD;
+        this.popup(new THREE.Vector3(f.pos.x, 5.8, f.pos.y), 'TENAGA HABIS', 'pop-info');
+      }
       return;
     }
     this.startMove(f, id);
