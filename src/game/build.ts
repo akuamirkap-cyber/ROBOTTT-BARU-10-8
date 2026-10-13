@@ -36,48 +36,18 @@ export interface SkinMeta {
 }
 
 export const HELMET_SKINS: SkinMeta[] = [
-  { id: 0, name: 'ATOM PRIME', sub: 'G2 Sparring Mesh & Radiator Crown', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
+  { id: 0, name: 'ATLAS PRIME', sub: 'Helm Bawaan Robot ATLAS · G2 Sparring Mesh & Radiator Crown', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
   { id: 1, name: 'ZEUS REAL STEEL 100%', sub: 'Model 3D Asli Zeus Dari Ujung Kepala Sampai Ujung Kaki', rarity: 'DIVINE', color: '#22ff44', accent: '#121314' },
-  { id: 2, name: 'NOISY BOY SHOGUN', sub: 'Samurai Kabuto & Oni Fanged Mask', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#ffb703' },
-  { id: 3, name: 'MIDAS GOLDHAWK', sub: '24K Gold Mohawk & Fang Visor', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#9e2a2b' },
-  { id: 4, name: 'TWIN CITIES HYDRA', sub: 'Tri-Optic Cyclops & Twin Turbos', rarity: 'LEGENDARY', color: '#ff5a36', accent: '#3a4252' },
-  { id: 5, name: 'AMBUSH CRUSHER', sub: 'Hydraulic Iron-Jaw & Roll-Bar', rarity: 'RARE', color: '#ff9b3d', accent: '#4a5568' },
-  { id: 6, name: 'METRO SIEGE CAGE', sub: 'Welded Steel Roll-Cage & Beacon', rarity: 'EPIC', color: '#ffd166', accent: '#5c4d3c' },
-  { id: 7, name: 'BLACKJACK VIPER', sub: 'Aero Valkyrie Wings & V-Visor', rarity: 'ULTRA RARE', color: '#00f5d4', accent: '#1b263b' },
-  { id: 8, name: 'CENTURION SPARTAN', sub: 'Titanium Brush-Crest & T-Slit', rarity: 'LEGENDARY', color: '#60a5fa', accent: '#cbd5e1' },
-  { id: 9, name: 'OVERLORD OMEGA', sub: 'Cyber-Demon Horns & Magma Crown', rarity: 'MYTHIC', color: '#ff2a4b', accent: '#ffb703' },
-  { id: 10, name: 'ZEUS THUNDERLORD', sub: 'Olympian Lightning Crown, Tesla Temples & Storm-Beard Jaw', rarity: 'DIVINE', color: '#b8f0ff', accent: '#ffd36b' },
-  { id: 11, name: 'RED METAL REAPER', sub: 'Candy-Red Chrome Blade-Fin, V8 Grille Jaw & Side Pipes', rarity: 'APEX', color: '#ff2d3a', accent: '#e6e8ec' },
 ];
 
 export const ARMOR_SKINS: SkinMeta[] = [
-  { id: 0, name: 'G2 TITANIUM APEX', sub: 'Standard Carbon-Titanium & Arc Core', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1540a8' },
+  { id: 0, name: 'ATLAS TITANIUM', sub: 'Armor Bawaan Robot ATLAS · Carbon-Titanium & Arc Core', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1540a8' },
   { id: 1, name: 'ZEUS OBSIDIAN 100%', sub: 'Pelat Dada V-Shape & Inti Kristal Zamrud Asli Zeus', rarity: 'DIVINE', color: '#22ff44', accent: '#121314' },
-  { id: 2, name: 'NOISY BOY DAIMYO', sub: 'Samurai Do-Maru & Neon Kanji Matrix', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#ffb703' },
-  { id: 3, name: 'MIDAS 24K IMPERIAL', sub: 'Solid 24K Gold Cuirass & Spiked Caps', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#991b1b' },
-  { id: 4, name: 'TWIN CITIES TURBO', sub: 'Dual Chest Reactors & Quad Jet-Stacks', rarity: 'LEGENDARY', color: '#ff5a36', accent: '#b91c1c' },
-  { id: 5, name: 'METRO SIEGE EXOSUIT', sub: 'Heavy Roll-Cage Chest & Smokestacks', rarity: 'EPIC', color: '#ffd166', accent: '#d97706' },
-  { id: 6, name: 'AMBUSH SCRAP-TITAN', sub: 'Cross-Harness Plating & Boiler Pack', rarity: 'RARE', color: '#ff9b3d', accent: '#4b5563' },
-  { id: 7, name: 'VIPER STEALTH AERO', sub: 'Carbon Stealth Wing-Pauldrons & Core', rarity: 'ULTRA RARE', color: '#00f5d4', accent: '#0f172a' },
-  { id: 8, name: 'CENTURION AEGIS', sub: 'Mirror-Chrome Paladin & Winged Shield', rarity: 'LEGENDARY', color: '#60a5fa', accent: '#e2e8f0' },
-  { id: 9, name: 'OVERLORD HELLFORGE', sub: 'Horned Demon Pauldrons & Magma Core', rarity: 'MYTHIC', color: '#ff2a4b', accent: '#f59e0b' },
-  { id: 10, name: 'ZEUS THUNDERLORD AEGIS', sub: 'Storm-Titanium Cuirass, Sternum Thunderbolt & Twin Tesla Coils', rarity: 'DIVINE', color: '#b8f0ff', accent: '#ffd36b' },
-  { id: 11, name: 'RED METAL JUGGERNAUT', sub: 'Candy-Red Chrome Plating, Hood-Scoop Chest & V8 Header Exhausts', rarity: 'APEX', color: '#ff2d3a', accent: '#e6e8ec' },
 ];
 
 export const GLOVE_SKINS: SkinMeta[] = [
-  { id: 0, name: 'G2 TITANIUM PRO', sub: 'WRB Heavy Titanium & Arc Cuff', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
+  { id: 0, name: 'ATLAS PRO', sub: 'Sarung Tinju Bawaan Robot ATLAS · WRB Heavy Titanium & Arc Cuff', rarity: 'SIGNATURE', color: '#45d6ff', accent: '#1e50a2' },
   { id: 1, name: 'ZEUS HAMMER FIST 100%', sub: 'Tangan Palu & Ventilasi Sirip 5-Lubang Asli Zeus', rarity: 'DIVINE', color: '#22ff44', accent: '#50555a' },
-  { id: 2, name: 'NOISY BOY KANJI', sub: 'Neon LED Matrix & Golden Shogun Studs', rarity: 'LEGENDARY', color: '#ff3b7a', accent: '#6b1d3f' },
-  { id: 3, name: 'MIDAS 24K GOLD', sub: '24K Gold Spiked Cestus & Ruby Guard', rarity: 'ULTRA RARE', color: '#ffcc33', accent: '#b91c1c' },
-  { id: 4, name: 'METRO SLEDGEHAMMER', sub: 'Octagonal Siege Anvil & Side Weights', rarity: 'EPIC', color: '#ff9f1c', accent: '#475569' },
-  { id: 5, name: 'TWIN CITIES TURBINE', sub: 'Rotary Jet-Turbine & Twin Exhausts', rarity: 'LEGENDARY', color: '#ff4d4d', accent: '#334155' },
-  { id: 6, name: 'AMBUSH IRON CAGE', sub: 'Exoskeleton Roll-Cage & Spike Bar', rarity: 'RARE', color: '#f97316', accent: '#52525b' },
-  { id: 7, name: 'ATOM OVERCLOCK CORE', sub: 'Exposed Blue Arc-Reactor & Fins', rarity: 'MYTHIC', color: '#38bdf8', accent: '#0284c7' },
-  { id: 8, name: 'VIPER VENOM TALON', sub: '4 Razor Cyber-Claws & Plasma Tubes', rarity: 'ULTRA RARE', color: '#10b981', accent: '#064e3b' },
-  { id: 9, name: 'OMEGA HELLFIRE', sub: 'Dragon-Scale Armor & 4 Doom-Spikes', rarity: 'MYTHIC', color: '#ff2a4b', accent: '#f59e0b' },
-  { id: 10, name: 'ZEUS THUNDERFIST', sub: 'Tesla-Coil Cuff, Gold Thunderbolt & 4 Lightning Prongs', rarity: 'DIVINE', color: '#b8f0ff', accent: '#ffd36b' },
-  { id: 11, name: 'RED METAL PISTON KNUCKLE', sub: 'Chrome Piston Knuckle-Duster, Red Chrome Shell & Side Pipes', rarity: 'APEX', color: '#ff2d3a', accent: '#e6e8ec' },
 ];
 
 // fs = fist & wrist size: enlarged (+35%) heavy-duty champion boxing gloves & wrist cuffs
@@ -965,7 +935,7 @@ function buildNeckAndHead(r: Robot, b: Batch, c: Ctx, o: Opt) {
     b.add(N, tcyl(0.04, 0.04, 0.6, 6), c.glow, s * 0.2, 0.1, 0.16);
   }
   const H = r.head;
-  H.position.set(0, 0.5, 0.06);
+  H.position.set(0, 0.36, 0.06); // real-steel head stand-off (neck→head 0.09u)
   H.scale.setScalar(1.04); // head is 20% smaller than before (1.3 → 1.04)
   N.add(H);
   buildHeadMesh(r, H, b, c, o);
@@ -1728,7 +1698,7 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
 
     // =========================== 4. ELBOW & FOREARM (TAPERED ATHLETIC BRACER) ===========================
     const el = new THREE.Group();
-    el.position.y = -1.1;
+    el.position.y = -1.05; // Real-steel golden arm: upper 0.28u
     sh.add(el);
     r.elbows.push(el);
 
@@ -1742,13 +1712,13 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
       el,
       lathe(
         [
-          [0, -1.3],
-          [0.25, -1.3],
-          [0.29, -1.16],
-          [0.35, -0.88],
-          [0.42, -0.52],
-          [0.45, -0.28],
-          [0.38, -0.08],
+          [0, -0.975],
+          [0.25, -0.975],
+          [0.29, -0.87],
+          [0.35, -0.66],
+          [0.42, -0.39],
+          [0.45, -0.21],
+          [0.38, -0.06],
           [0.3, -0.01],
           [0, 0],
         ],
@@ -1757,19 +1727,19 @@ function buildArms(r: Robot, b: Batch, c: Ctx, o: Opt) {
       c.sec,
     );
     // athletic forearm bracer extended gracefully toward wrist collar
-    b.add(el, arcPlate(0.42 * fa, 0.50 * fa, 2.5, 0.68), c.main, 0, -0.60, 0);
-    b.add(el, arcPlate(0.40 * fa, 0.48 * fa, 2.2, 0.66), c.main, 0, -0.62, 0, [0, Math.PI, 0]);
-    b.add(el, RB(0.028, 0.48, 0.028, 0.008), c.glow, s * 0.48 * fa, -0.62, 0);
+    b.add(el, arcPlate(0.42 * fa, 0.50 * fa, 2.5, 0.51), c.main, 0, -0.45, 0);
+    b.add(el, arcPlate(0.40 * fa, 0.48 * fa, 2.2, 0.495), c.main, 0, -0.465, 0, [0, Math.PI, 0]);
+    b.add(el, RB(0.028, 0.36, 0.028, 0.008), c.glow, s * 0.48 * fa, -0.465, 0);
     // reinforced wrist sleeve collar
-    b.add(el, tcyl(0.30 * fa, 0.38 * fa, 0.16 * fa, 24), c.steel, 0, -1.14, 0);
-    b.add(el, torus(0.36 * fa, 0.022 * fa, 24).rotateX(Math.PI / 2), c.accent, 0, -1.14, 0);
+    b.add(el, tcyl(0.30 * fa, 0.38 * fa, 0.12 * fa, 24), c.steel, 0, -0.855, 0);
+    b.add(el, torus(0.36 * fa, 0.022 * fa, 24).rotateX(Math.PI / 2), c.accent, 0, -0.855, 0);
     // articulated spherical wrist gimbal bearing ball (prevents rod clipping at all wrist angles)
-    b.add(el, sph(0.24 * fa, 22, 14), c.joint, 0, -1.28, 0);
-    b.add(el, torus(0.25 * fa, 0.024 * fa, 24).rotateX(Math.PI / 2), c.steel, 0, -1.24, 0);
+    b.add(el, sph(0.24 * fa, 22, 14), c.joint, 0, -0.96, 0);
+    b.add(el, torus(0.25 * fa, 0.024 * fa, 24).rotateX(Math.PI / 2), c.steel, 0, -0.93, 0);
 
     // =========================== 5. WRIST & PRO BOXING GLOVES ===========================
     const wr = new THREE.Group();
-    wr.position.y = -1.3;
+    wr.position.y = -0.975; // Real-steel golden arm: forearm 0.26u
     el.add(wr);
     r.wrists.push(wr);
 

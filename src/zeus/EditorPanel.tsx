@@ -38,7 +38,7 @@ export default function EditorPanel({ sel, count = 1, mirror, setMirror, update,
           {count > 1 && <div className="text-[11px] text-cyan-300">Utama: {sel.label} · perubahan diterapkan ke semua</div>}
           <div className="text-[11px] text-green-200/60">ID: {sel.id} · Sisi: {sel.side}</div>
           <div className="text-[10px] text-emerald-400 font-mono mt-0.5 flex items-center gap-1">
-            <span>⚡</span>
+            
             <span>Otomatis aktif &amp; terpakai di ring</span>
           </div>
         </div>
@@ -67,14 +67,14 @@ export default function EditorPanel({ sel, count = 1, mirror, setMirror, update,
         <Row label="Maju-Mundur" value={v[2]} min={-3} max={3} step={0.01} onChange={setV(2)} reset={0} />
       </div>
 
-      <div className="text-[11px] uppercase tracking-widest text-green-400 mt-3 mb-1">📐 Angle / Kemiringan (°)</div>
+      <div className="text-[11px] uppercase tracking-widest text-green-400 mt-3 mb-1">Angle / Kemiringan (°)</div>
       <div className="space-y-1">
         <Row label="Angguk (X)" value={a.r[0]} min={-180} max={180} step={1} onChange={setR(0)} reset={0} />
         <Row label="Putar (Y)" value={a.r[1]} min={-180} max={180} step={1} onChange={setR(1)} reset={0} />
         <Row label="Miring (Z)" value={a.r[2]} min={-180} max={180} step={1} onChange={setR(2)} reset={0} />
       </div>
 
-      <div className="text-[11px] uppercase tracking-widest text-green-400 mt-3 mb-1">📏 Ukuran & Panjang</div>
+      <div className="text-[11px] uppercase tracking-widest text-green-400 mt-3 mb-1">Ukuran & Panjang</div>
       <div className="space-y-1">
         <Row label="Ukuran" value={a.u} min={0.2} max={3} step={0.01} onChange={(val) => update((x) => { x.u = val; return x; })} reset={1} />
         <Row label="Lebar" value={a.s[0]} min={0.1} max={3} step={0.01} onChange={setS(0)} reset={1} />
@@ -93,7 +93,7 @@ export default function EditorPanel({ sel, count = 1, mirror, setMirror, update,
       </button>
       {onDelete && (
         <button onClick={onDelete} className="mt-2 w-full rounded-lg border border-red-600 bg-red-700/40 py-1.5 text-xs font-bold text-white hover:bg-red-600/60">
-          🗑️ Hapus {count > 1 ? `${count} part` : 'part ini'} {mirror && sel.hasMirror ? '(+ mirror)' : ''} · tombol Delete
+          Hapus {count > 1 ? `${count} part` : 'part ini'} {mirror && sel.hasMirror ? '(+ mirror)' : ''} · tombol Delete
         </button>
       )}
     </div>

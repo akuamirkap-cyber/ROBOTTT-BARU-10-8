@@ -65,6 +65,8 @@ export interface FighterLike {
   fallS?: { x: number };
   /** floor-plane velocity, used to lead the shot */
   vel?: { x: number; y: number };
+  /** upright silhouette height — 100% Zeus is far taller than the standard chassis and must be framed (and shot) as such */
+  standH?: number;
 }
 
 /** STAND_H … how tall a robot is upright, and how little is left of him once he is lying down */
@@ -75,12 +77,13 @@ const FLOOR_H = 1.9;
 export function fighterBox(pts: number[], pads: number[], fighters: FighterLike[]) {
   for (const f of fighters) {
     const s = f.scale;
+    const standH = f.standH && f.standH > 0 ? f.standH : STAND_H;
     const flat = THREE.MathUtils.clamp(
       f.fallS ? f.fallS.x : f.state === 'ko' || f.state === 'down' ? 1 : 0,
       0,
       1,
     );
-    const top = (STAND_H - (STAND_H - FLOOR_H) * flat) * s + f.y;
+    const top = (standH - (standH - FLOOR_H) * flat) * s + f.y;
     pts.push(f.pos.x + 0.8 * s, top, f.pos.y, f.pos.x - 0.8 * s, top, f.pos.y);
     pads.push(0, 0);
     // the sole sits at the fighter's own floor level, so a body launched into the air does not drag a phantom
@@ -507,6 +510,10 @@ export function gameplayShot(
   const close = THREE.MathUtils.clamp((5.4 - dist) / 2.6, 0, 1);
   const air = Math.max(b.y, a.y); // somebody is off the floor
 
+  // BIG HERO CHASSIS (100% Zeus): when the player's machine is far taller than the standard rig the lens must
+  // ride HIGHER and aim higher — otherwise his own bulk stands in front of the fight ("ketutupan badan sendiri").
+  const heroExtra = Math.max(0, ((a.standH && a.standH > 0 ? a.standH : STAND_H) - STAND_H) * a.scale);
+
   // when somebody is on the canvas the shot drops down to him instead of looking over the fight
   const downed = a.state === 'ko' || a.state === 'down' || b.state === 'ko' || b.state === 'down';
   const shoulder = mode.style === 'shoulder';
@@ -515,16 +522,17 @@ export function gameplayShot(
   // chassis slides off to the side of the frame instead of standing in the middle of the shot
   const aimX = shoulder ? b.pos.x : midX;
   const aimZ = shoulder ? b.pos.y : midZ;
-  const aimY = (downed ? 1.95 : mode.lookY) + close * 0.35 * mode.down + air * 0.6;
+  const aimY = (downed ? 1.95 : mode.lookY) + close * 0.35 * mode.down + air * 0.6 + (downed ? 0 : heroExtra * 0.38);
 
   const place = (d: number, lx: number, lz: number) => {
     // just above the top rope (ropes sit at 1.5 / 2.7 / 3.9), lifting for clinches and launches
-    const py = (downed ? 3.15 : mode.height) + close * mode.down * 0.6 + Math.max(0, dist - 6) * 0.05 + air * 0.4;
+    const py = (downed ? 3.15 : mode.height) + close * mode.down * 0.6 + Math.max(0, dist - 6) * 0.05 + air * 0.4 + heroExtra * 0.55;
     if (shoulder) {
       // right behind the player's shoulder and well out to the side: his chassis ends up on the edge of the
-      // frame with the man he is fighting in the middle of it
-      const back = SHOULDER_BACK + d * SHOULDER_BACK_K;
-      const lat = SHOULDER_LAT + d * SHOULDER_LAT_K;
+      // frame with the man he is fighting in the middle of it. A bigger hero gets a longer stand-off so the
+      // camera sits past his bulk instead of inside it.
+      const back = (SHOULDER_BACK + d * SHOULDER_BACK_K) * (1 + heroExtra * 0.07);
+      const lat = (SHOULDER_LAT + d * SHOULDER_LAT_K) * (1 + heroExtra * 0.05);
       out.set(a.pos.x - f.x * back + r.x * lat, py, a.pos.y - f.y * back + r.y * lat);
     } else {
       const orbit = mode.orbit + close * 0.12 * (1 - mode.closeBias * 0.5);

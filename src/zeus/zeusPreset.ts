@@ -49,6 +49,12 @@ export const ZEUS_PRESET = {
     'Grup 1': ['p4', 'p1', 'p0'],
     'Grup 3': ['p10', 'p11', 'p38', 'p24', 'p35', 'p40', 'p37', 'p16', 'p36', 'p33', 'p41', 'p42', 'p28', 'p31', 'p26', 'p23', 'p20', 'p43', 'p6', 'p8', 'p34', 'p25', 'p9', 'p17', 'p18', 'p12'],
   } as Record<string, string[]>,
+  ikut: true,
   tema: '#22ff44',
-  dihapus: [] as string[],
+  // part yang dihapus di desain user (export zeus-adjust.json 2026-10-12) — bawaan Zeus
+  dihapus: [
+    'p219', 'p180', 'p220', 'p181', 'p221', 'p182', 'p222', 'p183', 'p228', 'p189',
+    'p234', 'p195', 'p235', 'p196', 'p236', 'p197', 'p238', 'p199', 'p212', 'p173',
+    'p214', 'p175', 'p216', 'p177', 'p217', 'p178', 'p215', 'p176', 'p218', 'p179',
+  ] as string[],
 };

@@ -225,6 +225,23 @@ export class Decap {
     this.stumps.length = 0;
   }
 
+  /**
+   * reattach: fly the owner's torn head home over a 0→1 window, settling its spin and rolling it
+   * upright as it lands. Call clear() at a >= 1 to bolt it back on.
+   */
+  reattachStep(owner: Robot, a: number) {
+    const h = this.heads.find((x) => x.owner === owner);
+    if (!h) return;
+    owner.head.getWorldPosition(this.tmp);
+    h.vel.multiplyScalar(0.82);
+    h.spin.multiplyScalar(0.86);
+    h.obj.position.lerp(this.tmp, Math.min(1, 0.06 + a * a * 0.55));
+    if (a > 0.7) {
+      owner.head.getWorldQuaternion(this.q);
+      h.obj.quaternion.slerp(this.q, Math.min(1, (a - 0.7) * 2.2));
+    }
+  }
+
   private makeMats() {
     return [
       new THREE.MeshStandardMaterial({ color: 0x3a3f47, metalness: 0.95, roughness: 0.35 }), // torn steel

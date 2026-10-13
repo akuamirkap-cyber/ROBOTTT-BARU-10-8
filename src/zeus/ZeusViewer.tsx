@@ -13,6 +13,7 @@ type Api = {
   setHidden: (ids: string[], mirror: boolean) => string[];
   mirrorOf: (id: string) => string | null;
   exportData: () => object;
+  fullSnapshot: () => Record<string, Adj>;
   importData: (d: never) => void;
   resetAll: () => void;
   deselect: () => void;
@@ -159,7 +160,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
       }
     } catch {}
     onEquip?.(next);
-    flash(next ? '⚡ SUKSES: Robot custom aktif & terpasang di ring!' : 'Robot custom dinonaktifkan');
+    flash(next ? 'SUKSES: Robot custom aktif & terpasang di ring!' : 'Robot custom dinonaktifkan');
   };
   const fileRef = useRef<HTMLInputElement>(null);
   // ---- multi-select & groups ----
@@ -181,7 +182,11 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
   multiRef.current = multi;
   const [groupName, setGroupName] = useState('');
   const [hiddenIds, setHiddenIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]'); } catch { return []; }
+    try {
+      const raw = localStorage.getItem(HIDDEN_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return [...ZEUS_PRESET.dihapus];
   });
   const deleteSelected = () => {
     if (!selIds.length) return;
@@ -289,24 +294,141 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
     const last = selIds[selIds.length - 1];
     setSel(api.info(last));
   };
+  // ---- export panel (fallback kalau browser memblokir unduhan/clipboard, mis. di dalam iframe preview) ----
+  const [exportTxt, setExportTxt] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportInfo, setExportInfo] = useState({ adj: 0, hapus: 0, grup: 0 });
+  const exportOpenRef = useRef(false);
+  exportOpenRef.current = exportOpen;
+  const exportAreaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!exportOpen) return;
+    const el = exportAreaRef.current;
+    if (el) { el.focus(); el.select(); }
+  }, [exportOpen]);
+  const downloadBlob = (txt: string, name: string): boolean => {
+    try {
+      const file = new Blob([txt], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(file);
+      a.download = name;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      return true;
+    } catch (e) {
+      console.error('unduh file gagal', e);
+      return false;
+    }
+  };
+  // simpan file dengan 3 strategi: dialog simpan (paling andalan, jalan juga di dalam iframe),
+  // lalu anchor+Blob, lalu status jujur supaya panel cadangan dipakai kalau semuanya diblokir
+  type SaveFileHandle = { createWritable: () => Promise<{ write: (d: Blob) => Promise<void>; close: () => Promise<void> }> };
+  const tryDownload = async (txt: string): Promise<'saved' | 'cancelled' | 'sent' | 'blocked'> => {
+    const w = window as unknown as {
+      showSaveFilePicker?: (o?: {
+        suggestedName?: string;
+        types?: { description?: string; accept: Record<string, string[]> }[];
+      }) => Promise<SaveFileHandle>;
+    };
+    if (w.showSaveFilePicker) {
+      try {
+        const handle = await w.showSaveFilePicker({
+          suggestedName: 'zeus-adjust.json',
+          types: [{ description: 'Data Export Zeus', accept: { 'application/json': ['.json'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([txt], { type: 'application/json' }));
+        await writable.close();
+        return 'saved';
+      } catch (e) {
+        // user menutup dialog = batal, jangan lanjut fallback (biar tidak unduh dobel)
+        if (e instanceof Error && e.name === 'AbortError') return 'cancelled';
+        console.error('showSaveFilePicker gagal, fallback anchor', e);
+      }
+    }
+    return downloadBlob(txt, 'zeus-adjust.json') ? 'sent' : 'blocked';
+  };
+  const tryCopy = (txt: string): Promise<boolean> => {
+    const legacy = () => {
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+      return ok;
+    };
+    if (navigator.clipboard?.writeText) {
+      return navigator.clipboard.writeText(txt).then(() => true).catch(() => legacy());
+    }
+    return Promise.resolve(legacy());
+  };
   const doExport = () => {
-    apiRef.current?.bakeLinks();
-    const data = { ...(apiRef.current?.exportData() || {}), groups, tema: theme, dihapus: hiddenIds };
-    const txt = JSON.stringify(data, null, 2);
-    navigator.clipboard?.writeText(txt).catch(() => {});
-    const blob = new Blob([txt], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'zeus-adjust.json';
-    a.click();
-    flash('Data diexport (file + clipboard)');
+    try {
+      apiRef.current?.bakeLinks();
+      const exp = (apiRef.current?.exportData() || {}) as { parts?: unknown[] };
+      const semua = apiRef.current?.fullSnapshot() || {};
+      const data = {
+        ...exp,
+        disimpan: new Date().toISOString(),
+        // ringkasan isi — sekali lihat kelihatan semua data ikut dalam SATU file ini
+        isi: {
+          part_diadjust: exp.parts?.length ?? 0,
+          part_dihapus: hiddenIds.length,
+          grup_custom: Object.keys(groups).length,
+          total_semua_part: Object.keys(semua).length,
+        },
+        semua_part: semua, // snapshot utuh: SEMUA part + nilai adjust-nya
+        groups,            // semua grup custom
+        ikut: follow,      // ikutkan gerak (satu kesatuan)
+        tema: theme,       // tema warna
+        dihapus: hiddenIds, // part yang dihapus
+      };
+      setExportInfo({ adj: exp.parts?.length ?? 0, hapus: hiddenIds.length, grup: Object.keys(groups).length });
+      const txt = JSON.stringify(data, null, 2);
+      // panel cadangan selalu terbuka: tombol UNDUH FILE + salin manual kalau browser memblokir semuanya
+      setExportTxt(txt);
+      setExportOpen(true);
+      // 1) simpan file — dialog simpan file dulu, fallback anchor+Blob (anchor HARUS menempel di DOM)
+      // 2) clipboard dengan status jujur (jangan pernah mengaku sukses kalau gagal)
+      void tryDownload(txt).then((dl) => {
+        void tryCopy(txt).then((copied) => {
+          flash(
+            dl === 'saved'
+              ? copied
+                ? 'File tersimpan & data tersalin'
+                : 'File tersimpan'
+              : dl === 'cancelled'
+                ? 'Unduhan dibatalkan — pakai tombol UNDUH FILE kapan saja'
+                : dl === 'sent'
+                  ? copied
+                    ? 'Unduhan dikirim & data tersalin — cek folder unduhan'
+                    : 'Unduhan dikirim — cek folder unduhan Anda'
+                  : 'Browser menahan unduhan — pakai tombol UNDUH FILE di panel',
+          );
+        });
+      });
+      // bakeLinks memutus link grup sementara — pasang lagi supaya grup custom tetap menyatu saat lanjut edit
+      apiRef.current?.setLinks(groups, follow);
+    } catch (e) {
+      console.error('export gagal', e);
+      flash(`Export gagal: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
   const doImport = (f: File) => {
     f.text().then((t) => {
       try {
         const d = JSON.parse(t);
+        // snapshot utuh dulu (SEMUA part), lalu part yang di-adjust menimpa di atasnya
+        if (d.semua_part && typeof d.semua_part === 'object') apiRef.current?.importData(d.semua_part as never);
         apiRef.current?.importData(d as never);
         if (d.groups && typeof d.groups === 'object') saveGroups(d.groups);
+        if (typeof d.ikut === 'boolean') setFollow(d.ikut);
         if (typeof d.tema === 'string') changeTheme(d.tema);
         if (Array.isArray(d.dihapus)) setHiddenIds(d.dihapus);
         flash('Import berhasil');
@@ -1028,6 +1150,12 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
       save();
       if (selected) select(selected);
     };
+    // snapshot utuh: SEMUA part + nilai adjust-nya (termasuk yang masih default)
+    const fullSnapshot = () => {
+      const o: Record<string, Adj> = {};
+      partById.forEach((_, id) => { o[id] = adjMap.get(id) || defAdj(); });
+      return o;
+    };
     // built-in preset first, then any further local edits on top
     importData(ZEUS_PRESET as never);
     try {
@@ -1087,6 +1215,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
         return [...hidden];
       },
       exportData,
+      fullSnapshot,
       importData,
       resetAll,
       deselect: () => { selectIds([]); onPickRef.current(null, false); },
@@ -1211,7 +1340,9 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'Escape') {
-        if (editRef.current) {
+        if (exportOpenRef.current) {
+          setExportOpen(false);
+        } else if (editRef.current) {
           toggleEdit();
         } else if (onBack) {
           apiRef.current?.bakeLinks();
@@ -1241,7 +1372,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
       {/* Title Badge Top-Left */}
       <div className="absolute top-6 left-6 z-40 bg-black/80 backdrop-blur-md rounded-2xl border border-emerald-500/40 px-3.5 py-2 pointer-events-none shadow-[0_0_20px_rgba(34,255,68,0.2)]">
         <div className="flex items-center gap-2">
-          <span className="text-emerald-400 font-bold text-sm">🎨</span>
+          <span className="text-emerald-400 font-bold text-sm">◈</span>
           <span className="font-display font-black text-xs md:text-sm tracking-wider text-white">CUSTOM DESAIN ROBOT 3D</span>
           <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">LIVE SYNC</span>
         </div>
@@ -1286,7 +1417,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
             }`}
             title="Klik untuk memasang robot hasil desain custom ini sebagai petarung utama di pertandingan"
           >
-            <span>{equipped ? '✓' : '⚡'}</span>
+            <span>{equipped ? '✓' : '○'}</span>
             <span className="font-black">
               {equipped ? 'TERPASANG DI ROBOT PEMAIN' : 'PASANG KE ROBOT PEMAIN'}
             </span>
@@ -1300,11 +1431,11 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
           onClick={toggleEdit}
           className={`px-4 py-2 rounded-xl font-bold text-sm border backdrop-blur ${edit ? 'bg-green-500 text-black border-green-300 shadow-[0_0_20px_#22ff44]' : 'bg-black/50 text-green-200 border-green-700 hover:bg-green-900/60'}`}
         >
-          🛠️ {edit ? 'Edit Mode: ON' : 'Edit Part'}
+          {edit ? 'Edit Mode: ON' : 'Edit Part'}
         </button>
         {edit && (
           <>
-            <button onClick={doExport} className="px-3 py-2 rounded-xl text-sm font-bold border border-green-700 bg-black/50 text-green-200 hover:bg-green-900/60">⬇️ Export</button>
+            <button onClick={doExport} className="px-3 py-2 rounded-xl text-sm font-bold border border-green-700 bg-black/50 text-green-200 hover:bg-green-900/60">EXPORT</button>
             <button onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-xl text-sm font-bold border border-green-700 bg-black/50 text-green-200 hover:bg-green-900/60">⬆️ Import</button>
             <button onClick={() => { if (confirm('Reset semua perubahan?')) { apiRef.current?.resetAll(); flash('Semua part di-reset'); } }} className="px-3 py-2 rounded-xl text-sm font-bold border border-red-800 bg-black/50 text-red-300 hover:bg-red-900/50">♻️ Reset</button>
           </>
@@ -1329,7 +1460,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
       {/* selection + group panel */}
       {edit && (
         <div className="absolute top-40 left-6 w-64 rounded-2xl border border-white/10 bg-black/70 backdrop-blur p-3 text-xs text-white/90 space-y-2">
-          <div className="font-bold" style={{ color: accent }}>🧩 Seleksi & Grup</div>
+          <div className="font-bold" style={{ color: accent }}>Seleksi & Grup</div>
           <div className="text-white/60">{selIds.length} part dipilih · Shift/Ctrl+klik = tambah</div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
@@ -1342,7 +1473,7 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
           <label className="flex items-start gap-2 cursor-pointer rounded-lg px-2 py-1.5 border" style={{ borderColor: follow ? accent : 'rgba(255,255,255,0.15)', background: follow ? 'rgba(255,255,255,0.06)' : undefined }}>
             <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="mt-0.5" />
             <span>
-              <b>🔗 Ikutkan gerak (satu kesatuan)</b>
+              <b>Ikutkan gerak (satu kesatuan)</b>
               <span className="block text-white/50">ON: anggota grup menempel permanen ke part utama (terakhir di grup) — ikut saat diedit DAN saat animasi. OFF: dilepas, posisi saat ini dipertahankan.</span>
             </span>
           </label>
@@ -1367,20 +1498,20 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
           {selIds.length > 0 && (
             <div className="flex gap-1">
               <button onClick={() => applySel([])} className="flex-1 py-1 rounded border border-white/20 hover:bg-white/10">Batal pilih</button>
-              <button onClick={deleteSelected} className="flex-1 py-1 rounded border border-red-700 bg-red-950/50 text-red-200 hover:bg-red-900/60 font-bold">🗑️ Hapus ({selIds.length})</button>
+              <button onClick={deleteSelected} className="flex-1 py-1 rounded border border-red-700 bg-red-950/50 text-red-200 hover:bg-red-900/60 font-bold">HAPUS ({selIds.length})</button>
             </div>
           )}
           {hiddenIds.length > 0 && (
             <div className="rounded-lg bg-white/5 p-2 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-white/60">🗑️ Terhapus: {hiddenIds.length}</span>
+                <span className="text-white/60">Terhapus: {hiddenIds.length}</span>
                 <button onClick={() => { setHiddenIds([]); flash('Semua part dikembalikan'); }} className="text-[11px] underline" style={{ color: accent }}>Kembalikan semua</button>
               </div>
               <div className="max-h-24 overflow-y-auto space-y-0.5">
                 {hiddenIds.map((id) => (
                   <div key={id} className="flex items-center justify-between text-[11px]">
                     <span className="text-white/70">{apiRef.current?.info(id)?.label || id} <span className="text-white/40">{apiRef.current?.info(id)?.side}</span></span>
-                    <button onClick={() => setHiddenIds(hiddenIds.filter((x) => x !== id))} className="hover:underline" style={{ color: accent }}>↩ balikin</button>
+                    <button onClick={() => setHiddenIds(hiddenIds.filter((x) => x !== id))} className="hover:underline" style={{ color: accent }}>balikin</button>
                   </div>
                 ))}
               </div>
@@ -1421,10 +1552,66 @@ export default function ZeusViewer({ onBack, onEquip }: { onBack?: () => void; o
           onClose={() => apiRef.current?.deselect()}
         />
       )}
-      {toast && <div className="absolute top-20 left-1/2 -translate-x-1/2 rounded-xl bg-green-500 text-black font-bold px-4 py-2 shadow-lg">{toast}</div>}
+      {/* panel export: jaminan terakhir supaya data selalu bisa dibawa keluar walau browser memblokir unduhan */}
+      {exportOpen && (
+        <div className="absolute inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setExportOpen(false)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-green-600/60 bg-[#06120a] p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="font-black text-green-300 text-lg">DATA EXPORT SIAP</div>
+            <div className="text-xs text-green-100/80">
+              <b>SATU file</b> <b>zeus-adjust.json</b> berisi <b>semua data sekaligus</b>:
+              <span className="block mt-1 font-mono text-[11px] text-green-200">
+                {exportInfo.adj} part di-adjust · {exportInfo.hapus} part terhapus · {exportInfo.grup} grup custom · tema · ikutkan gerak · snapshot semua part
+              </span>
+              <span className="block mt-1">
+                Klik <b>UNDUH FILE</b> lalu pilih lokasi penyimpanan. Jika browser tetap memblokir, salin teks di bawah (Ctrl+A lalu Ctrl+C) lalu simpan sebagai file .json.
+              </span>
+            </div>
+            <textarea
+              ref={exportAreaRef}
+              readOnly
+              value={exportTxt}
+              onFocus={(e) => e.currentTarget.select()}
+              className="w-full h-64 rounded-xl bg-black/80 border border-green-800 text-green-100 font-mono text-[11px] p-3 resize-none"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  void tryDownload(exportTxt).then((dl) =>
+                    flash(
+                      dl === 'saved'
+                        ? 'File tersimpan'
+                        : dl === 'cancelled'
+                          ? 'Unduhan dibatalkan'
+                          : dl === 'sent'
+                            ? 'Unduhan dikirim — cek folder unduhan Anda'
+                            : 'Browser menahan unduhan — pakai SALIN lalu simpan sebagai .json',
+                    ),
+                  );
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-black border border-green-400 bg-green-500 text-black hover:bg-green-400"
+              >
+                UNDUH FILE
+              </button>
+              <button
+                onClick={() => { void tryCopy(exportTxt).then((ok) => flash(ok ? 'Tersalin ke clipboard' : 'Clipboard diblokir — pakai Ctrl+A lalu Ctrl+C')); }}
+                className="px-3 py-2 rounded-xl text-sm font-bold border border-green-700 bg-black/50 text-green-200 hover:bg-green-900/60"
+              >
+                SALIN
+              </button>
+              <button
+                onClick={() => setExportOpen(false)}
+                className="px-3 py-2 rounded-xl text-sm font-bold border border-white/20 text-white/80 hover:bg-white/10"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toast && <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[70] rounded-xl bg-green-500 text-black font-bold px-4 py-2 shadow-lg">{toast}</div>}
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3">
-        {([['sombong', '😤 Pose Sombong'], ['tinju', '🥊 Siap Tinju'], ['auto', '🔁 Auto'], ['diam', '🧍 Diam']] as [Mode, string][]).map(([m, label]) => (
+        {([['sombong', 'Pose Sombong'], ['tinju', 'Siap Tinju'], ['auto', 'Auto'], ['diam', 'Diam']] as [Mode, string][]).map(([m, label]) => (
           <button
             key={m}
             onClick={() => pick(m)}

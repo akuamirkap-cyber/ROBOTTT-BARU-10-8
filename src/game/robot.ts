@@ -100,7 +100,7 @@ const TOE_Z = 1.24;
 const HEEL_Z = 0.62;
 const ankleLift = (p: number) => Math.max(0, Math.max(SOLE * Math.cos(p) + TOE_Z * Math.sin(p), SOLE * Math.cos(p) - HEEL_Z * Math.sin(p)) - SOLE);
 const RUN_HIP_LOW = 3.54; // hip height in mid-stance while running: knees flexed on longer legs
-const RUN_HIP_BOB = 0.22; // how much higher the hips travel at touch-down / toe-off / flight
+const RUN_HIP_BOB = 0.15; // how much higher the hips travel at touch-down / toe-off / flight (kept quiet — efficient)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const sm = (u: number) => u * u * (3 - 2 * u);
 /** foot-height curve of a swing: lifts early, peaks around 45%, and touches down with ~zero vertical speed */
@@ -204,6 +204,7 @@ export class Robot {
   private dashGo = [false, false];
   private dashLead = 0;
   private postDashT = 0;
+  private postGaitT = 0; // grace window after a walk burst: stance corrections stay lazy, feet move only when needed
   private balanceCooldown = 0;
   private dashW = 0;
   private gaitW = 0;
@@ -247,6 +248,7 @@ export class Robot {
   private hookSide = 1;
   private sDelayedTorsoYaw = new Spring();
   private sUpperLift = new Spring();
+  private sLayLag = new Spring(); // the upper body TRAILS the hip pitch on the way down (the accordion that kills the stiff plank)
 
   private tv = new THREE.Vector3();
   private tgtW = new THREE.Vector3();
@@ -397,9 +399,16 @@ export class Robot {
    * Floor contact: if any part of the body is below the floor, lift the whole body by exactly that much.
    * (Planted feet are handled by the IK; this catches falls, knock-downs, air poses and animation overshoot.)
    */
+  /**
+   * when a staged scene owns the body it carries its own floor handling (root-y keys drop the body to
+   * the canvas on the sit-fall), so the floor-probe lift must NOT fight it — it used to shove the folded
+   * body up and down every frame (the shivering "aneh pas bangkit" get-up).
+   */
+  bridgeOwned = false;
   private prevLay = 0; // last frame's collapse weight (for the head-hits-last whip)
   private groundLift = 0; // smoothed floor lift (robot units): kills the frame-to-frame hop of a body whose lowest point keeps changing
   private groundSolve(S: number, ik: number, floorPose = false, dt = 0, lying = false) {
+    if (this.bridgeOwned) return;
     this.root.updateMatrixWorld(true);
     let minY = Infinity;
     for (const pr of this.probes) {
@@ -503,6 +512,21 @@ export class Robot {
     this.balanceCooldown = 0;
   }
 
+  /** When a script slides the root (the VS clash lunge on the matchmaking screen), the planted feet must travel
+   *  WITH it — otherwise the reach solver crushes the hips down and the balance steps shuffle the boots.
+   *  Call with the root's world-space delta right after moving it. */
+  shiftPlantedFeet(dx: number, dz: number) {
+    if (dx === 0 && dz === 0) return;
+    for (const f of this.feet) {
+      f.x += dx;
+      f.z += dz;
+      f.curX += dx;
+      f.curZ += dz;
+      f.fx += dx;
+      f.fz += dz;
+    }
+  }
+
   // ------------------------------------------------------------------ footwork
   // Walking = a real gait cycle (heel strike -> flat -> heel off -> toe off -> swing), driven by the distance
   // travelled so stride length follows speed. Hips & feet turn towards the direction of travel while the chest
@@ -530,11 +554,17 @@ export class Robot {
     this.runK += (runU * runU * (3 - 2 * runU) - this.runK) * (1 - Math.exp(-10 * dt));
     const run = this.runK;
 
-    // Step length grows with speed (pro boxer gait: agile, grounded, never sliding)
-    const walkStride = clamp((0.55 + 0.25 * spdRaw) * (this.back ? 0.88 : 1), 0.95, 2.15);
+    // Step length grows with speed — PRO BOXING FOOTWORK with a FLUENT cadence: roughly 2 steps/s while strolling
+    // (the runway strut) and quick-but-never-frantic steps in the ring. The low end is kept long enough that a slow
+    // walk never turns into a high-cadence twitch — that is what read as an ugly, stiff shuffle.
+    // BIG CHASSIS (100% Zeus) strides LONGER to match: his legs are ~15% longer, so every step covers more ground
+    // at the same confident cadence instead of a giant robot taking dainty little steps.
+    const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
+    const legK = zm ? (zm.L1 + zm.L2) / (L1 + L2) : 1;
+    const walkStride = clamp((0.95 + 0.14 * spdRaw) * (this.back ? 0.9 : 1), 1.15, 1.85);
     const runCad = 2.7 + Math.max(0, spdRaw - 11.5) * 0.1;
-    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.0, 5.0), run);
-    const HALF_MAX = 1.85;
+    const strideL = lerp(walkStride, clamp(spdRaw / runCad, 2.0, 5.0), run) * legK;
+    const HALF_MAX = 1.45 * legK;
     const duty = clamp(Math.min(lerp(0.6, 0.38, run) - clamp((spdRaw - 11.5) / 45, 0, 0.1), HALF_MAX / strideL), 0.2, 0.66);
     const half = duty * strideL;
 
@@ -542,24 +572,26 @@ export class Robot {
     // spikes both of them, and letting that through would jerk the stance the planted feet are measured against.
     this.dipK += (a.dip - this.dipK) * (1 - Math.exp(-14 * dt));
     this.lungeK += (a.lunge - this.lungeK) * (1 - Math.exp(-12 * dt));
-    const zm = this.root.userData.zeusMetrics as ZeusRigMetrics | undefined;
     const guardStance = zm ? clamp((this.dipK - 0.045) / 0.075, 0, 1) : 1;
+    // ZEUS stands WIDE like Atlas at all times (boots apart, staggered fore/aft) — the old rest pose tucked the
+    // boots nearly side-by-side whenever the guard relaxed ("dempet"), which read as dainty instead of a boxer.
     const wide = zm
-      ? lerp(zm.hipX + 0.16, zm.hipX + 0.28 + this.dipK * 0.22, guardStance)
+      ? lerp(zm.hipX + 0.30, zm.hipX + 0.42 + this.dipK * 0.22, guardStance)
       : 1.18 + this.dipK * 0.3;
-    const zLead = zm ? lerp(0.04, 0.44, guardStance) : 0.62;
-    const zRear = zm ? lerp(-0.04, -0.50, guardStance) : -0.72;
+    const zLead = zm ? lerp(0.30, 0.52, guardStance) : 0.62;
+    const zRear = zm ? lerp(-0.34, -0.58, guardStance) : -0.72;
     const ideal = [
       { x: wide, z: zLead + this.lungeK * 0.28 },
       { x: -wide, z: zRear + this.lungeK * 0.12 },
     ];
     const restP = zm ? [lerp(0.0, 0.02, guardStance), lerp(0.0, 0.04, guardStance)] : [0.01, 0.03];
-    const restYaw = zm ? [lerp(0.06, 0.08, guardStance), lerp(-0.06, -0.36, guardStance)] : [0.1, -0.5];
+    const restYaw = zm ? [lerp(0.1, 0.12, guardStance), lerp(-0.30, -0.44, guardStance)] : [0.1, -0.5];
 
     this.bounce += dt * Math.PI * 2 * (1.15 + sp01 * 0.4);
     const h = 0.5 + 0.5 * Math.sin(this.bounce);
     const bounceAmt = clamp(a.idleBounce ?? 1, 0, 1) * (1 - this.gaitW);
-    const bob = (h - 0.5) * 0.07 * bounceAmt;
+    // pro boxers PENDULUM lightly on the spot — a quiet weight shift, not a bouncy march
+    const bob = (h - 0.5) * 0.045 * bounceAmt;
 
     if (this.needSnap) {
       for (let i = 0; i < 2; i++) {
@@ -632,6 +664,7 @@ export class Robot {
     }
     if (this.dashOn) this.dashT += dt;
     this.postDashT = Math.max(0, this.postDashT - dt);
+    this.postGaitT = Math.max(0, this.postGaitT - dt);
 
     // ---- movement-burst tracking: short taps stay agile and calm ----
     if (spdRaw > 0.8) {
@@ -657,6 +690,7 @@ export class Robot {
       this.firstStep = true;
     } else if (this.gait && (spdRaw < 0.35 || braking)) {
       this.gait = false;
+      this.postGaitT = 0.4; // just stopped walking — do NOT rush to "fix" the stance
     }
     this.gaitW += ((this.gait ? 1 : 0) - this.gaitW) * (1 - Math.exp(-9 * dt));
 
@@ -666,8 +700,14 @@ export class Robot {
       const l1 = toL(this.feet[1].x, this.feet[1].z);
       this.nextFoot = l0.x * dirx + l0.z * dirz <= l1.x * dirx + l1.z * dirz ? 0 : 1;
       if (this.feet[this.nextFoot].stepping) this.nextFoot = 1 - this.nextFoot;
-      this.stepDist = strideL * 0.9;
-      this.firstStep = true;
+      // ECONOMICAL ENTRY: only stomp a step at once when a foot is genuinely left behind. A quick direction
+      // change (retreat → hold → retreat) re-enters the gait WITHOUT a corrective stomp — the feet move only
+      // when they really must.
+      const ln = this.nextFoot === 0 ? l0 : l1;
+      const behindN = -(ln.x * dirx + ln.z * dirz);
+      const needNow = behindN > half * 0.85 + 0.22;
+      this.stepDist = needNow ? strideL * 0.9 : strideL * 0.3;
+      this.firstStep = needNow;
     }
 
     // Measure stance error on planted feet without artificially dragging them
@@ -702,7 +742,7 @@ export class Robot {
         f.tx = ideal[pf].x + x;
         f.tz = ideal[pf].z + z;
         f.dur = clamp(a.punchDur ?? 0.19, 0.1, 0.32) * (1 + this.tapT * 0.35);
-        f.lift = a.stepLift ?? (0.20 + Math.min(0.12, Math.abs(z) * 0.12));
+        f.lift = a.stepLift ?? (0.15 + Math.min(0.1, Math.abs(z) * 0.1));
         f.err = 0;
         this.punchYaw = clamp((a.punchX ?? 0) * 1.1, -0.28, 0.28);
         planted = true;
@@ -729,18 +769,18 @@ export class Robot {
         f.u = 0;
         f.p0 = f.pitch;
         f.dur = i === this.dashLead ? 0.17 : 0.20;
-        // Clean, athletic foot clearance so feet lift off mat and never drag or clip
-        f.lift = 0.24;
+        // Athletic foot clearance: just enough to clear the mat — pros shuffle, they don't march
+        f.lift = 0.2;
       }
     } else if (this.gait) {
       this.stepDist += spdRaw * dt;
-      let trigger = this.firstStep || this.stepDist >= strideL * 0.88;
+      let trigger = this.firstStep || this.stepDist >= strideL * 0.92;
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         if (f.stepping) continue;
         const l = toL(f.x, f.z);
         const behind = -(l.x * dirx + l.z * dirz);
-        if (behind > half * 1.25 + 0.26) {
+        if (behind > half * 1.3 + 0.3) {
           this.nextFoot = i;
           trigger = true;
         }
@@ -757,8 +797,9 @@ export class Robot {
         f.u = 0;
         f.fx = f.x;
         f.fz = f.z;
-        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.16, 0.45);
-        f.lift = lerp(clamp(0.28 + spd * 0.035, 0.30, 0.46), 0.56, run);
+        f.dur = clamp((2 * (1 - duty) * strideL) / Math.max(spdRaw, 3.5), 0.14, 0.38);
+        // low, flat shuffle-step clearance — the boot stays close to the canvas like pro boxing footwork
+        f.lift = lerp(clamp(0.15 + spd * 0.02, 0.16, 0.24), 0.5, run);
         f.p0 = f.pitch;
         f.follow = 0;
         this.nextFoot = 1 - this.nextFoot;
@@ -767,11 +808,13 @@ export class Robot {
       this.stepDist = 0;
       let pick = -1;
       let best = 0;
-      // Stance recovery threshold: calm, efficient, no fidgeting.
-      // When standing still (spdRaw < 0.6), stay firmly grounded unless stance error is genuinely large (> 0.85).
-      const thr = a.rise !== undefined || a.taunt ? 1e9 : (this.postDashT > 0 ? 0.28 : spdRaw > 0.6 ? 0.38 : 0.85) + this.tapT * 0.25;
+      // Stance recovery threshold: calm, efficient, no fidgeting — pro feet only correct when they REALLY must.
+      // When standing still (spdRaw < 0.6), stay firmly grounded unless stance error is genuinely large (> 0.95).
+      // Right after a walk burst (postGaitT) corrections stay extra lazy — no rush to "fix" the stance.
+      const thr = a.rise !== undefined || a.taunt ? 1e9 : (this.postDashT > 0 ? 0.32 : spdRaw > 0.6 ? 0.55 : 0.95) + this.tapT * 0.25 + (this.postGaitT > 0 ? 0.28 : 0);
       const messy = Math.max(this.feet[0].err, this.feet[1].err) > 1.35;
-      if (this.balanceCooldown <= 0) {
+      // while a blow is landing the feet HOLD — no shuffling mid-exchange (hemat: hanya gerak saat perlu)
+      if (this.balanceCooldown <= 0 && a.hit < 0.2) {
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           const o = this.feet[1 - i];
@@ -785,7 +828,7 @@ export class Robot {
         }
       }
       if (pick >= 0) {
-        this.balanceCooldown = 0.28; // prevent rapid consecutive balance steps
+        this.balanceCooldown = 0.34; // prevent rapid consecutive balance steps (quiet, efficient feet)
         const f = this.feet[pick];
         const curL = toL(f.x, f.z);
         f.flx = curL.x;
@@ -799,7 +842,7 @@ export class Robot {
         f.fz = f.z;
         const rec = messy ? 0.78 : 1;
         f.dur = clamp(0.24 - spd * 0.024, 0.14, 0.24) * (f.err > 1.2 ? 0.8 : 1) * (1 + this.tapT * 0.35) * rec;
-        f.lift = (0.22 + sp01 * 0.16) * (1 - this.tapT * 0.25) * (messy ? 0.9 : 1);
+        f.lift = (0.15 + sp01 * 0.1) * (1 - this.tapT * 0.25) * (messy ? 0.9 : 1);
       }
     }
 
@@ -879,7 +922,7 @@ export class Robot {
       } else {
         const moving = spdRaw > 0.45;
         // the slower the body travels, the smaller the shuffle: a light tap of A/D gets a nudge, not a lunge
-        const over = moving ? clamp(0.16 + spd * 0.075, 0.16, 0.66) * (1 - this.tapT * 0.4) : 0;
+        const over = moving ? clamp(0.14 + spd * 0.055, 0.14, 0.48) * (1 - this.tapT * 0.4) : 0;
         let ox = dirx * over + a.vl * rem * 0.8;
         let oz = dirz * over + a.vf * rem * 0.8;
         const om = Math.hypot(ox, oz);
@@ -918,7 +961,7 @@ export class Robot {
         // Clean, athletic boxing shuffle with visible push-off and crisp clearance
         f.pitch = lerp(f.p0, restP[i] + 0.04 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.07 * w;
+        sway += -s * 0.05 * w;
       } else if (f.gaitStep) {
         // Dynamic boxing stride: push-off rolls onto the ball of the foot (heel up),
         // mid-swing clears the canvas cleanly, heel-strike lands softly into stance
@@ -926,20 +969,20 @@ export class Robot {
         f.pitch = swingPitch;
         f.follow = u < 0.92 ? 0.30 * Math.pow(Math.sin(Math.PI * (u / 0.92)), 0.8) : 0;
         f.yawOff = lerp(f.yawOff, psi + toeOut[i], 1 - Math.exp(-16 * dt));
-        sway += -s * 0.14 * w * (1 + run * 0.5); // weight shifts over the stance foot
-        roll += -s * 0.06 * w * (1 + run * 0.7); // the pelvis dips on the swinging side
+        sway += -s * 0.07 * w * (1 + run * 0.6); // quiet weight shift over the stance foot (no waddle)
+        roll += -s * 0.028 * w * (1 + run * 0.8); // a whisper of pelvis drop on the swinging side
         swingW = Math.max(swingW, w);
       } else if (f.punchStep) {
         // Deliberate step-in: foot lifts with intent and plants authoritative power into the canvas
         f.pitch = lerp(f.p0, restP[i] + 0.05 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i] + (i === 1 ? -0.13 : 0.06) * w - this.punchYaw * w, 1 - Math.exp(-20 * dt));
-        sway += -s * 0.06 * w;
+        sway += -s * 0.05 * w;
       } else {
         f.pitch = lerp(f.p0, restP[i] + 0.04 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.75 * sp01), 1 - Math.exp(-14 * dt));
-        sway += -s * 0.1 * w;
-        roll += s * 0.05 * w;
-        yawS += -s * 0.07 * w * (a.vf >= 0 ? 1 : -1) * Math.min(1, Math.abs(a.vf) / 2);
+        sway += -s * 0.055 * w;
+        roll += s * 0.025 * w;
+        yawS += -s * 0.04 * w * (a.vf >= 0 ? 1 : -1) * Math.min(1, Math.abs(a.vf) / 2);
       }
       if (u >= 1) {
         f.x = f.curX = tw.x;
@@ -963,10 +1006,10 @@ export class Robot {
           this.sLand.v -= 0.24 + spd * 0.12; // the fist lands on the same beat as the foot
         } else if (f.gaitStep) {
           settle(landP); // heel strike (walk) / mid-foot strike (run)
-          this.sLand.v -= 0.16 + spd * 0.08 + run * 0.35; // weight transfer; a sprint lands harder
+          this.sLand.v -= 0.09 + spd * 0.05 + run * 0.3; // soft weight transfer; a sprint lands harder
         } else {
           settle(restP[i]);
-          this.sLand.v -= 0.3 + spd * 0.2;
+          this.sLand.v -= 0.18 + spd * 0.12;
         }
         this.onStep?.(i, spd, f.x, f.z);
       }
@@ -982,7 +1025,7 @@ export class Robot {
     // +1 when foot 0 is a full stride ahead of foot 1, −1 the other way round; faded in with the gait mode
     const zD = clamp((l0.z - l1.z) / (2 * half), -1, 1) * this.gaitW;
     // the hip on the side whose foot is forward turns forward; the chest counter-rotates (see animate)
-    const gaitYaw = -0.085 * (1 + run * 1.1) * zD;
+    const gaitYaw = -0.065 * (1 + run * 1.2) * zD;
     // how deep into its stance the planted foot is (0 at touch-down / toe-off, 1 in mid-stance): drives the run bob
     let depth = 0;
     if (this.gait && !this.dashOn) {
@@ -1032,9 +1075,17 @@ export class Robot {
     const fs = fallStages(eSpan);
     const layE = fs.lay * 1.42; // the lie: 81° back and rolled onto one shoulder (not a flat 90° plank)
     const lieSide = fs.side * (1 - rs.side) * riseDir; // a little onto the shoulder he will get up over
+    // THE ACCORDION (anti-plank): the hips go over first and the UPPER body trails them on a slower clock — the
+    // chest is still a little upright while the pelvis is already past halfway. That articulated lag is what makes
+    // a fall read as a body collapsing instead of a stiff log tipping about its hips. The term dies to zero the
+    // moment the lay settles (and stays zero through the get-up), so nothing pops at the handover.
+    const layLagS = this.sLayLag.update(fs.lay, 6.0, 0.72, dt);
+    const layTrail = Math.max(0, fs.lay - layLagS) * (1 - rs.unroll);
     // the head is the last thing to hit: as the torso arrives on the canvas the neck whips and shoulders bounce
     if (this.prevLay < 0.75 && fs.lay >= 0.75 && (a.rise === undefined || riseU <= 0.001)) {
-      this.sHeadX.v += 7.2;
+      // the head WHIPS DOWN into the canvas (negative = toward the mat) and the spring rebounds it back up —
+      // a real neck snap, not the old "pop the chin up at the moment of impact"
+      this.sHeadX.v += -11.5;
       this.sHeadZ.v += 3.2 * riseDir;
       this.sHeadY.v += 2.0 * riseDir;
       this.sMass.v += 1.1;
@@ -1185,7 +1236,7 @@ export class Robot {
     const hipX = zm ? zm.hipX : 0.76;
     const sw2 = fw.swing * fw.swing;
     // running: the body sinks into each stride (knees absorb the landing) and springs up during the flight phase
-    const walkBob = -0.17 + 0.25 * sw2; // heavier: the hips sink onto the touch-down and drive up over the stance leg
+    const walkBob = (-0.09 + 0.14 * sw2) * (zm ? (zm.L1 + zm.L2) / (L1 + L2) : 1); // fluent but quiet: enough weight transfer to read as a walk, never bouncy (scaled for big chassis)
     const baseHd = clamp(standY - a.dip * (zm ? 0.85 : 1.15), 1.6 + UP * 0.6, zm ? standY + 0.12 : 3.42 + UP);
     // running: the knees stay bent; the hips are lowest in mid-stance and rise gently towards touch-down / toe-off / flight.
     // `depth` is a smooth sine of the stance progress, so the bob is a clean ~6% wave (the old version spiked by 25%).
@@ -1254,7 +1305,7 @@ export class Robot {
       bodyZ + riseZ + slipLean * 0.16 * dodgeFlow,
     );
     this.body.rotation.set(
-      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35 + fs.slam * 0.08 * (1 - rs.unroll),
+      a.lean * 0.3 + leanA * 0.4 + hPitch * 0.4 - layE + eFold - a.tilt - upperLiftY * 0.35 + fs.slam * 0.13 * (1 - rs.unroll),
       riseYaw + lieSide * 0.32 - riseDir * 0.16 * fs.buckle * (1 - rs.unroll), // fluid torsional rotation during buckle and roll
       (a.roll - slipRoll * 0.42) + rollA * 0.5 + hRoll * 0.45 + riseRoll - (a.tiltZ ?? 0) + lieSide * 0.22 * (1 - rs.unroll) + riseDir * 0.10 * fs.slam * (1 - rs.unroll),
     );
@@ -1273,20 +1324,25 @@ export class Robot {
       gr - slipRoll * 0.14 + spineFallRoll * 0.35,
     );
     this.waist.rotation.set(
-      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28 + spineFallCurl * 0.85 - spineImpactDecompress + spineFold,
+      a.lean * 0.3 + leanA * 0.3 + hPitch * 0.28 + spineFallCurl * 0.85 - spineImpactDecompress + spineFold + layTrail * 0.5,
       wY - psi * 0.5 - gy * 0.7 + hYaw * 0.3 - spineFallYaw * 0.35,
       -gr * 0.6 + hRoll * 0.3 + slipRoll * 0.36 + spineFallRoll * 0.55,
     );
     this.chest.rotation.set(
-      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3) + spineFallCurl * 1.25 - spineImpactDecompress * 1.2 + spineFold * 1.2,
+      a.lean * 0.38 + leanA * 0.25 + breathe + 0.04 + hPitch * (0.3 + (1 - hPt) * 0.3) + spineFallCurl * 1.25 - spineImpactDecompress * 1.2 + spineFold * 1.2 + layTrail * 0.95,
       cY - psi * 0.4 - gy * 0.8 + hYaw * 0.55 + spineFallYaw * 0.75,
       -rollA * 0.3 - gr * 0.4 + hRoll * 0.3 + slipRoll * 0.52 + spineFallRoll * 0.75,
     );
 
     // head: lags the chest and counter-rotates to keep eyes on the opponent, and flows smoothly with head-slips/weaves
-    // ...and during the fall the heavy head lags with inertia, then whips and rebounds on canvas impact
-    const headFallLag = -fs.lay * 0.26 * (1 - fs.slam) * (1 - rs.unroll);
-    const headImpactSlam = fs.slam * 0.32 * (1 - rs.unroll);
+    // ...and during the fall the heavy head HOLDS UP (the neck trails the collapsing torso — the accordion lag),
+    // then WHIPS DOWN into the canvas at impact and rebounds off it. (The old signs did the opposite: the head
+    // dived ahead of the body and popped its chin up at the slam — that was a big part of the "weird" read.)
+    const headHold = layTrail * 0.9;
+    const headWhip = -fs.slam * 0.34 * (1 - rs.unroll);
+    // the neck stiffens through the impact beat so the whip is actually FELT instead of filtered out
+    // by a soft spring — then it goes limp again for the settle
+    const whipStiff = 1 + fs.slam * 1.7 * (1 - rs.unroll);
     const headFallRoll = riseDir * 0.22 * fs.side * (1 - rs.side);
     const headFallYaw = riseDir * 0.28 * fs.side * (1 - rs.side);
 
@@ -1297,7 +1353,7 @@ export class Robot {
       + eSpan * 0.3 - rs.hipUp * 0.34 * (1 - rs.unroll) - eFold * 0.55 + rs.bounce * 0.1
       - riseOut * 0.06 * Math.sin(t * 11);
 
-    const baseHeadX = 0.02 - a.lean * 0.52 + hRise - leanA * 0.28 + headFallLag + headImpactSlam;
+    const baseHeadX = 0.02 - a.lean * 0.52 + hRise - leanA * 0.28 + headHold + headWhip;
     let hx: number;
     let hy: number;
     let hz: number;
@@ -1307,7 +1363,7 @@ export class Robot {
     if (!snapOn || !isHitting) {
       // Standar atau Idle: gunakan animasi hit/head reaction standar yang natural
       const hSnap = 0.25 + hPt * 1.15;
-      const headHz = lerp(4.8, 11.8, dodgeFlow);
+      const headHz = lerp(4.8, 11.8, dodgeFlow) * whipStiff;
       hx = this.sHeadX.update(baseHeadX + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
       hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0) + headFallYaw, headHz, 0.55, dt);
       hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58 + headFallRoll, headHz, 0.55, dt);
@@ -1367,7 +1423,7 @@ export class Robot {
       headShare = 0.55;
     } else {
       const hSnap = 0.25 + hPt * 1.15;
-      const headHz = lerp(4.8, 11.8, dodgeFlow);
+      const headHz = lerp(4.8, 11.8, dodgeFlow) * whipStiff;
       hx = this.sHeadX.update(baseHeadX + hPitch * hSnap - hUp * 0.3 * hMag, headHz, 0.52, dt);
       hy = this.sHeadY.update(-a.twist * 0.72 - lag * 0.5 + hYaw * (0.6 + hPt * 0.9) + (a.headYaw ?? 0), headHz, 0.55, dt);
       hz = this.sHeadZ.update(-rollA * 0.4 + hRoll * (0.4 + hPt * 0.8) + slipRoll * 0.58, headHz, 0.55, dt);

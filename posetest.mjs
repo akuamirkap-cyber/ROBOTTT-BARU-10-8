@@ -14,7 +14,7 @@
 //   §6  every freestyle move is continuous and returns to the guard
 import * as THREE from 'three';
 import { Robot } from './.__robot.mjs';
-import { FREESTYLE, GUARD, freestylePose, getupFoot, riseArms, riseStages } from './.__poses.mjs';
+import { FREESTYLE, GUARD, fallArms, fallStages, freestylePose, getupFoot, riseArms, riseStages } from './.__poses.mjs';
 
 const D = 1 / 60;
 const STYLE = { variant: 'atom', main: 0x8a8f98, secondary: 0x3a3f47, accent: 0x1e9bff, glow: 0x63e0ff };
@@ -99,7 +99,10 @@ const riseDir = 1;
 {
   const rig = new Rig();
   // settle in the stance, then lie down the way a knock-down leaves him (fall = 1, limp, like Game.ts feeds it)
-  for (let i = 0; i < 40; i++) rig.step({});
+  // — the lie is SETTLED before the measurement starts, so the canvas-slam impulse fires once, unmeasured,
+  //   exactly like the game (where the rise begins from a calm lie, never from a jump-cut to fall = 1)
+  for (let i = 0; i < 20; i++) rig.step({});
+  for (let i = 0; i < 60; i++) rig.step({ fall: 1, rise: 0, riseDir });
   const trace = [];
   let riseSteps = 0;
   let prevArms = null;
@@ -269,5 +272,80 @@ console.log('\n§6  every freestyle move is continuous and returns to the guard'
   }
 }
 
-console.log(fails === 0 ? '\nGET-UP + FREESTYLE: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);
+// ============================================================================================== §7 the FALL
+console.log('\n§7  the fall is articulated (not a plank), accelerates, and whips the head right');
+{
+  // the lie must land on the EXACT pose the get-up starts from, on both sides
+  let handover = 0;
+  for (const d of [1, -1]) {
+    const f1 = fallArms(1, d, 3.2, false);
+    const r0 = riseArms(0, d);
+    handover = Math.max(handover,
+      Math.abs(f1.a0.sx - r0.a0.sx), Math.abs(f1.a0.sy - r0.a0.sy), Math.abs(f1.a0.sz - r0.a0.sz), Math.abs(f1.a0.ex - r0.a0.ex),
+      Math.abs(f1.a1.sx - r0.a1.sx), Math.abs(f1.a1.sy - r0.a1.sy), Math.abs(f1.a1.sz - r0.a1.sz), Math.abs(f1.a1.ex - r0.a1.ex),
+      Math.abs(f1.tw - r0.tw), Math.abs(f1.ln - r0.ln), Math.abs(f1.dp - r0.dp), Math.abs(f1.rl - r0.rl));
+  }
+  ok('the lie lands on the exact pose the get-up starts from', handover < 1e-6, `err ${handover.toExponential(1)}`);
+
+  const dir = 1;
+  const rig = new Rig();
+  for (let i = 0; i < 40; i++) rig.step({});
+  let prev = null;
+  let maxPitchJump = 0;
+  let maxHeadJump = 0;
+  let minProbe = Infinity;
+  const tr = [];
+  const T = 0.55; // the collapse window (the game's spring delivers roughly this fast)
+  const n = Math.round((T + 0.15) / D);
+  for (let i = 0; i <= n; i++) {
+    const t = i * D;
+    const e = Math.min(1, Math.pow(Math.min(1, t / T), 1.2)); // representative gravity-shaped delivery
+    const fb = fallArms(e, dir, t, true);
+    rig.step({ arms: [fb.a0, fb.a1], twist: fb.tw, lean: fb.ln, dip: fb.dp, roll: fb.rl, fall: e, air: 0, rise: undefined, hit: 0 });
+    rig.robot.root.updateMatrixWorld(true);
+    const bodyX = rig.robot.body.rotation.x;
+    const hx = rig.robot.head.rotation.x;
+    const headP = joint(rig.robot, 'head');
+    if (prev) {
+      maxPitchJump = Math.max(maxPitchJump, Math.abs(bodyX - prev.bodyX));
+      maxHeadJump = Math.max(maxHeadJump, headP.distanceTo(prev.headP));
+    }
+    prev = { bodyX, headP };
+    for (const pr of rig.robot.probes) {
+      if (pr.foot) continue;
+      V.copy(pr.p).applyMatrix4(pr.parent.matrixWorld);
+      if (V.y < minProbe) minProbe = V.y;
+    }
+    tr.push({ e, lay: fallStages(e).lay, bodyX, che: rig.robot.chest.rotation.x, hx });
+  }
+  ok('the collapse is continuous — no pitch snap', maxPitchJump < 0.16, `worst ${f3(maxPitchJump)} rad/frame (the impact beat is allowed to be sharp)`);
+  ok('no teleport of the head on the way down', maxHeadJump < 0.9, `worst ${f3(maxHeadJump)} local/frame`);
+  ok('nothing sinks through the canvas while falling', minProbe > -0.02, `lowest probe ${f3(minProbe)}`);
+
+  // THE ACCORDION: deep in the fall the CHEST is still held UP (its local pitch stays high) while the body is
+  // already 70% over — the trails-the-hips signature. A stiff plank keeps the chest at the plain lean offset
+  // (~0.02 rad) the whole way down.
+  const win = tr.filter((s) => s.e > 0.62 && s.e < 0.78);
+  const cheHold = win.length ? win.reduce((a, s) => a + s.che, 0) / win.length : 0;
+  ok('the torso trails the hips on the way down (accordion, not a plank)', cheHold > 0.09, `chest holds ${f3(cheHold)} rad up while the body is 70% over`);
+
+  // THE WHIP: the head holds up through the fall (its pitch sits HIGH before the impact) and then DIPS hard
+  // across the slam beat — never a mid-air dive with a chin-pop at the impact (that was the old, weird read).
+  const pre = tr.filter((s) => s.e > 0.55 && s.e < 0.75);
+  const post = tr.filter((s) => s.e > 0.75);
+  const preMax = pre.reduce((b, s) => Math.max(b, s.hx), -Infinity);
+  const postMin = post.reduce((b, s) => Math.min(b, s.hx), Infinity);
+  ok('the head is held up late into the fall', preMax > 0.12, `held ${f3(preMax)} rad at e 0.55–0.75`);
+  ok('the head whips DOWN into the mat across the slam beat', preMax - postMin > 0.08, `dips ${f3(preMax - postMin)} rad across the impact`);
+
+  // GRAVITY: the lay accelerates — the late part of the fall turns faster than the early part.
+  const rate = (a, b) => {
+    const w = tr.filter((s) => s.e >= a && s.e <= b);
+    return w.length > 1 ? Math.abs(w[w.length - 1].lay - w[0].lay) / (w.length * D) : 0;
+  };
+  ok('the fall ACCELERATES into the mat (gravity, not a servo)', rate(0.5, 0.72) > rate(0.12, 0.3) * 1.3, `late ${f3(rate(0.5, 0.72))} vs early ${f3(rate(0.12, 0.3))} lay/s`);
+}
+
+
+console.log(fails === 0 ? '\nGET-UP + FREESTYLE + FALL: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);
 process.exit(fails === 0 ? 0 : 1);

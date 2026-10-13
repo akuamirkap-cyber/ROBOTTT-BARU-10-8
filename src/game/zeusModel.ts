@@ -213,7 +213,10 @@ export const DEFAULT_ZEUS_PROPORTIONS: ZeusProportions = {
   headScale: 1.0,
   chestScale: 1.0,
   armScale: 1.0,
-  legScale: 1.0,
+  // Long athletic legs, matching the Atlas "long, athletic boxer/sprinter legs" retune: at 1.12 the hip→ankle
+  // span is 4.52 units (Atlas is 3.92) and the hips sit wider (hipX 0.81 vs 0.76), so Zeus reads long-legged and
+  // athletic instead of stubby. Everything (mesh mounts, IK, standing height) scales from this one factor.
+  legScale: 1.12,
 };
 
 export interface ZeusRigMetrics {
@@ -255,10 +258,11 @@ const LS_VIEWER_HIDDEN = 'zeus-hidden-v1';
 const LS_VIEWER_GROUPS = 'zeus-groups-v1';
 
 // Master conversion factor from ZeusViewer native units (total height 12.31)
-// to Steel Titans Robot local units. At K = 0.72, Zeus's native leg length
-// (2.70 thigh + 2.90 shin = 5.60) equals 4.032 Robot units, matching the
-// Robot's 4.00-unit leg rig while keeping 100% uniform scale across every
-// body part and making Zeus tower over standard robots just like Real Steel.
+// to Steel Titans Robot local units. At K = 0.72 (and the default legScale of
+// 1.12) Zeus's native leg length (2.70 thigh + 2.90 shin = 5.60) spans 4.52
+// Robot units — LONGER than the Robot's 3.92-unit leg rig on purpose: Zeus gets
+// the same long, athletic boxer legs as Atlas while keeping 100% uniform scale
+// across every body part and making Zeus tower over standard robots like Real Steel.
 export const ZEUS_MASTER_SCALE = 0.72;
 
 export function loadZeusProportions(): ZeusProportions {
@@ -1154,16 +1158,20 @@ export function mount100PercentZeus(
       delete r.root.userData.zeusLinks;
     }
 
-    // 4) Apply hidden/deleted parts
-    const hiddenRaw = localStorage.getItem(LS_VIEWER_HIDDEN);
-    if (hiddenRaw) {
-      const hiddenIds = JSON.parse(hiddenRaw) as string[];
-      if (Array.isArray(hiddenIds)) {
-        const hiddenSet = new Set(hiddenIds);
-        parts.forEach((m) => {
-          if (hiddenSet.has(m.userData.id)) m.visible = false;
-        });
+    // 4) Apply hidden/deleted parts — preset bawaan Zeus dulu, daftar user di localStorage menimpa
+    let hiddenIds: string[] = Array.isArray(ZEUS_PRESET.dihapus) ? [...ZEUS_PRESET.dihapus] : [];
+    try {
+      const hiddenRaw = localStorage.getItem(LS_VIEWER_HIDDEN);
+      if (hiddenRaw) {
+        const parsed = JSON.parse(hiddenRaw) as string[];
+        if (Array.isArray(parsed)) hiddenIds = parsed;
       }
+    } catch { /* ignore */ }
+    if (hiddenIds.length) {
+      const hiddenSet = new Set(hiddenIds);
+      parts.forEach((m) => {
+        if (hiddenSet.has(m.userData.id)) m.visible = false;
+      });
     }
   } catch {
     // ignore invalid localStorage data
