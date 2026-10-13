@@ -530,7 +530,7 @@ export function fallStages(e: number) {
   const ec = clamp(e, 0, 1.06);
   // Secondary canvas impact compression & rebound settle, active right upon canvas slam
   const slam = Math.sin(Math.PI * clamp((ec - 0.76) / 0.26, 0, 1));
-  const layBase = Math.pow(clamp((ec - 0.08) / 0.74, 0, 1), 1.55);
+  const layBase = Math.pow(clamp((ec - 0.08) / 0.74, 0, 1), 1.95); // gravity-true: slow while the knees give, then it ACCELERATES into the mat (never a constant-speed tip)
   return {
     buckle: Math.sin(Math.PI * S(ec, 0.0, 0.52)), // the knees fold, the hips drop out from under the torso
     lay: clamp(layBase + slam * 0.04, 0, 1.0), // the torso accelerates with gravity into the canvas (never braking in mid-air!)
@@ -568,7 +568,7 @@ export function fallArms(e: number, dir: number, t = 0, isKo = false): Beat {
   const BOUNCE_TRAIL = P(-0.26, -0.18 * d, 0.44, -1.04);
 
   // Final resting poses on the canvas (never exceeding sx = 0.12 so elbows/fists never dig below the back)
-  const REST_DOWN = P(0.12, 0.02, 0.38, -0.48); // exact match to riseArms(0, dir) U pose
+  const REST_DOWN = P(0.12, 0.02, 0.38, -0.32); // exact match to riseArms(0, dir) U pose
   const REST_KO_LEAD = P(0.08, 0.12, 0.64, -0.58); // sprawled out to the side on the mat
   const REST_KO_TRAIL = P(-0.16, -0.34, 0.28, -1.18); // resting loosely across the lower ribs
 
@@ -651,9 +651,9 @@ export function riseArms(u: number, dir: number): Beat {
   const ribs = S(uc, 0.62, 0.88); // ...and comes back to the ribs
   const back = S(uc, 0.88, 1); // the guard closes over the last beat
   // limp on the canvas — natural relaxed elbow flex resting beside the torso instead of rigid locked arms
-  const U = P(0.12, 0.02, 0.38, -0.48);
-  const REACH = P(0.2, -0.05, 0.7, -1.05); // hand out beside the hip, elbow folded
-  const PRESS = P(0.34, 0.05, 1.0, -0.18); // pushed straight: the arm is a post
+  const U = P(0.12, 0.02, 0.38, -0.32); // (golden arm bones: the plant reach is re-tuned to the canvas)
+  const REACH = P(0.22, -0.05, 0.74, -0.8); // hand out beside the hip, elbow folded
+  const PRESS = P(0.36, 0.05, 1.0, -0.05); // pushed straight: the arm is a post
   const OFF = P(0.06, -0.12, 0.42, -1.4); // off the canvas, elbow soft again
   const HAUL = P(-0.8, -0.3, 0.42, -1.9); // momentum arm, folded across the chest
   const DRIVE = P(-0.72, -0.2, -0.2, -0.85); // hand down on the lead knee, arm long, pushing

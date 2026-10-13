@@ -233,6 +233,16 @@ export const loadGloveSkin = (): number => {
     return 0;
   }
 };
+/** Skin ATLAS/ZEUS selalu satu set utuh: 1 = full ZEUS 100% (helm+armor+sarung), selain itu = ATLAS.
+ *  Mencegah sisa skin lama yang campur (mis. helm Zeus + badan Atlas) yang bikin mata ATLAS jadi hijau. */
+export const loadSkinSet = (): 0 | 1 => {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('steel_titans_custom_robot_active') === '1') return 1;
+  } catch {
+    /* ignore */
+  }
+  return loadHelmetSkin() === 1 && loadGloveSkin() === 1 && loadArmorSkin() === 1 ? 1 : 0;
+};
 
 export const OPPONENTS: OpponentDef[] = [
   { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.0, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
@@ -479,14 +489,17 @@ const MOVES: Record<MoveId, Move> = {
     // is meant to be doubled and tripled up, and the cheapest way to charge the Overdrive — it measures the range,
     // it pokes a guard open, and it never leaves you open. It is still a jab (a 7, not a knockdown), but it is a
     // jab with a two-ton machine behind it.
-    id: 'jab', arm: 0, dur: 0.55, strikeAt: 0.07, impact: 0.15, cancel: 0.27, dmg: 7, reach: 4.4, cost: 4, stun: 0.55, knock: 4, blockMul: 0.1, power: 0.36, hitY: 4.5, step: 1.35, kind: 'front',
+    // RETIMED FOR READABILITY: the old coil→full-extension beat was 0.08 s — a sub-5-frame blur that read as a
+    // glitch ("cepat tapi ga jelas"). Now the load is visible (0.13 s), the punch-out is a crisp 0.15 s snap, and
+    // the overshoot + recoil actually play — dynamic and clear, still the fastest fist in the book.
+    id: 'jab', arm: 0, dur: 0.72, strikeAt: 0.13, impact: 0.24, cancel: 0.38, dmg: 7, reach: 4.4, cost: 4, stun: 0.55, knock: 4, blockMul: 0.1, power: 0.36, hitY: 4.5, step: 1.35, kind: 'front',
     keys: [
       k(0, GUARD),
-      k(0.07, P(-0.34, -0.02, 0.14, -2.7), 0.42, -0.1, -0.34, 0.26, 'out'), // coil back
-      k(0.15, P(-1.76, -0.36, 0, -0.02), -0.8, 0.42, 1.04, 0.06, 'in'), // full extension
-      k(0.21, P(-1.83, -0.36, 0, 0.02), -0.9, 0.46, 1.14, 0.04), // overshoot whip
-      k(0.34, P(-1.15, -0.3, 0.12, -0.75), -0.15, 0.18, 0.35, 0.13), // snap back off the target
-      k(0.55, GUARD),
+      k(0.11, P(-0.34, -0.02, 0.14, -2.7), 0.42, -0.1, -0.34, 0.26, 'out'), // coil back — the load is VISIBLE
+      k(0.24, P(-1.76, -0.36, 0, -0.02), -0.8, 0.42, 1.04, 0.06, 'in'), // full extension — a snap you can follow
+      k(0.31, P(-1.83, -0.36, 0, 0.02), -0.9, 0.46, 1.14, 0.04), // overshoot whip
+      k(0.46, P(-1.15, -0.3, 0.12, -0.75), -0.15, 0.18, 0.35, 0.13), // snap back off the target
+      k(0.72, GUARD),
     ],
   },
   cross: {
@@ -914,7 +927,7 @@ const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20
 const TELL: Record<MoveId, number> = { jab: 0.48, cross: 0.55, hook: 0.6, upper: 0.62, grab: 0.68, slam: 0.9, bolt: 0.9, windmill: 0.92, skyhook: 0.92, counter: 0.5 };
 const TELL_CHAIN = 0.2; // follow-up hits in a combo or counter flow fast while staying readable to the human eye
 const UNBLOCKABLE: MoveId[] = ['grab', 'slam', 'bolt', 'windmill', 'skyhook']; // shown with a RED indicator, like God of War's unblockable attacks
-// how much a strike re-aims at the opponent's *current* position when it launches (1 = homing)
+
 const TRACK: Record<MoveId, number> = { jab: 0.35, cross: 0.42, hook: 0.9, upper: 0.55, slam: 0.5, bolt: 0.25, windmill: 0.42, skyhook: 0.4, grab: 0.52, counter: 0.45 };
 
 /**
@@ -958,9 +971,11 @@ const jabChainSpeed = (chain: number) => 1 + JAB_CHAIN_STEP * THREE.MathUtils.cl
 /**
  * Overdrive meter a clean hit banks for the attacker. Every punch charges it, but the JAB — the cheapest and
  * fastest punch in the book — charges it at close to double rate, so poking the guard IS how you fill the meter.
+ * The coefficient keeps that lead intact now that the jab plays a readable 0.72 s beat instead of a 0.55 s blur:
+ * same meter-per-second as before, but a punch you can actually SEE.
  * Exported (like defenceAgainst) so `striketest.mjs` can assert the economy instead of trusting the reader.
  */
-export const meterGainFor = (id: MoveId, dmg: number, ultra = false) => dmg * 1.3 * (id === 'jab' ? 1.85 : 1) * (ultra ? 1.5 : 1);
+export const meterGainFor = (id: MoveId, dmg: number, ultra = false) => dmg * 1.3 * (id === 'jab' ? 2.5 : 1) * (ultra ? 1.5 : 1);
 
 /**
  * WHERE YOU AIM. A tap on SPACE (or T) switches the point of impact between the HEAD and the BODY, and every
@@ -1036,7 +1051,7 @@ function sampleKeys(keys: Key[], t: number): Key {
   return keys[keys.length - 1];
 }
 
-type FState = 'idle' | 'attack' | 'stagger' | 'ko' | 'air' | 'down';
+type FState = 'idle' | 'attack' | 'stagger' | 'ko' | 'air' | 'down' | 'legend' | 'legendHit';
 
 class Fighter {
   pos = new THREE.Vector2();
@@ -1091,6 +1106,8 @@ class Fighter {
   attackDir = new THREE.Vector2(0, 1);
   y = 0;
   vy = 0;
+  /** upright silhouette height for the camera framing (set each frame; 100% Zeus is far taller than the standard rig) */
+  standH?: number;
   bounced = false;
   airSpin = 0; // yaw rate while knocked flying (a hook spins him; decays in the air, dies on the canvas)
   juggle = 0;
@@ -1527,9 +1544,9 @@ export class Game {
   private fwMul = loadFootwork();
   private camMode = loadCamMode();
   private iq = loadIq(); // enemy AI IQ multiplier (1, 2, 3, 10)
-  private helmetSkin = loadHelmetSkin();
-  private gloveSkin = loadGloveSkin();
-  private armorSkin = loadArmorSkin();
+  private helmetSkin = loadSkinSet();
+  private gloveSkin = loadSkinSet();
+  private armorSkin = loadSkinSet();
   private def: OpponentDef = OPPONENTS[0];
 
   private phase: Phase = 'menu';
@@ -2057,65 +2074,17 @@ export class Game {
     this.emitHud(true);
   }
 
+  /** Ganti skin = ganti satu set penuh (ATLAS atau ZEUS). id >= 1 = set ZEUS, selain itu = set ATLAS. */
   setArmorSkin(id: number) {
-    const v = Math.max(0, Math.min(ARMOR_SKINS.length - 1, Math.round(id)));
-    this.armorSkin = v;
-    try {
-      localStorage.setItem(LS_ARMOR, String(v));
-    } catch {
-      /* ignore */
-    }
-    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    this.player.maxHp = this.getPlayerMaxHp();
-    this.player.hp = Math.min(this.player.hp, this.player.maxHp);
-    this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
-    this.sfx.init();
-    this.sfx.servo();
-    this.sfx.click();
-    this.emitHud(true);
+    this.equipZeus(id >= 1);
   }
 
   setHelmetSkin(id: number) {
-    const v = Math.max(0, Math.min(HELMET_SKINS.length - 1, Math.round(id)));
-    this.helmetSkin = v;
-    try {
-      localStorage.setItem(LS_HELMET, String(v));
-    } catch {
-      /* ignore */
-    }
-    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    this.player.maxHp = this.getPlayerMaxHp();
-    this.player.hp = Math.min(this.player.hp, this.player.maxHp);
-    this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
-    this.sfx.init();
-    this.sfx.servo();
-    this.sfx.click();
-    this.emitHud(true);
+    this.equipZeus(id >= 1);
   }
 
   setGloveSkin(id: number) {
-    const v = Math.max(0, Math.min(GLOVE_SKINS.length - 1, Math.round(id)));
-    this.gloveSkin = v;
-    try {
-      localStorage.setItem(LS_GLOVE, String(v));
-    } catch {
-      /* ignore */
-    }
-    const isZeus = this.armorSkin === 1 && this.helmetSkin === 1;
-    this.menuHero.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    for (const l of this.menuHero.eyeLights) l.removeFromParent();
-    this.player.robot.setSkins(this.helmetSkin, this.gloveSkin, this.armorSkin, isZeus);
-    this.player.glowBoost = Math.max(this.player.glowBoost, 2.2);
-    this.sfx.init();
-    this.sfx.servo();
-    this.sfx.click();
-    this.emitHud(true);
+    this.equipZeus(id >= 1);
   }
 
   /** Re-mount Zeus 100% on any active robots (lobby hero, player, enemy, VS cards) using current adjustments & groups */
@@ -2378,6 +2347,12 @@ export class Game {
     if (this.teamMode && this.ally && this.player.state === 'ko' && this.ally.state !== 'ko' && this.phase === 'fight') return this.ally;
     return this.player;
   }
+  /** upright silhouette height of a fighter's chassis: the camera frames — and rides above — exactly this */
+  private standHOf(f: Fighter): number {
+    const zm = f.robot?.root?.userData?.zeusMetrics as { STAND_Y: number } | undefined;
+    if (zm?.STAND_Y) return zm.STAND_Y + 4.4; // hips + torso & head above them (100% Zeus metrics)
+    return 6.6; // cammath STAND_H — the standard chassis; framing stays byte-for-byte unchanged for him
+  }
   private mateOf(f: Fighter): Fighter | null {
     if (!this.teamMode) return null;
     if (f === this.player) return this.ally;
@@ -2403,7 +2378,7 @@ export class Game {
     // your partner: the same chassis in the team's second livery, a touch heavier-hitting so it pulls its weight
     const ally = this.makeFighter(
       false,
-      { ...PLAYER_STYLE, accent: 0x18c48a, glow: 0x5effb0, helmetSkin: (this.helmetSkin + 3) % HELMET_SKINS.length, gloveSkin: (this.gloveSkin + 5) % GLOVE_SKINS.length, armorSkin: (this.armorSkin + 4) % ARMOR_SKINS.length },
+      { ...PLAYER_STYLE, accent: 0x18c48a, glow: 0x3fd8ff, helmetSkin: 0, gloveSkin: 0, armorSkin: 0 },
       1.0,
       110,
       1.05,
@@ -2493,13 +2468,11 @@ export class Game {
       const r = Math.random();
       const id: MoveId =
         f.meter >= 100
-          ? r < 0.4
-            ? 'windmill'
-            : r < 0.65
-              ? 'bolt'
-              : r < 0.85
-                ? 'skyhook'
-                : 'slam'
+          ? r < 0.34
+            ? 'bolt'
+            : r < 0.67
+              ? 'skyhook'
+              : 'slam'
           : r < 0.36
             ? 'jab'
             : r < 0.62
@@ -3162,7 +3135,7 @@ export class Game {
         this.tryOverdrive(p);
         break;
       // ---------------- FREESTYLE ----------------
-      // The whole show-off book (poses.ts) sits on its own keys: M N B Y O 1 2 3 4 5 6.
+      // The show-off book (poses.ts) sits on its own keys: M N B Y O Z 1 2 3 4 5 6.
       case 'KeyM':
       case 'KeyN':
       case 'KeyB':
@@ -4225,6 +4198,7 @@ export class Game {
 
   private playerInput() {
     const p = this.player;
+    if (p.state === 'legend' || p.state === 'legendHit') return; // the paired sequence owns the body
     const { fwd, lat } = this.dirKeys();
     const f = this.toward(p, this.enemy);
     const r = new THREE.Vector2(-f.y, f.x);
@@ -4999,6 +4973,7 @@ export class Game {
   }
 
   private startDodge(f: Fighter, dir: THREE.Vector2, kind: 'evade' | 'fwd' | 'back' | 'side' = 'evade') {
+    if (f.state === 'legend' || f.state === 'legendHit') return false;
     // Authentic Muhammad Ali & pro boxing footwork: explosive step-slide (1.1m - 1.35m boxing repositioning) instead of anime teleport
     const cfg = {
       evade: { dur: 0.28, speed: 5.6, inv: true, cost: 8, cd: 0.18 },
@@ -5036,6 +5011,7 @@ export class Game {
    * or by cancelling any non-Overdrive attack for an unstoppable comeback!
    */
   private tryOverdrive(p: Fighter) {
+    if (p.state === 'legend' || p.state === 'legendHit') return;
     if (p.meter < 100) {
       this.popup(new THREE.Vector3(p.pos.x, 5.8, p.pos.y), `OVERDRIVE ${Math.floor(p.meter)}%`, 'pop-info');
       return;
@@ -5053,9 +5029,10 @@ export class Game {
     p.state = 'idle';
     p.meter = 0;
     this.meterReadyShown = false;
-    // THE OVERDRIVE BOOK — every press of R (meter full) runs to the next one of the four, so a comeback is never
-    // the same shape twice: the freestyle spinning smash, the lunging straight, the rising uppercut and the slam.
-    const odMoves: MoveId[] = ['windmill', 'bolt', 'skyhook', 'slam'];
+    // THE OVERDRIVE BOOK — every press of R (meter full) runs to the next one of the three heavy finishes, so a
+    // comeback is never the same shape twice: the lunging straight, the rising uppercut and the slam. (The
+    // arm-spinning windmill is OUT of the book — "muter-muter tangan" reads as gimmicky, not as a real finisher.)
+    const odMoves: MoveId[] = ['bolt', 'skyhook', 'slam'];
     const pick = odMoves[p.moveSeq % odMoves.length];
     this.odToggle = !this.odToggle;
     if (fromDodge) {
@@ -5073,6 +5050,7 @@ export class Game {
   }
 
   private tryAttack(f: Fighter, id: MoveId) {
+    if (f.state === 'legend' || f.state === 'legendHit') return;
     const m = MOVES[id];
     if (f.isPlayer && f.state === 'stagger') {
       // RESPONSIF MEMBALAS PUKULAN SETELAH KENA PUKULAN:
@@ -5153,6 +5131,7 @@ export class Game {
   }
 
   private startMove(f: Fighter, id: MoveId, chain = false) {
+    if (f.state === 'legend' || f.state === 'legendHit') return;
     const m = MOVES[id];
     const foe = this.foeOf(f);
     if (id === 'counter') {
@@ -6068,6 +6047,7 @@ export class Game {
   private updateFighter(f: Fighter, o: Fighter, dt: number) {
     f.hit = Math.max(0, f.hit - dt * 2.4);
     f.recoilT = Math.max(0, f.recoilT - dt);
+
     if (f.emberT > 0) {
       // a trickle of hot metal keeps falling out of the dent for a third of a second after the blow
       f.emberT -= dt;
@@ -6714,7 +6694,7 @@ export class Game {
       for (let j = i + 1; j < list.length; j++) {
         const p = list[i];
         const e = list[j];
-        if (p.state === 'air' || e.state === 'air') continue;
+        if (p.state === 'air' || e.state === 'air' || p.state === 'legend' || e.state === 'legend' || p.state === 'legendHit' || e.state === 'legendHit') continue;
         const minD = 3.35 * (p.scale + e.scale) * 0.5;
         const d = p.pos.distanceTo(e.pos);
         if (d >= minD || d < 0.001) continue;
@@ -6775,7 +6755,7 @@ export class Game {
     const X = MOVE_EXTRA[m.id];
     const aim = a.aim; // the target the attacker picked: 0 = head, 1 = body
     // the menu runs a real demo fight in the background, so hits have to resolve there too
-    if (d.state === 'ko' || d.state === 'down' || (this.phase !== 'fight' && this.phase !== 'menu')) return;
+    if (d.state === 'ko' || d.state === 'down' || d.state === 'legend' || d.state === 'legendHit' || a.state === 'legend' || a.state === 'legendHit' || (this.phase !== 'fight' && this.phase !== 'menu')) return;
     const dist = a.pos.distanceTo(d.pos);
     const toA = new THREE.Vector2().subVectors(a.pos, d.pos).normalize();
     const away = new THREE.Vector2(-toA.x, -toA.y);
@@ -7944,6 +7924,10 @@ export class Game {
         // Before impact (ct < H), the robots lunge forward CLOSER towards each other!
         // At H <= ct <= REL, roots remain locked at exact contact positions with subtle tension grind shudder
         // After REL, they recoil back smoothly to staging marks
+        // NOTE: the feet must travel WITH the root (shiftPlantedFeet) — planted boots left behind made the reach
+        // solver crush the hips down ("robot turun over") and the balance steps shuffle under the stage lunge.
+        const prevHeroPos = this.menuHero.root.position.clone();
+        const prevFoePos = this.vsFoe ? this.vsFoe.robot.root.position.clone() : null;
         if (ct < H) {
           const u = ct / H;
           const k = u * u * (3 - 2 * u);
@@ -7961,6 +7945,13 @@ export class Game {
         } else {
           this.menuHero.root.position.copy(heroStagingPos);
           if (this.vsFoe) this.vsFoe.robot.root.position.copy(foeStagingPos);
+        }
+        this.menuHero.shiftPlantedFeet(this.menuHero.root.position.x - prevHeroPos.x, this.menuHero.root.position.z - prevHeroPos.z);
+        if (this.vsFoe && prevFoePos) {
+          this.vsFoe.robot.shiftPlantedFeet(
+            this.vsFoe.robot.root.position.x - prevFoePos.x,
+            this.vsFoe.robot.root.position.z - prevFoePos.z,
+          );
         }
 
         this.menuHero.root.updateMatrixWorld(true);
@@ -8124,6 +8115,7 @@ export class Game {
       lg = 0;
       dp = rb.dp;
       rl = rb.rl;
+      kk = rb.kk;
       kk = rb.kk;
     } else if (f.state === 'stagger') {
       const fl = Math.sin(t * 22) * 0.14;
@@ -8577,14 +8569,17 @@ export class Game {
     // fall / get-up through a spring: quick, slightly bouncy drop and a slow, smooth rise
     const fallTarget = f.state === 'ko' ? f.fallT : f.state === 'down' ? f.fallT : 0;
     const dropping = fallTarget > f.fallS.x;
-    const e = THREE.MathUtils.clamp(f.fallS.update(fallTarget, f.state === 'ko' ? 1.85 : dropping ? 1.75 : 1.2, f.state === 'ko' ? 0.72 : dropping ? 0.78 : 1.0, dt), 0, 1.06);
+    // near-critical drop (zeta 0.86–0.88): the body goes down FAST and CLEAN — the bounce you see is the explicit
+    // canvas slam beat, not spring wobble. The old 0.72–0.78 made every channel ring together at the end = jello.
+    const e = THREE.MathUtils.clamp(f.fallS.update(fallTarget, f.state === 'ko' ? 2.05 : dropping ? 1.95 : 1.2, f.state === 'ko' ? 0.88 : dropping ? 0.86 : 1.0, dt), 0, 1.06);
     // hit reactions: snap in fast, relax slowly
     f.hitV += (f.hit - f.hitV) * (1 - Math.exp(-(f.hit > f.hitV ? 40 : 7) * dt));
     f.hitUpV += (f.hitUp - f.hitUpV) * (1 - Math.exp(-(Math.abs(f.hitUp) > Math.abs(f.hitUpV) ? 40 : 6) * dt));
     if (f.hit < 0.005 && f.hitV < 0.01) {
       f.hitKind = 'standard';
     }
-    f.robot.floorY = this.phase === 'walk' ? (f.state === 'air' ? -1.4 : Math.min(0, f.y)) : 0; // the hall floor / the runway under him
+    // JURUS: the sim root-y keys take the body right down to the canvas — never clamp them to the floor
+    f.robot.floorY = f.state === 'legend' || f.state === 'legendHit' ? -40 : (this.phase === 'walk' ? (f.state === 'air' ? -1.4 : Math.min(0, f.y)) : 0); // the hall floor / the runway under him
     // place: ensure feet and root stay strictly at or above the ground surface
     const safeY = Math.max(f.robot.floorY, f.y);
     f.robot.root.position.set(f.pos.x, safeY, f.pos.y);
@@ -8649,7 +8644,8 @@ export class Game {
     const sm = f.state === 'attack' ? f.move : null;
     const strike = sm ? THREE.MathUtils.clamp(f.moveT / Math.max(0.001, sm.strikeAt), 0, 1) : 0;
     const strikePow = sm ? sm.power : 0.5;
-    f.robot.floorY = this.phase === 'walk' ? (f.state === 'air' ? -1.4 : Math.min(0, f.y)) : 0; // the hall floor / the runway under him
+    // JURUS: the sim root-y keys take the body right down to the canvas — never clamp them to the floor
+    f.robot.floorY = f.state === 'legend' || f.state === 'legendHit' ? -40 : (this.phase === 'walk' ? (f.state === 'air' ? -1.4 : Math.min(0, f.y)) : 0); // the hall floor / the runway under him
     f.robot.footLimit = this.phase === 'walk' ? Infinity : RING_IN - 0.45; // the feet stay inside the rope line (the rope is 0.24 thick + a little air)
     f.robot.animate(
       {
@@ -8936,6 +8932,9 @@ export class Game {
   private updateCamera(raw: number, dt: number) {
     const p = this.camHero();
     const e = this.enemy;
+    // true upright silhouette heights (100% Zeus towers over the standard chassis) — every framing pass uses these
+    p.standH = this.standHOf(p);
+    e.standH = this.standHOf(e);
     const cam = this.camera;
     const f = this.toward(p, e);
     const gp = new THREE.Vector3();
@@ -9228,8 +9227,10 @@ export class Game {
       for (const fgt of targets) {
         const sc = fgt.scale;
         const flat = THREE.MathUtils.clamp(fgt.fallS ? fgt.fallS.x : fgt.state === 'ko' || fgt.state === 'down' ? 1 : 0, 0, 1);
-        const headY = (7.15 - (7.15 - 1.9) * flat) * sc + fgt.y;
-        const chestY = (3.8 - 2.2 * flat) * sc + fgt.y;
+        // silhouette top & chest scale with the chassis (7.15 / 3.8 on the standard rig, far higher on 100% Zeus)
+        const headH = (fgt.standH && fgt.standH > 0 ? fgt.standH : 6.6) + 0.55;
+        const headY = (headH - (headH - 1.9) * flat) * sc + fgt.y;
+        const chestY = (headH * 0.531 - 2.2 * flat) * sc + fgt.y;
         this.spillPts.push(fgt.pos.x, headY, fgt.pos.y);
         this.spillPads.push(1.08 * sc);
         this.spillPts.push(fgt.pos.x, chestY, fgt.pos.y);

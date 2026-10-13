@@ -61,7 +61,7 @@ export function OverdrivePunchPicker({ value, onToggle }: { value: boolean; onTo
       <SectionTitle
         right={
           <span className={`font-tech text-[8px] font-bold tracking-[0.2em] ${value ? 'text-amber-300' : 'text-white/45'}`}>
-            {value ? '⚡ OVERDRIVE AKTIF' : 'STANDAR'}
+            {value ? 'OVERDRIVE AKTIF' : 'STANDAR'}
           </span>
         }
       >
@@ -90,10 +90,10 @@ export function OverdrivePunchPicker({ value, onToggle }: { value: boolean; onTo
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-display text-[15px] tracking-wider text-orange-300 flex items-center gap-1">
-              <span>⚡</span> OVERDRIVE MAKSIMAL
+              OVERDRIVE MAKSIMAL
             </span>
             <span className={`font-tech text-[10px] font-bold ${value ? 'text-amber-300 animate-pulse' : 'text-white/50'}`}>
-              {value ? 'AKTIF 🔥' : ''}
+              {value ? 'AKTIF' : ''}
             </span>
           </div>
           <div className="mt-0.5 text-[10px] leading-tight text-amber-100/75">
@@ -245,7 +245,7 @@ export function DifficultyPicker({ ultra, onPick }: { ultra: boolean; onPick: (u
               ULTRA HARD
             </span>
             <span className="rounded bg-rose-500/25 px-1.5 py-0.5 font-tech text-[8px] font-bold text-rose-300">
-              {ultra ? '🔥 ON' : '☠ PRO'}
+              {ultra ? 'ON' : 'PRO'}
             </span>
           </div>
           <div className="relative z-10 mt-1 font-tech text-[8px] tracking-wider text-rose-200/75">
@@ -334,7 +334,7 @@ export function IqPicker({ value, onPick }: { value: number; onPick: (n: number)
         })}
       </div>
       <div className="mt-1.5 flex items-center gap-1.5 rounded border border-white/5 bg-white/[0.03] px-2 py-1 font-tech text-[8.5px] tracking-wide text-white/65">
-        <span className="text-amber-300">⚡</span>
+        
         <span className="truncate">{IQ_SUB[value] ?? ''}</span>
       </div>
     </div>
@@ -782,13 +782,13 @@ export function PyroPicker({
       id: 'ring_posts',
       name: 'POJOK TIANG RING',
       desc: 'Nozel semburan api di 4 tiang sudut ring tinju',
-      icon: '🏟️',
+      icon: '',
     },
     {
       id: 'steel_platform',
       name: 'PLATFORM BAJA',
       desc: 'Meriam api konser megah di 4 ujung dek platform baja',
-      icon: '🔥',
+      icon: '',
     },
   ];
   return (
