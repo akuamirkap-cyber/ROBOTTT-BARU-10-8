@@ -1021,22 +1021,26 @@ export const defenceAgainst = (id: MoveId, dodge: number): 'block' | 'side' | 'b
  * It is a STANCE, so it moves exactly ONE gameplay number — the footwork pace (+8%) — because pace IS the style. The
  * dodge economy, the damage tables, the tells and the punch speeds are all untouched (asserted in `alitest.mjs`).
  */
-export const ALI_GUARD: Pose = P(-0.3, -0.24, 0.26, -1.5);
+export const ALI_GUARD: Pose = P(-0.16, -0.2, 0.34, -1.34);
+export const ALI_GUARD_DRIFT = 0.12; // how far the shoulders ride up and down over the low guard on the float
 export const ALI_SPEED = 1.08; // the feet are a touch quicker: "float like a butterfly" is a footwork claim
-export const ALI_FLOAT_RATE = 4.6; // how fast the upper body drifts (rad/s of the weave: ≈0.73 Hz, one weave every 1.4 s)
-export const ALI_WEAVE = 0.09; // rad — shoulder weave across the centre line
-export const ALI_TILT = 0.05; // rad — the pelvis roll that goes with it
-export const ALI_HEAD = 0.1; // rad — the head moves with the weave (a moving target, never a static face)
-export const ALI_FLOAT = 0.04; // the small extra sink-and-rise of the float (hip dip, metres)
-/** the idle pose of the style: hands low and loose, the shoulders drifting on the float */
-export const aliIdlePose = (t: number): Pose => P(ALI_GUARD.sx + Math.sin(t * ALI_FLOAT_RATE) * 0.06, ALI_GUARD.sy, ALI_GUARD.sz, ALI_GUARD.ex);
+export const ALI_FLOAT_RATE = 5.2; // how fast the upper body drifts (rad/s of the weave: ≈0.83 Hz, one weave every 1.2 s)
+export const ALI_WEAVE = 0.17; // rad — shoulder weave across the centre line (big enough to SEE from the fight camera)
+export const ALI_TILT = 0.12; // rad — the pelvis roll that goes with it
+export const ALI_HEAD = 0.22; // rad — the head moves with the weave (a moving target, never a static face)
+export const ALI_FLOAT = 0.09; // the sink-and-rise of the float (hip dip, metres)
+export const ALI_CARRY = 0.55; // how much of the stance he carries into the walk (a moving fighter still floats)
+/** the idle pose of the style: hands low and loose, the shoulders riding up and down over the low guard */
+export const aliIdlePose = (t: number): Pose => P(ALI_GUARD.sx + (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE)) * ALI_GUARD_DRIFT, ALI_GUARD.sy, ALI_GUARD.sz, ALI_GUARD.ex);
 /** ...and the three body terms that ride with it: the weave, the pelvis roll and where the head goes */
 export const aliWeave = (t: number) => Math.sin(t * ALI_FLOAT_RATE) * ALI_WEAVE;
 export const aliRoll = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 1.1) * ALI_TILT;
 export const aliHead = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 0.5) * ALI_HEAD;
 export const aliFloat = (t: number) => (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE * 2 + 0.9)) * ALI_FLOAT;
 /** how much of the style is showing, by what the fighter is doing: it needs the feet (standing, not swinging) */
-export const aliStanceWeight = (state: string, blocking: boolean, moving: boolean) => (state === 'idle' && !blocking && !moving ? 1 : 0);
+/** how much of the style is showing, by what the fighter is doing: full while standing, CARRIED into the walk, and
+ *  gone the moment he is blocking or swinging (the ordinary fight stance owns those frames) */
+export const aliStanceWeight = (state: string, blocking: boolean, moving: boolean) => (state === 'idle' && !blocking ? (moving ? ALI_CARRY : 1) : 0);
 
 /**
  * ============================== SWING DYNAMICS — the boxer's kinetic chain ==============================
@@ -3481,6 +3485,13 @@ export class Game {
       if (!this.paused) this.cycleCamMode(code === 'Slash' ? 1 : -1);
       return;
     }
+    if (code === 'KeyY') {
+      // ALI STYLE works ANYWHERE: in the lobby (the hero starts dancing), on the ring walk, in the fight, while
+      // paused. It has to be readable wherever it is pressed, so the toggle answers with a banner + a sound + a burst
+      // on the fighter — not just a line of text somewhere off screen.
+      this.toggleAliStyle();
+      return;
+    }
     if (this.phase !== 'fight' || this.paused) return;
     // THE PLAYER ALWAYS OUTRANKS THE SCRIPT: throwing a punch (or slipping) by hand while the N combo is running hands
     // the fight back to you on the spot — the script stops where it is, and the punch you just pressed is the punch
@@ -3544,9 +3555,6 @@ export class Game {
         break;
       case 'KeyN': // THE COMBO BUTTON: JAB-JAB-HOOK-HOOK-UPPERCUT → PUKULAN MEMATIKAN (see COMBO_SCRIPT)
         this.startNCombo();
-        break;
-      case 'KeyY': // ALI STYLE: the low loose guard, the float and the Ali Shuffle (see the ALI STYLE block)
-        this.toggleAliStyle();
         break;
       // ---------------- FREESTYLE ----------------
       // The show-off book (poses.ts) sits on its own keys: M B O Z 1 2 3 4 5 6 (N and Y are GAME buttons now — the
@@ -4654,7 +4662,10 @@ export class Game {
     // the low guard comes up by itself — no key to hold, exactly like a mobile boxing game. It is deliberately the
     // LIGHT guard: the full manual guard (hold G) still blocks better through its slower recovery and its chip math.
     p.autoGuard = false;
-    if (this.starMode && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT) && p.stam > 2) {
+    // ...and ALI STYLE switches the auto-guard off. A low loose guard is the OPPOSITE of a raised one, so the two
+    // cannot both be on: the style says "hands down, feet dancing". Holding G is still the strong block — the style
+    // never takes the manual guard away from the player.
+    if (this.starMode && !this.aliStyle && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT) && p.stam > 2) {
       p.autoGuard = true;
     }
     if (p.state === 'idle' && p.dodgeT <= 0) {
@@ -5543,14 +5554,20 @@ export class Game {
    */
   toggleAliStyle() {
     this.aliStyle = !this.aliStyle;
+    const on = this.aliStyle;
+    // THE ANSWER: a banner across the screen, the crowd, and a burst on the fighter — so whether the button did
+    // anything is never a mystery again (an arms-only stance change was too quiet to read).
+    this.showBanner(on ? '🦋 ALI STYLE' : 'GUARD TINGGI', on ? 'FLOAT LIKE A BUTTERFLY · ALI SHUFFLE ON' : 'STANCE NORMAL', on ? 'crit' : 'info', 1.6);
+    this.sfx.init();
+    this.sfx.ready();
+    this.sfx.cheer(on ? 0.85 : 0.3);
+    this.flashAmt = Math.max(this.flashAmt, on ? 0.2 : 0.1);
     const p = this.player;
-    if (p) {
-      this.popup(
-        new THREE.Vector3(p.pos.x, 6.9, p.pos.y),
-        this.aliStyle ? '🦋 ALI STYLE — FLOAT LIKE A BUTTERFLY' : 'ALI STYLE OFF — GUARD TINGGI',
-        this.aliStyle ? 'pop-crit' : 'pop-info',
-      );
-      this.sfx.ready();
+    if (p && this.phase !== 'menu') {
+      this.popup(new THREE.Vector3(p.pos.x, 7.0, p.pos.y), on ? '🦋 ALI STYLE — FLOAT!' : 'ALI STYLE OFF', on ? 'pop-crit' : 'pop-info');
+      this.fx.ring(p.pos.x, p.pos.y, on ? 0x8ff0ff : 0xffd27a, on ? 5.2 : 3.4, 0.5, 0.1);
+      this.fx.spark(new THREE.Vector3(p.pos.x, 1.1, p.pos.y), on ? 26 : 12, 6.5, on ? 0x8ff0ff : 0xffd27a, new THREE.Vector3(0, 1, 0), 1.2, 0.6, 9);
+      this.trauma = Math.min(1, this.trauma + 0.12);
     }
     this.emitHud(true);
   }
@@ -8303,7 +8320,7 @@ export class Game {
     return { a0, a1, dp, tw, ln, rl };
   }
 
-  private heroAnimState(pose: HeroPose, t: number, mx: number, my: number, mirror = false, staticPose = false) {
+  private heroAnimState(pose: HeroPose, t: number, mx: number, my: number, mirror = false, staticPose = false): AnimState {
     const poseT = staticPose ? 0 : t;
     const poseMx = staticPose ? 0 : mx;
     const poseMy = staticPose ? 0 : my;
@@ -8778,7 +8795,21 @@ export class Game {
     if (this.menuHeroPedestal) {
       this.menuHeroPedestal.rotation.y = t * 0.32;
     }
-    this.menuHero.animate(this.heroAnimState(this.heroPose, t, this.heroMouseX, this.heroMouseY), dt);
+    const heroSt = this.heroAnimState(this.heroPose, t, this.heroMouseX, this.heroMouseY);
+    // ALI STYLE in the LOBBY: the moment Y is pressed the hero drops his hands, starts floating and dances on the
+    // spot — so the button has an answer you can see without even starting a fight. (Only on the plain stances: a
+    // victory / taunt pose picked from the menu stays exactly as it is.)
+    if (this.aliStyle && (this.heroPose === 'ready' || this.heroPose === 'guard' || this.heroPose === 'stand')) {
+      const ap = aliIdlePose(t);
+      heroSt.arms = [lerpPose(heroSt.arms[0], ap, 0.8), lerpPose(heroSt.arms[1], ap, 0.8)];
+      heroSt.twist += aliWeave(t) * 0.9;
+      heroSt.roll += aliRoll(t) * 0.9;
+      heroSt.dip += aliFloat(t) * 0.9;
+      heroSt.headYaw = aliHead(t);
+      heroSt.shuffle = 1;
+      heroSt.idleBounce = 1;
+    }
+    this.menuHero.animate(heroSt, dt);
   }
 
   private animateFighter(f: Fighter, o: Fighter, dt: number) {
@@ -9107,15 +9138,19 @@ export class Game {
       // ALI STYLE: the hands come down and the whole upper body starts drifting (see the ALI STYLE block). It blends
       // in with the idle weight, so the moment he really walks or throws, the ordinary fight stance takes over.
       if (this.aliStyle && f.isPlayer) {
-        const aw = aliStanceWeight(f.state, f.blocking, wk > 0.15) * idle;
+        const aw = aliStanceWeight(f.state, f.blocking, wk > 0.15);
         if (aw > 0) {
+          // STANDING it is the whole stance; WALKING it is CARRIED (reduced) — a fighter who floats still floats with
+          // his feet moving, and the low loose hands are the thing you can actually read from the broadcast camera
           const ap = aliIdlePose(t);
-          a0 = lerpPose(a0, ap, aw);
-          a1 = lerpPose(a1, ap, aw);
-          tw += aliWeave(t) * aw;
-          rl += aliRoll(t) * aw;
-          dp += aliFloat(t) * aw;
-          f.headYaw = aliHead(t) * aw; // the head rides with the weave: a moving target, never a static face
+          const carry = aw * (1 - 0.4 * stalk);
+          a0 = lerpPose(a0, ap, carry);
+          a1 = lerpPose(a1, ap, carry);
+          const fl = aw * (1 - 0.55 * stalk); // the float eases off while the stride owns the body
+          tw += aliWeave(t) * fl;
+          rl += aliRoll(t) * fl;
+          dp += aliFloat(t) * fl;
+          f.headYaw = aliHead(t) * fl; // the head rides with the weave: a moving target, never a static face
         }
       }
       ln = lerp(ln, 0.1 + stalk * 0.05, stalk); // chin down, chest over the hips: he walks INTO the fight

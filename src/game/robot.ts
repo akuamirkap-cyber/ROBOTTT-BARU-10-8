@@ -8,14 +8,16 @@ import { getArmourNormalMap, getArmourRoughnessMap, getCarbonFiberTexture, getSt
 import { mount100PercentZeus, unmount100PercentZeus, type ZeusRigMetrics } from './zeusModel';
 
 // ---- THE ALI SHUFFLE (the rig's half of ALI STYLE — see the block in Game.ts) ----
-/** how long one tap of the shuffle lasts at full float (a hair under 5 taps a second: fast, but a real foot) */
-const ALI_TAP_DUR = 0.17;
+/** how long one tap of the shuffle lasts at full float (~7 taps a second: a real Ali shuffle, but a real foot) */
+const ALI_TAP_DUR = 0.15;
 /** ...and the gap between taps, so the dance has its own rapid cadence instead of riding the walk rhythm */
-const ALI_TAP_PERIOD = 0.17;
-/** how far the toe slides out of the stance on a tap (robot-local units) */
-const ALI_TAP_OUT = 0.3;
+const ALI_TAP_PERIOD = 0.15;
+/** how far the toe slides out of the stance on a tap (robot-local units — a half-step you can plainly see) */
+const ALI_TAP_OUT = 0.52;
 /** the extra bounce frequency the float adds to the on-the-spot weight shift (Hz) */
-const ALI_BOUNCE_HZ = 1.1;
+const ALI_BOUNCE_HZ = 2.2;
+/** how much higher the float lifts the boots on a tap, and how much bigger the weight shift reads */
+const ALI_TAP_LIFT = 0.15;
 
 export interface Pose {
   sx: number; // shoulder pitch (negative = raise forward)
@@ -620,8 +622,9 @@ export class Robot {
     this.bounce += dt * Math.PI * 2 * (1.15 + sp01 * 0.4 + aliAmt * ALI_BOUNCE_HZ);
     const h = 0.5 + 0.5 * Math.sin(this.bounce);
     const bounceAmt = clamp(a.idleBounce ?? 1, 0, 1) * (1 - this.gaitW);
-    // pro boxers PENDULUM lightly on the spot — a quiet weight shift, not a bouncy march
-    const bob = (h - 0.5) * 0.045 * bounceAmt;
+    // pro boxers PENDULUM lightly on the spot — a quiet weight shift, not a bouncy march. ALI STYLE turns that
+    // pendulum up: the float has a real rise and fall in it (and the frequency follows the dance, see ALI_BOUNCE_HZ)
+    const bob = (h - 0.5) * (0.045 + aliAmt * 0.085) * bounceAmt;
 
     if (this.needSnap) {
       for (let i = 0; i < 2; i++) {
@@ -867,7 +870,7 @@ export class Robot {
             f.tx = ideal[i].x + out;
             f.tz = ideal[i].z + (i === 0 ? 0.09 : -0.09) * aliAmt;
             f.dur = clamp(ALI_TAP_DUR / Math.max(0.5, aliAmt), 0.1, 0.3);
-            f.lift = 0.1;
+            f.lift = ALI_TAP_LIFT;
             this.balanceCooldown = 0.12; // the dance replaces the lazy balance corrections while it runs
           }
         }
@@ -1043,11 +1046,13 @@ export class Robot {
         swingW = Math.max(swingW, w);
       } else if (f.aliStep) {
         // the dance: a light toe-tap roll and a strong lateral weight rock (that rock is the shuffle's whole read)
-        f.pitch = lerp(f.p0, restP[i] + 0.05 * w, sm(u));
+        f.pitch = lerp(f.p0, restP[i] + 0.06 * w, sm(u));
         f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.3 * aliAmt), 1 - Math.exp(-18 * dt));
-        sway += -s * 0.1 * w;
-        roll += s * 0.06 * w;
-        yawS += -s * 0.05 * w;
+        // THE ROCK: the weight swings hard onto the foot that just landed and the hips swing with it. This is what
+        // makes a shuffle read as a DANCE instead of as fidgeting, so it is deliberately not subtle.
+        sway += -s * 0.22 * w;
+        roll += s * 0.14 * w;
+        yawS += -s * 0.1 * w;
       } else if (f.punchStep) {
         // Deliberate step-in: foot lifts with intent and plants authoritative power into the canvas
         f.pitch = lerp(f.p0, restP[i] + 0.05 * w, sm(u));

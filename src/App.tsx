@@ -321,6 +321,24 @@ export default function App() {
       {hud && inMatch && <Hud h={hud} touch={touch} />}
       {inMatch && touch && phase === 'fight' && <TouchControls game={game} />}
 
+      {/* ---------- ALI STYLE: in the LOBBY it is a chip you can see AND tap (the hero dances behind it) ---------- */}
+      {phase === 'menu' && hud && (
+        <button
+          onClick={(e) => {
+            e.currentTarget.blur();
+            gameRef.current?.toggleAliStyle();
+          }}
+          className={`ghost cut-sm pointer-events-auto absolute bottom-3 right-3 z-20 flex h-10 items-center gap-2 px-3 font-tech text-[10px] font-black tracking-[0.16em] sm:bottom-5 sm:right-5 ${
+            hud.ali ? 'text-cyan-200' : 'text-white/55'
+          }`}
+          style={hud.ali ? { boxShadow: '0 0 22px rgba(120,240,255,0.45)' } : undefined}
+          title="ALI STYLE (tombol Y): gaya bertarung Muhammad Ali — tangan turun, badan meliuk (float), dan ALI SHUFFLE: kaki berdansa di tempat."
+        >
+          <span className="text-[14px] leading-none">🦋</span>
+          {hud.ali ? 'ALI STYLE ON · ALI SHUFFLE' : 'ALI STYLE OFF'}
+        </button>
+      )}
+
       {phase === 'menu' && !stage && (
         <Menu
           unlocked={unlocked}

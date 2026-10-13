@@ -214,10 +214,10 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
       {/* ---------- ALI STYLE: the low loose guard is on, and the feet are dancing ---------- */}
       {h.ali && (
         <div className="absolute left-1/2 top-[112px] flex -translate-x-1/2 items-center gap-2 sm:top-[122px]">
-          <span className="rounded-sm bg-cyan-300/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(120,240,255,0.45)]">
-            🦋 ALI STYLE · FLOAT
+          <span className="animate-pulse rounded-sm bg-cyan-300/95 px-3 py-[3px] font-tech text-[11px] font-black tracking-[0.22em] text-black shadow-[0_0_22px_rgba(120,240,255,0.6)]">
+            🦋 ALI STYLE · ALI SHUFFLE
           </span>
-          <span className="rounded-sm bg-white/10 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-white/60" title="Guard diturunkan (tangan di dada) — liputan lebih longgar, tapi gerak kakinya paling lincah. Tekan Y lagi untuk kembali ke guard tinggi.">
+          <span className="rounded-sm bg-white/12 px-2 py-[3px] font-tech text-[10px] font-black tracking-[0.2em] text-white/70" title="Guard diturunkan (tangan di dada) — liputan lebih longgar, tapi gerak kakinya paling lincah. Tekan Y lagi untuk kembali ke guard tinggi.">
             GUARD RENDAH
           </span>
         </div>
@@ -440,6 +440,8 @@ export function TouchControls({ game }: { game: Game | null }) {
         <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyU" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
         <div className="absolute left-[62px] -top-[136px]"><TouchBtn game={game} code="KeyZ" label="SOMBONG" className="bg-emerald-600/70 border-emerald-300 text-[8px] font-bold" size="h-12 w-12" /></div>
         <div className="absolute left-[122px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>
+        {/* ALI STYLE toggle for touch play (the same Y the keyboard uses) */}
+        <div className="absolute left-[122px] -top-[78px]"><TouchBtn game={game} code="KeyY" label="🦋" className="bg-cyan-300/50 text-[12px]" size="h-12 w-12" /></div>
       </div>
     </div>
   );

@@ -112,7 +112,7 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['!'], text: 'PUKULAN MELESET = badannya keburu jalan: capek & tidak bisa buru-buru mukul lagi' },
   { keys: ['!'], text: 'HINDARAN PAS (saat musuh ancang-ancang) = balik tenaga + meter, lalu balas keras' },
   { keys: ['!'], text: 'TENAGA < 25% = GASSED: tangan 8% lebih lambat, tenaga pulih separuh' },
-  { keys: ['Y'], text: 'ALI STYLE: gaya bertarung Muhammad Ali — tangan turun ke dada, badan meliuk (float), dan ALI SHUFFLE: kaki berdansa di tempat. Tekan Y lagi = guard tinggi' },
+  { keys: ['Y'], text: 'ALI STYLE: gaya bertarung Muhammad Ali — tangan turun ke dada, badan meliuk (float), dan ALI SHUFFLE: kaki berdansa di tempat. Bisa ditekan DI LOBBY (robotnya langsung joget) maupun saat bertarung. Tekan Y lagi = guard tinggi' },
   { keys: ['N'], text: 'KOMBO OTOMATIS: JAB-JAB-HOOK-HOOK-UPPERCUT lalu PUKULAN MEMATIKAN — putus sendiri kalau ada yang keblokir/dihindari, dan si mematikan bayar setengah meter' },
   { keys: ['!'], text: 'POSE (GAYA / M B O Z 1-6): "angkat sabuk" dan pose Y sekarang lewat tombol GAYA — N & Y dipakai untuk kombo dan ALI STYLE' },
   { keys: ['⭐'], text: 'STAR MODE — mode santai: kaki jalan sendiri ke jarak pukul, guard naik sendiri saat diam, dan kamera nempel di pundakmu' },
