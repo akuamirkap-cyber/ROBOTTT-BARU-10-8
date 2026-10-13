@@ -17,11 +17,18 @@ export interface ModeMeta {
   color: string;
   desc: string;
   reward: string;
+  /**
+   * The chassis a mode FORCES on the player when it launches the bout (see App.startMode). Left undefined the mode
+   * is played in whatever is equipped in the GARASI. Only declared where the mode is defined by the machine it puts
+   * you in — current modes force nothing: LAWAN ATLAS is deliberately skin-free, so the mirror duel
+   * (ATLAS vs ATLAS PRIME) is as playable as the classic ZEUS vs ATLAS PRIME.
+   */
+  equip?: 'zeus';
 }
 
 export const MODES: ModeMeta[] = [
   { id: 'play', name: 'PLAY MATCH', sub: 'Quick Fight · Best of 3', icon: '⚔', color: '#45d6ff', desc: 'Duel cepat lawan Titan pilihanmu dari roster. Tidak mempengaruhi Rank Points — tempat sempurna untuk latihan jurus & skin baru.', reward: '+80 XP · +60 WRC/menang' },
-  { id: 'atlas', name: 'LAWAN ATLAS', sub: 'Duel Klasik · Zeus vs ATLAS PRIME', icon: '⚡', color: '#7fe4ff', desc: 'Mode khusus: kamu otomatis memakai set ZEUS — model asli 100% — dan langsung diturunkan melawan ATLAS PRIME, chassis sang juara bertahan (mesin tercepat & terkeras di roster). Satu pertandingan, Best of 3 ronde. Skin bisa diganti lagi kapan saja di GARASI.', reward: '+120 XP · +140 Pts' },
+  { id: 'atlas', name: 'LAWAN ATLAS', sub: 'Duel Terkunci · ATLAS PRIME', icon: '⚡', color: '#7fe4ff', desc: 'Duel terkunci melawan ATLAS PRIME, chassis sang juara bertahan (mesin tercepat & terkeras di roster). Kamu bertarung memakai skin yang sedang dipakai — mau ZEUS vs ATLAS PRIME atau mirror ATLAS vs ATLAS PRIME, tinggal pilih di GARASI. Satu pertandingan, Best of 3 ronde, tanpa Rank Points.', reward: '+120 XP · +140 Pts' },
   { id: 'rank', name: 'RANK MODE', sub: 'Competitive Ladder · RP', icon: '🏅', color: '#ffd34a', desc: 'Pertandingan kompetitif. Lawan dipilih otomatis oleh matchmaking sesuai tier rank-mu. Menang +28 RP, kalah −16 RP. Naik tier dari BRONZE sampai TITAN.', reward: '+150 XP · ±RP · +140 WRC' },
   { id: 'tournament', name: 'TOURNAMENT', sub: 'Bracket 16 Titan · Single Elimination', icon: '🏆', color: '#c070ff', desc: 'Turnamen gugur 16 Titan, 4 babak: 16 Besar → Perempat Final → Semifinal → Grand Final. Kalah sekali = tersingkir. Juarai semuanya untuk gelar WRC CHAMPION.', reward: '+400 XP · +600 WRC · Gelar' },
   { id: 'team', name: 'TEAM MATCH', sub: '2v2 Tag Team · Best of 3 Ronde', icon: '🤝', color: '#5effb0', desc: 'Pertarungan tim 2 lawan 2 di ring yang lebih lebar: kamu dan partner MK-II melawan dua Titan sekaligus. Satu robot tumbang, partnernya terus bertarung — tim yang berdiri terakhir menang ronde.', reward: '+220 XP · +260 WRC' },

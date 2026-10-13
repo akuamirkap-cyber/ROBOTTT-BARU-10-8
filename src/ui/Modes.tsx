@@ -42,7 +42,7 @@ export function ModeHub({
   const rankOpp = OPPONENTS[rankOpponent(profile.rp, OPPONENTS.length)];
   const hint: Record<ModeId, string> = {
     play: `VS ${def.name} · ${ultra ? 'ULTRA HARD' : 'STANDAR'}`,
-    atlas: 'VS ATLAS PRIME · KAMU PAKAI SET ZEUS',
+    atlas: 'VS ATLAS PRIME · SKIN BEBAS (ZEUS / ATLAS)',
     rank: `${tier.icon} ${tier.name} · ${profile.rp} RP · LAWAN: ${rankOpp.name}`,
     tournament: `${profile.titles} GELAR · 16 TITAN · 4 BABAK GUGUR`,
     team: `${profile.teamWins} TEAM WINS · 2v2 TAG · RING LEBAR`,
@@ -171,8 +171,8 @@ export function ModeDossier({ mode, profile, onStart, ultra }: { mode: ModeId; p
             </div>
             <div className="aaa-stat">
               <span className="aaa-stat-k">KAMU</span>
-              <span className="aaa-stat-v" style={{ textAlign: 'left', color: '#22ff44' }}>
-                ZEUS · MODEL ASLI 100% (OTOMATIS)
+              <span className="aaa-stat-v" style={{ textAlign: 'left', color: '#9fe6ff' }}>
+                SKIN PILIHANMU · ZEUS ATAU ATLAS (GARASI)
               </span>
             </div>
             <div className="aaa-stat">
@@ -188,8 +188,8 @@ export function ModeDossier({ mode, profile, onStart, ultra }: { mode: ModeId; p
             </div>
             <p>
               ATLAS PRIME memakai plating 1.6× lebih tebal (seperti Zeus) dan chassis Atlas yang meninju 19% lebih
-              cepat. Satu pertandingan, Best of 3 ronde — tidak mempengaruhi Rank Points. Set ZEUS dipakai otomatis
-              dan bisa diganti lagi kapan saja di GARASI.
+              cepat. Satu pertandingan, Best of 3 ronde — tidak mempengaruhi Rank Points. Skinmu tidak diubah:
+              bertarunglah dengan ZEUS, atau mirror ATLAS vs ATLAS PRIME, sesuai yang dipakai di GARASI.
             </p>
           </div>
         </>

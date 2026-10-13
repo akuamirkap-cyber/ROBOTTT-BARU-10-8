@@ -335,7 +335,7 @@ export function Menu({
                     {def.name}
                   </div>
                   <div className="hc-opp-sub">
-                    {def.title} · {atlasMode ? 'KAMU PAKAI SET ZEUS' : `LAWAN ${sel + 1} DARI ${OPPONENTS.length}`}
+                    {def.title} · {atlasMode ? 'SKIN BEBAS · ZEUS ATAU ATLAS' : `LAWAN ${sel + 1} DARI ${OPPONENTS.length}`}
                   </div>
                 </div>
                 <button

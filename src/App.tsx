@@ -4,7 +4,7 @@ import { loadSfxProfile, loadAllOverdrivePunch, type SfxProfile } from './game/a
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
 import { MatchEnd, PauseMenu } from './ui/Overlays';
-import { applyOutcome, loadProfile, makeSeries, saveProfile, seriesAfterBout, seriesLabel, type ModeId, type Profile, type Series } from './game/progress';
+import { applyOutcome, loadProfile, makeSeries, modeOf, saveProfile, seriesAfterBout, seriesLabel, type ModeId, type Profile, type Series } from './game/progress';
 import { Matchmaking } from './ui/Matchmaking';
 import { Bracket } from './ui/Bracket';
 import { usePortrait } from './ui/Profile';
@@ -248,13 +248,14 @@ export default function App() {
     if (!s) return;
     setMode(m);
     setSeries(s);
-    // LAWAN ATLAS: the player is put into the ZEUS set for the classic duel (the mode card says so; the skin can be
-    // swapped back at any time in the GARASI) and the dossier follows ATLAS PRIME so the lobby reads what it fights.
-    if (m === 'atlas') {
+    // A mode may declare the chassis it is played in (see ModeMeta.equip). No mode does today: LAWAN ATLAS is
+    // deliberately skin-free, so a mirror ATLAS vs ATLAS PRIME duel works exactly like the classic ZEUS vs ATLAS one.
+    if (modeOf(m).equip === 'zeus') {
       gameRef.current?.equipZeus(true);
       gameRef.current?.reloadZeus(true);
-      setSel(ATLAS_IDX);
     }
+    // the duel is locked onto ATLAS PRIME, so the dossier follows him whatever the player is wearing
+    if (m === 'atlas') setSel(ATLAS_IDX);
     // every mode goes through the VS screen (PLAY MATCH: the picked challenger is locked in there)
     if (m === 'tournament') setStage('bracket');
     else setStage('matchmaking');

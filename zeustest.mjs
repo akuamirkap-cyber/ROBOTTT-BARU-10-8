@@ -88,7 +88,11 @@ console.log('\n§3  LAWAN ATLAS — a lobby mode that locks the duel onto ATLAS 
 {
   const meta = MODES.find((m) => m.id === 'atlas');
   ok('the mode exists on the lobby card list', !!meta && meta.name === 'LAWAN ATLAS', meta ? `${meta.name} · ${meta.sub}` : 'missing from MODES');
-  ok('the card says the player is put in the ZEUS set', /ZEUS/.test(meta.desc) && /ATLAS PRIME/.test(meta.desc));
+  // ...and it does NOT touch the skin: the mirror duel (ATLAS vs ATLAS PRIME) has to stay playable, so the mode
+  // declares no forced chassis (see ModeMeta.equip / App.startMode) and the card says so
+  ok('the mode forces NO chassis on the player', modeOf('atlas').equip === undefined, `equip ${modeOf('atlas').equip ?? 'none'}`);
+  ok('the card offers both the classic duel and the mirror', /ZEUS/.test(meta.desc) && /ATLAS PRIME/.test(meta.desc) && /GARASI/.test(meta.desc));
+  ok('no mode on the card secretly equips a skin', MODES.every((m) => m.equip === undefined), MODES.map((m) => `${m.id}:${m.equip ?? '-'}`).join(' '));
   ok('modeOf resolves it (no falling back to PLAY MATCH)', modeOf('atlas').id === 'atlas');
 
   const s = makeSeries('atlas', OPPONENTS.length, 120, 0);
