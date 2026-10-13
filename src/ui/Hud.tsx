@@ -194,6 +194,23 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
         </div>
       )}
 
+      {/* ---------- STAR MODE: the comfort-layer readout (auto-range is on, the low guard is up) ---------- */}
+      {h.star && (
+        <div className="absolute left-1/2 top-[86px] flex -translate-x-1/2 items-center gap-2 sm:top-[92px]">
+          <span className="rounded-sm bg-amber-400/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(255,200,60,0.45)]">
+            ⭐ STAR MODE · AUTO-RANGE
+          </span>
+          <span
+            className={`rounded-sm px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] ${
+              h.autoGuard ? 'bg-sky-400/85 text-black' : 'bg-white/10 text-white/55'
+            }`}
+            title="Guard ringan naik sendiri saat kamu diam. Tahan G untuk guard kuat (chip 10% vs 22%)."
+          >
+            GUARD {h.autoGuard ? 'OTOMATIS' : 'MANUAL (G)'}
+          </span>
+        </div>
+      )}
+
       {/* ---------- overdrive meter ---------- */}
       <div className="absolute bottom-4 left-1/2 w-[min(520px,52%)] -translate-x-1/2 sm:bottom-6">
         <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">

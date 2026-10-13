@@ -357,6 +357,10 @@ export interface HudState {
   eGassed: boolean;
   /** > 0 while the OPPONENT is over-committed after a missed swing — the window to punish him */
   eWhiff: number;
+  /** STAR MODE is running (the HUD switches to the comfort layout: auto-range badge, buffered-tap hints) */
+  star: boolean;
+  /** ...and the low guard is up by itself right now */
+  autoGuard: boolean;
   meter: number;
   combo: number;
   wins: [number, number];
@@ -1064,6 +1068,45 @@ export const chassisBraces = (c: Chassis, id: MoveId, isHJ: boolean, softened: b
 export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => chassisBraces('zeus', id, isHJ, softened);
 
 /**
+ * ============================== STAR MODE — "Boxing Star" comfort, same buttons ==============================
+ * The idea: in a Boxing Star-style fight you almost never wrestle the stick. The game walks you into range, keeps
+ * the guard up, picks the slip direction for you and lets a tap chain into the next punch — your hands only ever
+ * decide WHEN to hit and WHEN to slip. STAR MODE is exactly that layer on top of the fight that is already here:
+ * NO new keys, no new moves. Every assist below rides the buttons that exist.
+ *
+ *   AUTO-RANGE      — with no direction key held you drift to the pocket (3.25 m) and stop: the punch you press
+ *                     always comes out at the right distance, so you can play the whole round with H/J/K/X/SPACE.
+ *   AUTO-GUARD      — standing still IS guarding (the guard comes up by itself) with a light recovery rate, so the
+ *                     comfort player is never punished for not holding G. Holding G is still the strong block.
+ *   RANGE ASSIST    — a committed punch reaches 18% further, which reads as the fighter stepping in with the punch.
+ *   SMART SLIP      — SPACE with no direction key picks the slip the boxer would pick (off the punching arm, away
+ *                     from the ropes) and a PERFECT slip gets a short, cinematic slow-mo beat.
+ *   PUNCH BUFFER    — a tap during a swing is remembered almost twice as long and fires the instant it is legal,
+ *                     so chaining combos never feels dropped.
+ *   FINISHER ASSIST — the Overdrive (R) fires ITSELF the moment the meter is full and the opponent is open
+ *                     (staggered, or committing to an attack = a reversal). R still works by hand at any time.
+ *
+ * Everything here is PLAYER-ONLY and lives behind one flag: `Game.setStarMode(true)`. The AI keeps its own brain,
+ * and the ordinary fight (PLAY MATCH, RANK, TOURNAMENT…) is bit-for-bit what it was.
+ */
+export const STAR_POCKET = 3.25; // the distance auto-range holds — the pro-boxing pocket the game already uses
+export const STAR_DEAD = 0.42; // ...and the dead zone around it where auto-range stops nudging (no jitter)
+export const STAR_DRIFT = 0.72; // fraction of walking speed the auto-step uses (a shuffle, not a march)
+export const STAR_RANGE_ASSIST = 1.18; // a committed punch reaches this much further (step-in assist)
+export const STAR_QUEUE_WIN = 0.5; // input buffer while a swing is playing (the standard game remembers 0.34 s)
+export const STAR_GUARD_REGEN = 22; // stamina/s while auto-guarding (holding G stays the slow, strong guard: 9/s)
+export const STAR_SLIP_SLOW_T = 0.18; // the cinematic beat on a PERFECT slip...
+export const STAR_SLIP_SLOW_SCALE = 0.55; // ...and how far the world slows inside it
+export const STAR_OD_STAM = 20; // the finisher assist waits until the player has this much left (never empty it)
+
+/** AUTO-RANGE: where should the auto-step push, given the gap? -1 = step in, +1 = step out, 0 = hold the pocket. */
+export const starAutoStep = (dist: number) => (dist > STAR_POCKET + STAR_DEAD ? -1 : dist < STAR_POCKET - STAR_DEAD ? 1 : 0);
+/** AUTO-GUARD: the guard is up whenever the fighter is standing there doing nothing else. */
+export const starShouldGuard = (state: string, dodgeT: number, tauntT: number) => state === 'idle' && dodgeT <= 0 && tauntT <= 0;
+/** FINISHER ASSIST: fire the Overdrive by itself? Only with a full meter, an open opponent and something left in the tank. */
+export const starShouldFireOd = (meter: number, enemyOpen: boolean, stam: number) => meter >= 100 && enemyOpen && stam > STAR_OD_STAM;
+
+/**
  * DODGE ADVANTAGE — the "whoever dodges first gets the hit" rule. A dodge (SPACE) can be cancelled straight into a
  * punch, and for a short window after a dodge your next strike comes out faster and lands harder. The fighter who
  * reads the exchange first owns the opening, while a dodge that leads nowhere just costs stamina.
@@ -1202,6 +1245,9 @@ class Fighter {
   queued: MoveId | null = null;
   queuedT = 0;
   blocking = false;
+  /** STAR MODE: the low guard is being held automatically by the assist (not by the player's key), so it recovers
+   *  at the light STAR rate instead of the slow, strong manual-guard rate. */
+  autoGuard = false;
   stunT = 0;
   stunImmune = 0;
   dodgeT = 0;
@@ -1680,6 +1726,9 @@ export class Game {
   private ultra = loadDifficulty() === 'ultra';
   private fwMul = loadFootwork();
   private camMode = loadCamMode();
+  /** STAR MODE: the comfort layer (auto-range, auto-guard, smart slip, buffered taps, finisher assist). See STAR_*. */
+  private starMode = false;
+  private camBeforeStar = -1; // the camera preset to hand back when STAR MODE ends
   private iq = loadIq(); // enemy AI IQ multiplier (1, 2, 3, 10)
   private helmetSkin = loadSkinSet();
   private gloveSkin = loadSkinSet();
@@ -2277,6 +2326,40 @@ export class Game {
     }
     if (this.vsFoe2 && (this.vsFoe2.robot.ctx.style.isZeus100 || this.vs?.idx2 === 0 || this.vs?.idx2 === 3)) {
       mount100PercentZeus(this.vsFoe2.robot, this.vs?.idx2 === 3 ? '#c070ff' : '#22ff44');
+    }
+    this.emitHud(true);
+  }
+
+  get isStarMode() {
+    return this.starMode;
+  }
+
+  /**
+   * STAR MODE on/off. Turning it on moves the camera to the STAR shot (the Boxing Star look) and switches the
+   * player's assists on; turning it off hands the camera back to whatever preset was active before, so a normal
+   * fight is exactly the fight it was. Changing the camera lens by hand while STAR MODE runs is respected — the
+   * mode only sets the shot when it starts.
+   */
+  setStarMode(on: boolean) {
+    if (on === this.starMode) return;
+    this.starMode = on;
+    const starIdx = CAM_MODES.findIndex((m) => m.id === 'star');
+    if (on) {
+      if (starIdx >= 0 && this.camMode !== starIdx) {
+        this.camBeforeStar = this.camMode;
+        this.setCamMode(starIdx);
+      }
+      if (this.player) {
+        this.player.autoGuard = false;
+        this.popup(new THREE.Vector3(this.player.pos.x, 7.4, this.player.pos.y), '⭐ STAR MODE — AUTO-RANGE ON', 'pop-crit');
+      }
+      this.sfx.ready();
+    } else {
+      if (this.camBeforeStar >= 0) {
+        this.setCamMode(this.camBeforeStar);
+        this.camBeforeStar = -1;
+      }
+      if (this.player) this.player.autoGuard = false;
     }
     this.emitHud(true);
   }
@@ -4296,6 +4379,15 @@ export class Game {
           this.endRound(pr >= er ? this.player : this.enemy, 'time');
           break;
         }
+        // ---- STAR MODE assist #6: FINISHER ASSIST. The Overdrive fires itself the moment the meter is full AND the
+        // opponent is open — staggered, or committing to a punch (which turns it into a reversal). R always works by
+        // hand as well; this only exists so the casual player never has to remember the key to get the payoff.
+        if (this.starMode) {
+          const e = this.enemy;
+          const p = this.player;
+          const open = e.state === 'stagger' || (e.state === 'attack' && !!e.move && !e.impacted) || e.state === 'air' || e.state === 'down';
+          if (starShouldFireOd(p.meter, open, p.stam) && p.state === 'idle' && p.dodgeT <= 0) this.tryOverdrive(p);
+        }
         this.comboT -= dt;
         if (this.comboT <= 0) this.combo = 0;
         this.playerInput();
@@ -4365,8 +4457,15 @@ export class Game {
         p.queued = null;
       }
     }
+    // ---- STAR MODE assist #1: STANDING IS GUARDING. The moment the player is not holding anything and not acting,
+    // the low guard comes up by itself — no key to hold, exactly like a mobile boxing game. It is deliberately the
+    // LIGHT guard: the full manual guard (hold G) still blocks better through its slower recovery and its chip math.
+    p.autoGuard = false;
+    if (this.starMode && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT) && p.stam > 2) {
+      p.autoGuard = true;
+    }
     if (p.state === 'idle' && p.dodgeT <= 0) {
-      p.blocking = wantBlockKey;
+      p.blocking = wantBlockKey || p.autoGuard;
       const holdW = this.keys.has('KeyW') || this.keys.has('ArrowUp');
       // SPRINT: hold SHIFT (or F) and walk in any direction. A double-tap on W that you keep holding also runs.
       // A run only ends when the stamina is really empty, and only restarts once ~25 has recovered.
@@ -4396,6 +4495,20 @@ export class Game {
         p.wish.addScaledVector(f, fw * (fw > 0 ? IPPO_FWD : IPPO_BACK) * im).addScaledVector(r, lat * IPPO_SIDE * im);
         const lim = IPPO_FWD * im;
         if (p.wish.length() > lim) p.wish.setLength(lim);
+      } else if (this.starMode && !moving && !p.blocking && this.enemy.state !== 'ko' && this.enemy.state !== 'down') {
+        // ---- STAR MODE assist #2: AUTO-RANGE. With no direction key held the fighter shuffles himself into the
+        // pocket and holds it (a small dead zone so the feet never jitter). This is THE comfort feature: the player
+        // only ever presses a punch or SPACE, and still always throws from the right distance.
+        const dist = p.pos.distanceTo(this.enemy.pos);
+        const step = starAutoStep(dist);
+        const im = walkMul * rageSpd * STAR_DRIFT;
+        if (step !== 0) p.wish.addScaledVector(f, step * im);
+        // ...and if he is drifting into the ropes, the assist spends the idle time walking him back inside
+        const rad = Math.hypot(p.pos.x, p.pos.y);
+        if (rad > RING - 3.4) {
+          const inward = new THREE.Vector2(-p.pos.x, -p.pos.y).normalize();
+          p.wish.addScaledVector(inward, im * 0.55);
+        }
       } else if (wantRun) {
         p.sprinting = true;
         // forwards at full speed, sideways a little slower, backwards much slower
@@ -4771,6 +4884,12 @@ export class Game {
     }
     // No sluggish slow-mo on dodges — the slip remains fast, fluid, and responsive at full speed!
     this.slowT = 0;
+    // ...except in STAR MODE, where a PERFECT slip earns the one short cinematic beat that sells the read. It is
+    // 0.18 s long and only ever fires on a read (not on a hop), so the fight still plays at full speed.
+    if (this.starMode && d.isPlayer) {
+      this.slowT = STAR_SLIP_SLOW_T;
+      this.slowScale = STAR_SLIP_SLOW_SCALE;
+    }
     this.flashAmt = Math.max(this.flashAmt, 0.22);
     this.fovKick = 3.0;
     this.fx.ring(d.pos.x, d.pos.y, 0x5affc8, deadly ? 7.5 : 6, 0.5, 0.1);
@@ -5276,7 +5395,9 @@ export class Game {
       if (f.move && this.canCancel(f) && f.stam > 0) this.startMove(f, id);
       else {
         f.queued = id;
-        f.queuedT = 0.34;
+        // STAR MODE assist #4: a tap during a swing is remembered longer (and still fires the instant it is legal),
+        // so chaining combos at speed never feels like the input was dropped.
+        f.queuedT = this.starMode && f.isPlayer ? STAR_QUEUE_WIN : 0.34;
       }
       return;
     }
@@ -6333,7 +6454,11 @@ export class Game {
     const gasReg = gasRegenMul(f.stam);
     if (f.sprinting) f.stam = Math.max(0, f.stam - SPRINT_DRAIN * dt); // running costs stamina and stops it from regenerating
     else if (f.state === 'idle' && !f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_IDLE : REGEN_AI) * gasReg * dt);
-    else if (f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_BLOCK : REGEN_BLOCK * 0.7) * gasReg * dt);
+    else if (f.blocking) {
+      // holding G is the strong, slow guard; the STAR MODE auto-guard is a light barrier and recovers much faster
+      const rate = f.isPlayer ? (f.autoGuard ? STAR_GUARD_REGEN : REGEN_BLOCK) : REGEN_BLOCK * 0.7;
+      f.stam = Math.min(100, f.stam + rate * gasReg * dt);
+    }
 
     const fighting = this.phase === 'fight';
     if (f.state === 'attack' && f.move) {
@@ -6999,7 +7124,10 @@ export class Game {
     }
 
     const trueCounter = m.id === 'counter' || a.winStrike || a.counterT > 0;
-    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale) {
+    // STAR MODE assist #3: a committed punch reaches 18% further (the fighter steps in with it), so a tap from a
+    // slightly wrong distance still lands instead of whiffing into the over-commitment tail.
+    const starReach = this.starMode && a.isPlayer ? STAR_RANGE_ASSIST : 1;
+    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale * starReach) {
       a.whiffT = this.markWhiff(a, m); // thrown from too far out: the lunge came up short
       return; // out of range (a running punch / true counter reaches further)
     }
@@ -7113,13 +7241,17 @@ export class Game {
       a.hitConfirmed = true;
       if (!d.isPlayer) this.aiDefended('block', a.moveSeq);
       const big = m.power;
-      const chip = dmg * 0.10; // 90% damage reduction: only 10% of the attack damage lands!
+      // A HELD guard (G) is a wall: only 10% of the damage gets through. The STAR MODE AUTO-GUARD is the light
+      // barrier that comes up on its own — it still saves you, but 22% gets through and it drains under pressure,
+      // which is what keeps "just stand there" from being the best strategy even in the comfort mode.
+      const guardMul = d.autoGuard ? 0.22 : 0.10;
+      const chip = dmg * guardMul;
       d.hp = Math.max(1, d.hp - chip);
       if (this.phase === 'fight') {
         this.stats.dmg[a.isPlayer ? 0 : 1] += chip;
       }
-      // Stamina drain is reduced by 90% (0.10x) when blocking
-      d.stam = Math.max(0, d.stam - dmg * 0.10 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
+      // Stamina drain is reduced the same way by the guard
+      d.stam = Math.max(0, d.stam - dmg * guardMul * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
 
       // Physical boot-skid pushback so the 2-ton punch force visibly shoves the defender's planted guard across the mat
       const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * chassisKnock(chassis);
@@ -9641,6 +9773,8 @@ export class Game {
       gassed: isGassed(this.player.stam),
       eGassed: isGassed(this.enemy.stam),
       eWhiff: this.enemy.whiffT,
+      star: this.starMode,
+      autoGuard: this.player.autoGuard,
       meter: this.player.meter,
       combo: this.combo,
       stats: this.stats,

@@ -248,6 +248,9 @@ export default function App() {
     if (!s) return;
     setMode(m);
     setSeries(s);
+    // STAR MODE: the comfort layer ON (auto-range, auto-guard, smart slip, buffered taps, finisher assist) + the STAR
+    // camera. Every other mode turns it back off, so the normal fight is untouched.
+    gameRef.current?.setStarMode(m === 'star');
     // A mode may declare the chassis it is played in (see ModeMeta.equip). No mode does today: LAWAN ATLAS is
     // deliberately skin-free, so a mirror ATLAS vs ATLAS PRIME duel works exactly like the classic ZEUS vs ATLAS one.
     if (modeOf(m).equip === 'zeus') {
@@ -424,7 +427,7 @@ export default function App() {
                   game?.toMenu();
                   setStage('bracket');
                 }
-              : (!series || series.mode === 'play') && hud.oppIndex < OPPONENTS.length - 1
+              : (!series || series.mode === 'play' || series.mode === 'star') && hud.oppIndex < OPPONENTS.length - 1
                 ? () => {
                     const idx = hud.oppIndex + 1;
                     setSeries({ mode: 'play', queue: [idx], step: 0, wins: 0, losses: 0, done: false, won: false });
@@ -451,6 +454,7 @@ export default function App() {
           }
           onMenu={() => {
             setSeries(null);
+            gameRef.current?.setStarMode(false); // the lobby is not a star fight
             // never park the lobby on a Titan that is still locked (the LAWAN ATLAS bout can end on ATLAS PRIME)
             const back = Math.min(unlocked, hud.oppIndex);
             setSel(back);

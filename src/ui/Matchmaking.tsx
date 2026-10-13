@@ -77,6 +77,7 @@ export function Matchmaking({
   const isTourney = series.mode === 'tournament';
   const isPlay = series.mode === 'play';
   const isAtlas = series.mode === 'atlas'; // LAWAN ATLAS: one locked bout against ATLAS PRIME
+  const isStar = series.mode === 'star'; // STAR MODE: the comfort bout — it skips the search, straight to the reveal
   const oppIdx = series.queue[series.step] ?? series.queue[0];
   const opp2Idx = isTeam ? (series.queue[1] ?? -1) : -1;
   const defOf = (i: number) => smartDef(ultra ? ultraDef(OPPONENTS[i]) : OPPONENTS[i], iq);
@@ -88,7 +89,7 @@ export function Matchmaking({
   const foe = statsOf(opp, iq);
 
   // a locked duel (LAWAN ATLAS) has nothing to search for: it goes to the reveal like the quick fights do
-  const searchFor = useMemo(() => (isTourney || isPlay || isAtlas ? 1.2 : 1.8 + Math.random() * 0.8), [isTourney, isPlay, isAtlas]);
+  const searchFor = useMemo(() => (isTourney || isPlay || isAtlas || isStar ? 1.2 : 1.8 + Math.random() * 0.8), [isTourney, isPlay, isAtlas, isStar]);
   const [phase, setPhase] = useState<Phase>('search');
   const phaseAt = useRef(performance.now());
   const enterPhase = (next: Phase) => {
@@ -202,7 +203,9 @@ export function Matchmaking({
       ? '2V2 TAG TEAM'
       : isAtlas
         ? 'DUEL ZEUS vs ATLAS PRIME'
-        : isPlay
+        : isStar
+          ? 'STAR MODE · AUTO-RANGE'
+          : isPlay
           ? 'BEST OF 3'
           : `${tier.name} ${['', 'I', 'II', 'III'][division]}`;
   const foeName = found ? opp.name : SCAN_NAMES[scan % SCAN_NAMES.length];

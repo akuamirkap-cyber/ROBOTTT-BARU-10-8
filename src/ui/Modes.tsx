@@ -42,6 +42,7 @@ export function ModeHub({
   const rankOpp = OPPONENTS[rankOpponent(profile.rp, OPPONENTS.length)];
   const hint: Record<ModeId, string> = {
     play: `VS ${def.name} · ${ultra ? 'ULTRA HARD' : 'STANDAR'}`,
+    star: `⭐ ${def.name} · AUTO-RANGE + AUTO-GUARD`,
     atlas: 'VS ATLAS PRIME · SKIN BEBAS (ZEUS / ATLAS)',
     rank: `${tier.icon} ${tier.name} · ${profile.rp} RP · LAWAN: ${rankOpp.name}`,
     tournament: `${profile.titles} GELAR · 16 TITAN · 4 BABAK GUGUR`,
@@ -161,6 +162,42 @@ export function ModeDossier({ mode, profile, onStart, ultra }: { mode: ModeId; p
           ))}
           <div className="aaa-sub">GELAR DIMENANGKAN: {profile.titles}</div>
         </div>
+      )}
+
+      {mode === 'star' && (
+        <>
+          <div className="aaa-stats" style={{ borderLeftColor: '#ffd34a' }}>
+            <div className="aaa-coach-k" style={{ color: '#ffd34a' }}>
+              SISTEM BANTUAN (OTO)
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">JARAK</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>AUTO-RANGE KE POCKET 3.25 m</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">GUARD</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>NAIK SENDIRI SAAT DIAM (RINGAN)</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">HINDAR</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>SPACE PILIH ARAH SENDIRI + SLOW-MO BACA</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">OVERDRIVE</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>LEPAS OTOMATIS SAAT METER PENUH</span>
+            </div>
+          </div>
+          <div className="aaa-coach" style={{ borderLeftColor: m.color, background: `${m.color}12` }}>
+            <div className="aaa-coach-k" style={{ color: m.color }}>
+              KAMERA &amp; TOMBOL
+            </div>
+            <p>
+              Kamera pindah ke preset STAR — di belakang pundakmu, lawan selalu di tengah frame. Tidak ada tombol
+              baru: W/A/S/D tetap untuk mengatur sendiri kalau mau, H J K X memukul, SPACE menghindar, G guard kuat,
+              L counter, R Overdrive (boleh juga manual), Q sasaran kepala/dada.
+            </p>
+          </div>
+        </>
       )}
 
       {mode === 'atlas' && (

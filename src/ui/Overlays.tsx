@@ -174,7 +174,7 @@ export function MatchEnd({
   const win = h.result === 'win';
   const sMode = series ? modeOf(series.mode) : null;
   // a series UI state is only for the multi-bout modes: PLAY / RANK / the single LAWAN ATLAS duel read as one match
-  const seriesDone = !!series && series.done && series.mode !== 'play' && series.mode !== 'rank' && series.mode !== 'atlas';
+  const seriesDone = !!series && series.done && series.mode !== 'play' && series.mode !== 'rank' && series.mode !== 'atlas' && series.mode !== 'star';
   const tourneyWon = seriesDone && series!.mode === 'tournament' && series!.won;
   const teamWon = seriesDone && series!.mode === 'team' && series!.won;
   const champion = (win && h.oppIndex === OPPONENTS.length - 1 && (!series || series.mode === 'play')) || tourneyWon;
@@ -200,7 +200,7 @@ export function MatchEnd({
       : series && !series.done && series.mode === 'team'
         ? `BOUT ${series.step + 2} · ${series.wins}-${series.losses}`
         : 'LAWAN BERIKUTNYA';
-  const retryLabel = series && series.mode === 'tournament' ? 'ULANG TURNAMEN' : series && series.mode === 'team' ? 'ULANG SERIES' : series && series.mode === 'rank' ? 'RANKED LAGI' : win ? 'ULANGI' : 'COBA LAGI';
+  const retryLabel = series && series.mode === 'tournament' ? 'ULANG TURNAMEN' : series && series.mode === 'team' ? 'ULANG SERIES' : series && series.mode === 'rank' ? 'RANKED LAGI' : series && series.mode === 'star' ? 'ULANG BOUT' : win ? 'ULANGI' : 'COBA LAGI';
   const enemyColor = h.ultra ? ULTRA_COLOR : h.eColor;
   const showNext = !!onNext && (win || (series?.mode === 'team' && !series.done));
 
