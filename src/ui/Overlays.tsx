@@ -173,7 +173,8 @@ export function MatchEnd({
 }) {
   const win = h.result === 'win';
   const sMode = series ? modeOf(series.mode) : null;
-  const seriesDone = !!series && series.done && series.mode !== 'play' && series.mode !== 'rank';
+  // a series UI state is only for the multi-bout modes: PLAY / RANK / the single LAWAN ATLAS duel read as one match
+  const seriesDone = !!series && series.done && series.mode !== 'play' && series.mode !== 'rank' && series.mode !== 'atlas' && series.mode !== 'star';
   const tourneyWon = seriesDone && series!.mode === 'tournament' && series!.won;
   const teamWon = seriesDone && series!.mode === 'team' && series!.won;
   const champion = (win && h.oppIndex === OPPONENTS.length - 1 && (!series || series.mode === 'play')) || tourneyWon;
@@ -199,7 +200,7 @@ export function MatchEnd({
       : series && !series.done && series.mode === 'team'
         ? `BOUT ${series.step + 2} · ${series.wins}-${series.losses}`
         : 'LAWAN BERIKUTNYA';
-  const retryLabel = series && series.mode === 'tournament' ? 'ULANG TURNAMEN' : series && series.mode === 'team' ? 'ULANG SERIES' : series && series.mode === 'rank' ? 'RANKED LAGI' : win ? 'ULANGI' : 'COBA LAGI';
+  const retryLabel = series && series.mode === 'tournament' ? 'ULANG TURNAMEN' : series && series.mode === 'team' ? 'ULANG SERIES' : series && series.mode === 'rank' ? 'RANKED LAGI' : series && series.mode === 'star' ? 'ULANG BOUT' : win ? 'ULANGI' : 'COBA LAGI';
   const enemyColor = h.ultra ? ULTRA_COLOR : h.eColor;
   const showNext = !!onNext && (win || (series?.mode === 'team' && !series.done));
 
@@ -221,7 +222,11 @@ export function MatchEnd({
       ]
     : [];
   const how = byKO ? 'K.O.' : 'ANGKA';
-  const kicker = `${sMode && label ? `${sMode.name} · ${label}` : 'PLAY MATCH'} · RONDE ${h.round} · ${how}${h.ultra ? ' · ULTRA' : ''}`;
+  // the banner line: the series label already starts with the mode name in some modes (PLAY MATCH · PLAY MATCH) —
+  // strip that so it is stated once: "PLAY MATCH · RONDE 2", "TOURNAMENT · SEMIFINAL · RONDE 1"
+  const cleanLabel = sMode && label.startsWith(sMode.name) ? label.slice(sMode.name.length).replace(/^\s*·\s*/, '') : label;
+  const modeLine = [sMode?.name, cleanLabel].filter((v) => !!v).join(' · ') || 'PLAY MATCH';
+  const kicker = `${modeLine} · RONDE ${h.round} · ${how}${h.ultra ? ' · ULTRA' : ''}`;
   const verdictLine = win ? (byKO ? `${h.eName} TUMBANG · RONDE ${h.round}` : `UNGGUL ANGKA ATAS ${h.eName}`) : byKO ? `KAMU TUMBANG · RONDE ${h.round}` : `${h.eName} UNGGUL ANGKA`;
   const rp = series?.mode === 'rank' ? (win ? '+28 RP' : '−16 RP') : null;
   const primary = showNext ? onNext! : onRetry;

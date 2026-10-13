@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import {
+  ATLAS_IDX,
   CAM_MODES,
   FOOTWORK_STEPS,
   GFX_MODES,
@@ -98,9 +99,11 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['J'], text: 'HOOK samping' },
   { keys: ['K'], text: 'UPPERCUT ke udara' },
   { keys: ['X'], text: 'STRAIGHT kuat' },
+  { keys: ['SHIFT'], text: 'PANJER OTOMATIS + SPAM: sekali tekan SHIFT, SEMUA pukulan otomatis mentok maks (×2 damage & ×2 hajar) dan keluar SEKETIKA saat tombol ditekan. TAHAN tombolnya = pukulannya keluar TERUS (spam sepuasnya) — dan pukulan meleset nggak ngunci lagi. Kepalanmu menyala terus selama mode ini hidup. Tekan SHIFT lagi = mati. (SPRINT sekarang di F)' },
+  { keys: ['💪'], text: 'PANJER MANUAL (mode otomatis mati): TAHAN tombol pukulan (H/J/K/X) lalu LEPAS — makin lama ditahan makin kuat. Sekelibat / tap cepat (≤0,4 detik) = pukulan normal; dari 0,4 sampai 1 detik naik terus (×1 ke ×2); 1 detik ke atas mentok ×2. Pukulannya keluar saat tombol DILEPAS, dan ancang-ancangnya kelihatan (tangan ditarik + kepalan menyala + bar di HUD)' },
   { keys: ['P'], text: 'GRAB banting (tembus blok)' },
   { keys: ['L'], text: 'COUNTER tangkis & balas' },
-  { keys: ['SPACE'], text: 'DODGE menghindar' },
+  { keys: ['SPACE'], text: 'DODGE menghindar (muat tenaga — hindaran telat bakal kena hajar)' },
   { keys: ['G'], text: 'BLOK tahan untuk bertahan' },
   { keys: ['E'], text: 'PEEK-A-BOO (tahan), + serang = Dempsey' },
   { keys: ['U'], text: 'RAGE mode agresif' },
@@ -108,6 +111,14 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['Q', '/', 'T'], text: 'Sasaran: kepala / dada / remix' },
   { keys: ['A', '/', 'D'], text: 'Tap = ganti tangan kiri/kanan' },
   { keys: ['Z'], text: 'Pose sombong (isi meter)' },
+  { keys: ['!'], text: 'PUKULAN MELESET = badannya keburu jalan: capek & tidak bisa buru-buru mukul lagi (di PANJER OTOMATIS aturan ini dilepas biar bisa spam)' },
+  { keys: ['!'], text: 'HINDARAN PAS (saat musuh ancang-ancang) = balik tenaga + meter, lalu balas keras' },
+  { keys: ['!'], text: 'TENAGA < 25% = GASSED: tangan 8% lebih lambat, tenaga pulih separuh' },
+  { keys: ['Y'], text: 'ALI STYLE: gaya bertarung Muhammad Ali — tangan turun ke dada, badan meliuk (float), dan ALI SHUFFLE: kaki berdansa di tempat. Bisa ditekan DI LOBBY (robotnya langsung joget) maupun saat bertarung. Tekan Y lagi = guard tinggi' },
+  { keys: ['N'], text: 'KOMBO OTOMATIS: JAB-JAB-HOOK-HOOK-UPPERCUT lalu PUKULAN MEMATIKAN — putus sendiri kalau ada yang keblokir/dihindari, dan si mematikan bayar setengah meter' },
+  { keys: ['!'], text: 'POSE (GAYA / M B O Z 1-6): "angkat sabuk" dan pose Y sekarang lewat tombol GAYA — N & Y dipakai untuk kombo dan ALI STYLE' },
+  { keys: ['⭐'], text: 'STAR MODE — mode santai: kaki jalan sendiri ke jarak pukul, guard naik sendiri saat diam, dan kamera nempel di pundakmu' },
+  { keys: ['⭐'], text: 'STAR MODE pakai tombol yang sama: SPACE tetap menghindar (arahnya dipilih otomatis), tap tertunda tetap kebaca, Overdrive lepas sendiri saat meter penuh' },
   { keys: ['ESC'], text: 'Jeda pertandingan' },
 ];
 
@@ -189,7 +200,10 @@ export function Menu({
   const [armorId, setArmorId] = useState<number>(loadArmorSkin);
   const dragRef = useRef({ dragging: false, startX: 0 });
 
-  const def = smartDef(ultra ? ultraDef(OPPONENTS[sel]) : OPPONENTS[sel], iq);
+  // LAWAN ATLAS locks the opponent slot: the dock shows ATLAS PRIME (and the arrows stop hunting the roster)
+  const atlasMode = mode === 'atlas';
+  const foeDef = OPPONENTS[atlasMode ? ATLAS_IDX : sel] ?? OPPONENTS[0];
+  const def = smartDef(ultra ? ultraDef(foeDef) : foeDef, iq);
   const col = ultra ? ULTRA_COLOR : def.color;
 
   // sync skins from the live game when they change in-fight
@@ -232,6 +246,7 @@ export function Menu({
         return;
       }
       if (panel !== 'main') return;
+      if (atlasMode) return; // the roster keys are dead in LAWAN ATLAS: the duel is locked onto ATLAS PRIME
       const n = Number(e.key);
       if (n >= 1 && n <= OPPONENTS.length && n - 1 <= unlocked) {
         if (n - 1 !== sel) onSel(n - 1);
@@ -245,7 +260,7 @@ export function Menu({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, sel, unlocked, onSel, mode, onStart, onStartMode]);
+  }, [panel, sel, unlocked, onSel, mode, onStart, onStartMode, atlasMode]);
 
   // drag to rotate the 3D hero
   const onPointerDown = (e: React.PointerEvent) => {
@@ -319,24 +334,24 @@ export function Menu({
                 <button
                   className="hc-arrow"
                   onClick={act(() => onSel(Math.max(0, sel - 1)))}
-                  disabled={sel <= 0}
+                  disabled={atlasMode || sel <= 0}
                   title="Lawan sebelumnya"
                 >
                   ◀
                 </button>
                 <div className="hc-opp-body">
-                  <div className="hc-opp-k">PILIH LAWAN</div>
+                  <div className="hc-opp-k">{atlasMode ? 'LAWAN TERKUNCI · MODE' : 'PILIH LAWAN'}</div>
                   <div className="hc-opp-name font-display" style={{ color: col, textShadow: `0 0 26px ${col}66` }}>
                     {def.name}
                   </div>
                   <div className="hc-opp-sub">
-                    {def.title} · LAWAN {sel + 1} DARI {OPPONENTS.length}
+                    {def.title} · {atlasMode ? 'SKIN BEBAS · ZEUS ATAU ATLAS' : `LAWAN ${sel + 1} DARI ${OPPONENTS.length}`}
                   </div>
                 </div>
                 <button
                   className="hc-arrow"
                   onClick={act(() => onSel(Math.min(unlocked, sel + 1)))}
-                  disabled={sel >= unlocked}
+                  disabled={atlasMode || sel >= unlocked}
                   title="Lawan berikutnya"
                 >
                   ▶
@@ -371,7 +386,12 @@ export function Menu({
                   key={m.id}
                   className={`hc-chip ${mode === m.id ? 'hc-chip-on' : ''}`}
                   style={mode === m.id ? { background: m.color, borderColor: '#fff' } : undefined}
-                  onClick={act(() => onMode(m.id))}
+                  onClick={act(() => {
+                    onMode(m.id);
+                    // keep the hangar in step with the dock: LAWAN ATLAS stages the champion, every other mode the
+                    // rival the dock is showing (so switching back out of the duel restores the pick)
+                    game?.selectOpponent(m.id === 'atlas' ? ATLAS_IDX : Math.min(unlocked, sel));
+                  })}
                   title={m.desc}
                 >
                   <span className="hc-chip-led" style={{ background: m.color, color: m.color }} />

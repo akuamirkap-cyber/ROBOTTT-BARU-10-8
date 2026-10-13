@@ -166,7 +166,10 @@ console.log('\n§7  nyawa lebih tebal 1.8x — vitality only, the match-ups are 
   const factor = (b, t) => t / b;
   ok('every Titan got the same 1.8x', roster.every((b, i) => Math.abs(factor(b, thick[i]) - 1.8) < 0.011), roster.map((b, i) => `${b}→${thick[i]}`).join(' '));
   ok('Ultra Hard stays proportionally ahead', ultra.every((u, i) => Math.abs(factor(thick[i], u) - 1.4) < 0.011), ultra.map((u, i) => `${thick[i]}→${u}`).join(' '));
-  ok('the roster order is unchanged', thick.every((t, i) => i === 0 || t > thick[i - 1]), thick.join(' < '));
+  // the base roster is NOT sorted ascending (ZEUS leads it at 160 on purpose), so what has to hold is that the
+  // scale reorders nothing: every pair keeps exactly the comparison it had before the 1.8x was applied
+  const orderKept = roster.every((a, i) => roster.every((b, j) => i === j || (a > b) === (thick[i] > thick[j])));
+  ok('the roster order is unchanged', orderKept, roster.map((b, i) => `${b}→${thick[i]}`).join(' '));
   // the damage table is NOT touched: thicker vitality means more clean hits land before a KO, which is the point
   const cross = MOVES.cross.dmg;
   const hitsOld = Math.ceil(OPPONENTS[OPPONENTS.length - 1].hp / cross);

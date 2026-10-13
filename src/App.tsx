@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAM_MODES, DEFAULT_BLOOM_PCT, DEFAULT_BRIGHTNESS, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
+import { ATLAS_IDX, CAM_MODES, DEFAULT_BLOOM_PCT, DEFAULT_BRIGHTNESS, Game, GFX_MODES, OPPONENTS, TRANSITIONS, loadBloomPercent, loadBrightness, loadCamMode, loadDifficulty, loadDirectionalHeadSnap, loadFootwork, loadGfxMode, loadIq, loadNoSlowMoNormal, loadPyroPlacement, loadSaturation, loadTextureEnhance, NORMAL_SAT, loadTrans, saveTrans, type BloomMode, type GfxMode, type HudState, type PyroPlacement, type TransId } from './game/Game';
 import { loadSfxProfile, loadAllOverdrivePunch, type SfxProfile } from './game/audio';
 import { Menu } from './ui/Menu';
 import { Hud, TouchControls } from './ui/Hud';
 import { MatchEnd, PauseMenu } from './ui/Overlays';
-import { applyOutcome, loadProfile, makeSeries, saveProfile, seriesAfterBout, seriesLabel, type ModeId, type Profile, type Series } from './game/progress';
+import { applyOutcome, loadProfile, makeSeries, modeOf, saveProfile, seriesAfterBout, seriesLabel, type ModeId, type Profile, type Series } from './game/progress';
 import { Matchmaking } from './ui/Matchmaking';
 import { Bracket } from './ui/Bracket';
 import { usePortrait } from './ui/Profile';
@@ -207,11 +207,13 @@ export default function App() {
 
   const openZeus = () => {
     gameRef.current?.setMuted(true);
+    gameRef.current?.setInputOff(true); // the robot editor uses SHIFT+click: the game must not read keys under it
     setShowZeus(true);
   };
 
   const closeZeus = (autoEquip = true) => {
     setShowZeus(false);
+    gameRef.current?.setInputOff(false);
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
@@ -223,11 +225,13 @@ export default function App() {
 
   const openRealSteelSim = () => {
     gameRef.current?.setMuted(true);
+    gameRef.current?.setInputOff(true);
     setShowRealSteelSim(true);
   };
 
   const closeRealSteelSim = () => {
     setShowRealSteelSim(false);
+    gameRef.current?.setInputOff(false);
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
@@ -248,6 +252,17 @@ export default function App() {
     if (!s) return;
     setMode(m);
     setSeries(s);
+    // STAR MODE: the comfort layer ON (auto-range, auto-guard, smart slip, buffered taps, finisher assist) + the STAR
+    // camera. Every other mode turns it back off, so the normal fight is untouched.
+    gameRef.current?.setStarMode(m === 'star');
+    // A mode may declare the chassis it is played in (see ModeMeta.equip). No mode does today: LAWAN ATLAS is
+    // deliberately skin-free, so a mirror ATLAS vs ATLAS PRIME duel works exactly like the classic ZEUS vs ATLAS one.
+    if (modeOf(m).equip === 'zeus') {
+      gameRef.current?.equipZeus(true);
+      gameRef.current?.reloadZeus(true);
+    }
+    // the duel is locked onto ATLAS PRIME, so the dossier follows him whatever the player is wearing
+    if (m === 'atlas') setSel(ATLAS_IDX);
     // every mode goes through the VS screen (PLAY MATCH: the picked challenger is locked in there)
     if (m === 'tournament') setStage('bracket');
     else setStage('matchmaking');
@@ -307,8 +322,26 @@ export default function App() {
     <div className={`relative h-full w-full overflow-hidden bg-black ${dive ? 'app-dive' : ''}`}>
       <div ref={mount} className="absolute inset-0" />
 
-      {hud && inMatch && <Hud h={hud} touch={touch} />}
+      {hud && inMatch && <Hud h={hud} touch={touch} onPanjerMode={() => gameRef.current?.togglePanjerMode()} />}
       {inMatch && touch && phase === 'fight' && <TouchControls game={game} />}
+
+      {/* ---------- ALI STYLE: in the LOBBY it is a chip you can see AND tap (the hero dances behind it) ---------- */}
+      {phase === 'menu' && hud && (
+        <button
+          onClick={(e) => {
+            e.currentTarget.blur();
+            gameRef.current?.toggleAliStyle();
+          }}
+          className={`ghost cut-sm pointer-events-auto absolute bottom-3 right-3 z-20 flex h-10 items-center gap-2 px-3 font-tech text-[10px] font-black tracking-[0.16em] sm:bottom-5 sm:right-5 ${
+            hud.ali ? 'text-cyan-200' : 'text-white/55'
+          }`}
+          style={hud.ali ? { boxShadow: '0 0 22px rgba(120,240,255,0.45)' } : undefined}
+          title="ALI STYLE (tombol Y): gaya bertarung Muhammad Ali — tangan turun, badan meliuk (float), dan ALI SHUFFLE: kaki berdansa di tempat."
+        >
+          <span className="text-[14px] leading-none">🦋</span>
+          {hud.ali ? 'ALI STYLE ON · ALI SHUFFLE' : 'ALI STYLE OFF'}
+        </button>
+      )}
 
       {phase === 'menu' && !stage && (
         <Menu
@@ -416,7 +449,7 @@ export default function App() {
                   game?.toMenu();
                   setStage('bracket');
                 }
-              : (!series || series.mode === 'play') && hud.oppIndex < OPPONENTS.length - 1
+              : (!series || series.mode === 'play' || series.mode === 'star') && hud.oppIndex < OPPONENTS.length - 1
                 ? () => {
                     const idx = hud.oppIndex + 1;
                     setSeries({ mode: 'play', queue: [idx], step: 0, wins: 0, losses: 0, done: false, won: false });
@@ -443,9 +476,12 @@ export default function App() {
           }
           onMenu={() => {
             setSeries(null);
-            setSel(hud.oppIndex);
+            gameRef.current?.setStarMode(false); // the lobby is not a star fight
+            // never park the lobby on a Titan that is still locked (the LAWAN ATLAS bout can end on ATLAS PRIME)
+            const back = Math.min(unlocked, hud.oppIndex);
+            setSel(back);
             game?.toMenu();
-            game?.selectOpponent(hud.oppIndex);
+            game?.selectOpponent(back);
           }}
         />
       )}

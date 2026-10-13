@@ -40,6 +40,7 @@ function FighterPlate({
   max,
   wins,
   stam,
+  gassed,
 }: {
   right?: boolean;
   name: string;
@@ -50,6 +51,7 @@ function FighterPlate({
   max: number;
   wins: number;
   stam?: number;
+  gassed?: boolean;
 }) {
   const low = hp > 0 && hp / max < 0.25;
   return (
@@ -68,9 +70,20 @@ function FighterPlate({
       <HpBar value={hp} max={max} from={from} to={to} right={right} low={low} />
       <div className={`mt-1.5 flex items-center gap-2 ${right ? 'flex-row-reverse' : ''}`}>
         {stam !== undefined && (
-          <div className="stam-track w-3/5">
-            <div className="h-full transition-[width] duration-100" style={{ width: `${stam}%`, background: stam < 20 ? '#ff4a4a' : 'linear-gradient(90deg,#3dff8a,#b6ff6a)' }} />
+          <div className="stam-track w-3/5" title="Tenaga: dipakai untuk memukul DAN menghindar">
+            <div
+              className="h-full transition-[width] duration-100"
+              style={{
+                width: `${stam}%`,
+                background: gassed ? '#ff8a2a' : stam < 20 ? '#ff4a4a' : 'linear-gradient(90deg,#3dff8a,#b6ff6a)',
+              }}
+            />
           </div>
+        )}
+        {gassed && (
+          <span className="rounded-sm bg-orange-500/80 px-1 font-tech text-[7.5px] font-black tracking-[0.14em] text-black" title="Tenaga habis: pukulan 8% lebih lambat & pemulihan tenaga separuh">
+            GASSED
+          </span>
         )}
         <span className="font-tech text-[10px] tracking-widest text-white/60">{Math.ceil(hp)}</span>
       </div>
@@ -106,7 +119,7 @@ function Hint({ k, children }: { k: string; children: string }) {
   );
 }
 
-export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
+export function Hud({ h, touch, onPanjerMode }: { h: HudState; touch: boolean; onPanjerMode?: () => void }) {
   const enemyColor = h.ultra ? ULTRA_COLOR : h.eColor;
   const meterReady = h.meter >= 100;
   const timeLow = h.phase === 'fight' && h.timeLeft <= 10;
@@ -128,7 +141,7 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
       {/* ---------- top plates + timer ---------- */}
       <div className="absolute inset-x-0 top-0 flex items-start justify-center gap-2 px-3 pt-3 sm:gap-4 sm:px-8 sm:pt-5">
         <div className="min-w-0 flex-1">
-          <FighterPlate name={PLAYER_NAME} nameColor="#9fe3ff" from="#1b8fe0" to="#35d6ff" hp={h.pHp} max={h.pMax} wins={h.wins[0]} stam={h.stam} />
+          <FighterPlate name={PLAYER_NAME} nameColor="#9fe3ff" from="#1b8fe0" to="#35d6ff" hp={h.pHp} max={h.pMax} wins={h.wins[0]} stam={h.stam} gassed={h.gassed} />
           {h.team && <PartnerPlate name={h.team.ally.name} color={h.team.ally.color} hp={h.team.ally.hp} max={h.team.ally.max} ko={h.team.ally.ko} />}
         </div>
         <div className="flex w-24 shrink-0 flex-col items-center sm:w-32">
@@ -152,7 +165,15 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <FighterPlate right name={h.eName} nameColor={enemyColor} from={h.ultra ? '#7a0c1f' : '#a31818'} to={enemyColor === '#ff3b3b' ? '#ff4a4a' : enemyColor} hp={h.eHp} max={h.eMax} wins={h.wins[1]} />
+          <FighterPlate right name={h.eName} nameColor={enemyColor} from={h.ultra ? '#7a0c1f' : '#a31818'} to={enemyColor === '#ff3b3b' ? '#ff4a4a' : enemyColor} hp={h.eHp} max={h.eMax} wins={h.wins[1]} gassed={h.eGassed} />
+          {/* THE PUNISH WINDOW: he swung and missed — the tail has him. This is the moment the balance pass is FOR. */}
+          {h.eWhiff > 0 && h.phase === 'fight' && (
+            <div className="mt-1 flex justify-end">
+              <span className="animate-pulse rounded-sm bg-amber-400/85 px-1.5 py-[1px] font-tech text-[8px] font-black tracking-[0.16em] text-black">
+                ⚡ TERBUKA — BALAS!
+              </span>
+            </div>
+          )}
           {h.team && <PartnerPlate right name={h.team.enemy2.name} color={h.team.enemy2.color} hp={h.team.enemy2.hp} max={h.team.enemy2.max} ko={h.team.enemy2.ko} />}
         </div>
       </div>
@@ -170,6 +191,100 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
               <div className="od-ticks" />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ---------- STAR MODE: the comfort-layer readout (auto-range is on, the low guard is up) ---------- */}
+      {h.star && (
+        <div className="absolute left-1/2 top-[86px] flex -translate-x-1/2 items-center gap-2 sm:top-[92px]">
+          <span className="rounded-sm bg-amber-400/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(255,200,60,0.45)]">
+            ⭐ STAR MODE · AUTO-RANGE
+          </span>
+          <span
+            className={`rounded-sm px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] ${
+              h.autoGuard ? 'bg-sky-400/85 text-black' : 'bg-white/10 text-white/55'
+            }`}
+            title="Guard ringan naik sendiri saat kamu diam. Tahan G untuk guard kuat (chip 10% vs 22%)."
+          >
+            GUARD {h.autoGuard ? 'OTOMATIS' : 'MANUAL (G)'}
+          </span>
+        </div>
+      )}
+
+      {/* ---------- ALI STYLE: the low loose guard is on, and the feet are dancing ---------- */}
+      {h.ali && (
+        <div className="absolute left-1/2 top-[112px] flex -translate-x-1/2 items-center gap-2 sm:top-[122px]">
+          <span className="animate-pulse rounded-sm bg-cyan-300/95 px-3 py-[3px] font-tech text-[11px] font-black tracking-[0.22em] text-black shadow-[0_0_22px_rgba(120,240,255,0.6)]">
+            🦋 ALI STYLE · ALI SHUFFLE
+          </span>
+          <span className="rounded-sm bg-white/12 px-2 py-[3px] font-tech text-[10px] font-black tracking-[0.2em] text-white/70" title="Guard diturunkan (tangan di dada) — liputan lebih longgar, tapi gerak kakinya paling lincah. Tekan Y lagi untuk kembali ke guard tinggi.">
+            GUARD RENDAH
+          </span>
+        </div>
+      )}
+
+      {/* ---------- PANJER OTOMATIS (SHIFT): every punch is a loaded one, thrown on the press ---------- */}
+      {/* it is also the touch button for the mode, so a phone can switch it without a keyboard */}
+      {(h.panjerMode || touch) && h.phase === 'fight' && (
+        <button
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onPanjerMode?.();
+          }}
+          className={`pointer-events-auto absolute left-1/2 -translate-x-1/2 rounded-sm px-3 py-[3px] font-tech text-[10px] font-black tracking-[0.2em] ${
+            h.panjerMode ? 'animate-pulse bg-amber-300/95 text-black shadow-[0_0_22px_rgba(255,211,74,0.6)]' : 'bg-white/12 text-white/55'
+          }`}
+          style={{ top: h.ali ? 146 : 112 }}
+          title="PANJER OTOMATIS (SHIFT): tiap pukulan H/J/K/X langsung keluar saat tombol ditekan — mentok maks ×2 damage & ×2 hajar — dan TAHAN tombolnya = pukulan keluar terus (spam), meleset pun nggak ngunci. Tekan SHIFT lagi = kembali ke cara lama."
+        >
+          💪 PANJER OTOMATIS {h.panjerMode ? '· ×2 MAKS · SPAM' : 'OFF'}
+        </button>
+      )}
+
+      {/* ---------- PANJER: the load on the held punch button (hold H/J/K/X for a full second = 2× punch) ---------- */}
+      {h.panjer > 0 && !h.panjerMode && h.phase === 'fight' && (
+        <div className="absolute bottom-[104px] left-1/2 w-[min(360px,42%)] -translate-x-1/2 sm:bottom-[118px]">
+          <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">
+            <span className={h.panjerReady ? 'text-amber-200' : 'text-white/65'}>💪 PANJER</span>
+            {h.panjerReady ? (
+              <span className="animate-pulse text-amber-200">SIAP — LEPAS! ×2,0 PUKULAN & HAJAR</span>
+            ) : (
+              <span className="text-white/45">MAKIN LAMA MAKIN KUAT — SEKARANG ×{h.panjerMul}</span>
+            )}
+          </div>
+          <div className={`od-frame ${h.panjerReady ? 'meter-ready' : ''}`} style={{ height: 12 }}>
+            <div className="od-in">
+              <div className="h-full transition-[width] duration-75" style={{ width: `${Math.min(100, h.panjer * 100)}%`, background: 'linear-gradient(90deg,#a16207,#ffd34a,#fff3c4)' }} />
+              <div className="od-ticks" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- THE N COMBO: which link of H-H-J-J-K is next, and whether the finisher is paid for ---------- */}
+      {(h.nCombo >= 0 || h.nComboLocked) && (
+        <div className="absolute bottom-[64px] left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-[76px]">
+          {h.nCombo >= 0 ? (
+            <>
+              <span className="rounded-sm bg-amber-400/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(255,200,60,0.45)]">
+                KOMBO {Math.min(h.nCombo + 1, 6)}/6 · H-H-J-J-K
+              </span>
+              {h.nCombo >= 5 && (
+                <span
+                  className={`rounded-sm px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] ${
+                    h.meter >= 50 ? 'bg-rose-500/90 text-white' : 'bg-white/10 text-white/60'
+                  }`}
+                  title="Pukulan mematikan butuh setengah meter. Meter diisi oleh pukulan yang masuk — kombo bersih membayar dirinya sendiri."
+                >
+                  {h.meter >= 50 ? '☠️ MEMATIKAN SIAP' : `METER ${Math.round(h.meter)}/50`}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="rounded-sm bg-white/10 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-white/45">
+              N · KOMBO — TUNGGU
+            </span>
+          )}
         </div>
       )}
 
@@ -363,6 +478,8 @@ export function TouchControls({ game }: { game: Game | null }) {
         <div className="absolute left-[2px] -top-[136px]"><TouchBtn game={game} code="KeyU" label="RAGE" className="bg-red-500/65 text-[10px]" size="h-12 w-12" /></div>
         <div className="absolute left-[62px] -top-[136px]"><TouchBtn game={game} code="KeyZ" label="SOMBONG" className="bg-emerald-600/70 border-emerald-300 text-[8px] font-bold" size="h-12 w-12" /></div>
         <div className="absolute left-[122px] -top-[136px]"><TouchBtn game={game} code="Freestyle" label="GAYA" className="bg-yellow-400/50 text-[10px]" size="h-12 w-12" /></div>
+        {/* ALI STYLE toggle for touch play (the same Y the keyboard uses) */}
+        <div className="absolute left-[122px] -top-[78px]"><TouchBtn game={game} code="KeyY" label="🦋" className="bg-cyan-300/50 text-[12px]" size="h-12 w-12" /></div>
       </div>
     </div>
   );

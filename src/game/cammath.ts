@@ -372,6 +372,32 @@ export const CAM_MODES: CamMode[] = [
     style: 'shoulder',
     ignoreSelf: true,
   },
+  {
+    // THE STAR CAMERA — the Boxing Star shot. Behind and beside the player's shoulder, low and close, the opponent
+    // held in the middle of the frame and the fighters' feet on the bottom edge. It sways with the footwork
+    // (handheld drift), leans in on a clinch and whips on an impact — the "you are IN the ring" shot. The STAR MODE
+    // auto-selects it, and it stands wide enough that the player's own chassis only eats the near corner.
+    id: 'star',
+    name: 'STAR',
+    tag: 'AUTO',
+    desc: 'Kamera mode STAR: di belakang pundakmu, rendah dan dekat, lawan selalu di tengah frame. Paling nyaman untuk main cepat — dipakai otomatis oleh STAR MODE.',
+    fov: 52,
+    dist: 4.1,
+    minDist: 3.4,
+    margin: 1.06,
+    orbit: 0.5,
+    height: 4.5,
+    closeBias: 0.22,
+    lookY: 4.05,
+    down: 0.75,
+    hand: 0.6,
+    lead: 0.16,
+    koScale: 1.12,
+    style: 'shoulder',
+    ignoreSelf: true,
+    shoulderBack: 2.0,
+    shoulderLat: 3.45,
+  },
 ];
 
 /**
@@ -445,6 +471,9 @@ export interface CamMode {
   style?: 'axis' | 'shoulder';
   /** a shoulder cam is allowed to crop the fighter whose shoulder we are behind */
   ignoreSelf?: boolean;
+  /** a shoulder cam's own stand-off: how far behind / beside the player the lens rides (see SHOULDER_* defaults) */
+  shoulderBack?: number;
+  shoulderLat?: number;
 }
 
 /** the lens never stands further from the ring than this */
@@ -531,8 +560,9 @@ export function gameplayShot(
       // right behind the player's shoulder and well out to the side: his chassis ends up on the edge of the
       // frame with the man he is fighting in the middle of it. A bigger hero gets a longer stand-off so the
       // camera sits past his bulk instead of inside it.
-      const back = (SHOULDER_BACK + d * SHOULDER_BACK_K) * (1 + heroExtra * 0.07);
-      const lat = (SHOULDER_LAT + d * SHOULDER_LAT_K) * (1 + heroExtra * 0.05);
+      // a mode may bring its own stand-off (the STAR cam sits lower and further out for the TV-broadcast look)
+      const back = ((mode.shoulderBack ?? SHOULDER_BACK) + d * SHOULDER_BACK_K) * (1 + heroExtra * 0.07);
+      const lat = ((mode.shoulderLat ?? SHOULDER_LAT) + d * SHOULDER_LAT_K) * (1 + heroExtra * 0.05);
       out.set(a.pos.x - f.x * back + r.x * lat, py, a.pos.y - f.y * back + r.y * lat);
     } else {
       const orbit = mode.orbit + close * 0.12 * (1 - mode.closeBias * 0.5);
@@ -554,7 +584,9 @@ export function gameplayShot(
     if (shoulder) {
       // the lens travels along this offset from a fixed point behind the shoulder, so the limit is measured
       // from there and scaled back into the beat's own units
-      gAnchor.set(a.pos.x - f.x * SHOULDER_BACK + r.x * SHOULDER_LAT, 3.5, a.pos.y - f.y * SHOULDER_BACK + r.y * SHOULDER_LAT);
+      const sBack = mode.shoulderBack ?? SHOULDER_BACK;
+      const sLat = mode.shoulderLat ?? SHOULDER_LAT;
+      gAnchor.set(a.pos.x - f.x * sBack + r.x * sLat, 3.5, a.pos.y - f.y * sBack + r.y * sLat);
       gDir.set(-f.x * SHOULDER_BACK_K + r.x * SHOULDER_LAT_K, 0, -f.y * SHOULDER_BACK_K + r.y * SHOULDER_LAT_K);
       const scale = gDir.length() || 1;
       gDir.multiplyScalar(1 / scale);

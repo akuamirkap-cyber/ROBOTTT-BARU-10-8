@@ -80,7 +80,7 @@ export const FREESTYLE: Freestyle[] = [
   {
     // 1 — N: both fists overhead, belt raised (the old Zeus pose)
     id: 1,
-    key: 'KeyN',
+    key: '', // N is the COMBO button now (see COMBO_SCRIPT) — this pose is still in the book, reachable by cycling
     name: 'angkat sabuk',
     tag: 'SANG JUARA!',
     say: 'I am the champion!',
@@ -138,7 +138,7 @@ export const FREESTYLE: Freestyle[] = [
   {
     // 5 — Y: both arms windmill right around, then slam the fists together
     id: 5,
-    key: 'KeyY',
+    key: '', // Y is the ALI STYLE stance now (see the ALI STYLE block in Game.ts) — cycle the book to reach it
     name: 'kincir tinju',
     tag: 'KINCIR LALU HENTAK!',
     say: 'Clang!',

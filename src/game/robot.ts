@@ -7,6 +7,18 @@ import { markReflect } from './layers';
 import { getArmourNormalMap, getArmourRoughnessMap, getCarbonFiberTexture, getSteelNormalMap } from './textures';
 import { mount100PercentZeus, unmount100PercentZeus, type ZeusRigMetrics } from './zeusModel';
 
+// ---- THE ALI SHUFFLE (the rig's half of ALI STYLE — see the block in Game.ts) ----
+/** how long one tap of the shuffle lasts at full float (~7 taps a second: a real Ali shuffle, but a real foot) */
+const ALI_TAP_DUR = 0.15;
+/** ...and the gap between taps, so the dance has its own rapid cadence instead of riding the walk rhythm */
+const ALI_TAP_PERIOD = 0.15;
+/** how far the toe slides out of the stance on a tap (robot-local units — a half-step you can plainly see) */
+const ALI_TAP_OUT = 0.52;
+/** the extra bounce frequency the float adds to the on-the-spot weight shift (Hz) */
+const ALI_BOUNCE_HZ = 2.2;
+/** how much higher the float lifts the boots on a tap, and how much bigger the weight shift reads */
+const ALI_TAP_LIFT = 0.15;
+
 export interface Pose {
   sx: number; // shoulder pitch (negative = raise forward)
   sy: number; // shoulder yaw  (negative = inward)
@@ -24,6 +36,9 @@ export interface RobotStyle {
   gloveSkin?: number;
   armorSkin?: number;
   isZeus100?: boolean;
+  /** the champion's own ATLAS chassis (the machine the player drives): a heavyweight that resists knockback — see
+   *  chassisKnock/chassisLaunch in Game.ts. Zeus declares isZeus100 instead; a standard Titan declares neither. */
+  atlasChassis?: boolean;
 }
 
 export interface AnimState {
@@ -58,6 +73,9 @@ export interface AnimState {
   idleBounce?: number; // 0 locks a staged/showcase pose vertically; omitted keeps the normal standing bounce
   sprint?: number; // 0 = grounded boxing footwork, 1 = full sprint (when omitted, inferred from speed)
   headYaw?: number; // extra head turn (rad, + = his left): the ring walk plays to the stands
+  /** THE ALI SHUFFLE (optional, 0..1): standing on the spot the feet never stop dancing — quick, light, alternating
+   *  half-steps around the stance while the weight rocks side to side. 0 = the ordinary quiet pro-boxing feet. */
+  shuffle?: number;
   tiltZ?: number; // airborne lay-over sideways (rad, + = over his left shoulder)
   ragdoll?: number; // 1 = knocked flying in a fight: the hips ride at standing height with the legs hanging, so he LANDS ON HIS FEET and collapses from there
   tuck?: number; // airborne only: 1 = knees pulled up to the chest (the tuck of a flip)
@@ -129,6 +147,7 @@ interface Foot {
   stT: number; // time since touchdown (gait stance progress)
   gaitStep: boolean; // current swing belongs to the walk cycle
   shuffle: boolean; // current swing is part of a boxing dash shuffle
+  aliStep: boolean; // THE ALI SHUFFLE: a light half-step that keeps the feet dancing while standing still
   punchStep: boolean; // current swing is a strike re-plant (the foot follows the punching hand)
   tx: number; // local target of a strike re-plant
   tz: number;
@@ -180,7 +199,10 @@ export class Robot {
   readonly stride = { arm: 0, swing: 0 };
 
   // procedural footwork
-  private feet: Foot[] = [0, 1].map(() => ({ x: 0, z: 0, fx: 0, fz: 0, flx: 0, flz: 0, stepping: false, u: 0, dur: 0.2, lift: 0, err: 0, pitch: 0, curX: 0, curZ: 0, lag: 0, yawOff: 0, stT: 0, gaitStep: false, shuffle: false, punchStep: false, tx: 0, tz: 0, p0: 0, follow: 0 }));
+  private feet: Foot[] = [0, 1].map(() => ({ x: 0, z: 0, fx: 0, fz: 0, flx: 0, flz: 0, stepping: false, u: 0, dur: 0.2, lift: 0, err: 0, pitch: 0, curX: 0, curZ: 0, lag: 0, yawOff: 0, stT: 0, gaitStep: false, shuffle: false, punchStep: false, aliStep: false, tx: 0, tz: 0, p0: 0, follow: 0 }));
+  // THE ALI SHUFFLE: which foot taps next and how long until it does (see updateFeet)
+  private aliT = 0;
+  private aliSide = 0;
   private needSnap = true;
   private ikW = 1;
   private airW = 0; // smoothed 'airborne' weight so leg poses blend instead of snapping
@@ -265,6 +287,12 @@ export class Robot {
 
   get isAtlas() {
     return !this.isZeus;
+  }
+
+  /** the champion ATLAS chassis (heavy, knockback-resistant) — NOT the same thing as `isAtlas`, which is simply
+   *  "not wearing the Zeus mount" and is true for the whole roster. */
+  get isAtlasChassis() {
+    return !this.isZeus && !!this.ctx?.style?.atlasChassis;
   }
 
   get isAtom() {
@@ -587,11 +615,16 @@ export class Robot {
     const restP = zm ? [lerp(0.0, 0.02, guardStance), lerp(0.0, 0.04, guardStance)] : [0.01, 0.03];
     const restYaw = zm ? [lerp(0.1, 0.12, guardStance), lerp(-0.30, -0.44, guardStance)] : [0.1, -0.5];
 
-    this.bounce += dt * Math.PI * 2 * (1.15 + sp01 * 0.4);
+    // THE ALI SHUFFLE amount: standing still, not mid-dash, not taking a blow, and it fades out with the walk (the
+    // stride owns the feet the moment he is actually travelling). Everything below keys off this one number.
+    const aliAmt = clamp(a.shuffle ?? 0, 0, 1) * (1 - this.gaitW) * (this.dashOn ? 0 : 1) * (a.hit < 0.2 ? 1 : 0);
+    // the float: the whole body keeps a faster, lighter rhythm while the dance is running
+    this.bounce += dt * Math.PI * 2 * (1.15 + sp01 * 0.4 + aliAmt * ALI_BOUNCE_HZ);
     const h = 0.5 + 0.5 * Math.sin(this.bounce);
     const bounceAmt = clamp(a.idleBounce ?? 1, 0, 1) * (1 - this.gaitW);
-    // pro boxers PENDULUM lightly on the spot — a quiet weight shift, not a bouncy march
-    const bob = (h - 0.5) * 0.045 * bounceAmt;
+    // pro boxers PENDULUM lightly on the spot — a quiet weight shift, not a bouncy march. ALI STYLE turns that
+    // pendulum up: the float has a real rise and fall in it (and the frequency follows the dance, see ALI_BOUNCE_HZ)
+    const bob = (h - 0.5) * (0.045 + aliAmt * 0.085) * bounceAmt;
 
     if (this.needSnap) {
       for (let i = 0; i < 2; i++) {
@@ -806,6 +839,42 @@ export class Robot {
       }
     } else {
       this.stepDist = 0;
+      // ---- THE ALI SHUFFLE (see ALI STYLE in Game.ts) ----
+      // Ali's signature: standing on the spot he DANCES — a rapid alternation of light half-steps at the stance, the
+      // weight rocking side to side over whichever boot has just landed. It rides the same foot solver as every other
+      // step, so the feet plant and clear exactly like they do in a stride (no sliding, no floating).
+      if (aliAmt > 0.05) {
+        this.aliT -= dt;
+        if (this.aliT <= 0) {
+          this.aliT = ALI_TAP_PERIOD / Math.max(0.4, aliAmt);
+          const i = this.aliSide;
+          this.aliSide = 1 - this.aliSide;
+          const f = this.feet[i];
+          const o = this.feet[1 - i];
+          if (!f.stepping && !o.stepping && this.balanceCooldown <= 0) {
+            const curL = toL(f.x, f.z);
+            f.flx = curL.x;
+            f.flz = curL.z;
+            f.fx = f.x;
+            f.fz = f.z;
+            f.punchStep = false;
+            f.gaitStep = false;
+            f.shuffle = false;
+            f.aliStep = true;
+            f.stepping = true;
+            f.u = 0;
+            f.p0 = f.pitch;
+            // a light tap OUT of the stance and straight back: the lead foot reaches out, the rear foot closes in
+            // behind it — the two never cross (the separation guard further down enforces that)
+            const out = ALI_TAP_OUT * aliAmt * (i === 0 ? 1 : -1);
+            f.tx = ideal[i].x + out;
+            f.tz = ideal[i].z + (i === 0 ? 0.09 : -0.09) * aliAmt;
+            f.dur = clamp(ALI_TAP_DUR / Math.max(0.5, aliAmt), 0.1, 0.3);
+            f.lift = ALI_TAP_LIFT;
+            this.balanceCooldown = 0.12; // the dance replaces the lazy balance corrections while it runs
+          }
+        }
+      }
       let pick = -1;
       let best = 0;
       // Stance recovery threshold: calm, efficient, no fidgeting — pro feet only correct when they REALLY must.
@@ -919,6 +988,9 @@ export class Robot {
       } else if (f.punchStep) {
         // strike re-plant: a short, flat, deliberate step onto the target the punch was thrown from
         tl = { x: f.tx, z: f.tz };
+      } else if (f.aliStep) {
+        // THE ALI SHUFFLE TAP: a light half-step out to the side of the stance and back — short, quick, low clearance
+        tl = { x: f.tx, z: f.tz };
       } else {
         const moving = spdRaw > 0.45;
         // the slower the body travels, the smaller the shuffle: a light tap of A/D gets a nudge, not a lunge
@@ -946,7 +1018,7 @@ export class Robot {
       tw.x = clamp(tw.x, -this.footLimit, this.footLimit);
       tw.z = clamp(tw.z, -this.footLimit, this.footLimit);
       // gait swings start and end with ~zero ground speed (no skidding on touch-down, no jerk at toe-off)
-      const e = f.shuffle ? sm(u) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
+      const e = f.shuffle || f.aliStep ? sm(u) : f.gaitStep ? lerp(u, sm(u), 0.95) : lerp(sm(u), 1 - Math.pow(1 - u, 2), 0.55);
       // Interpolate in robot-local space so the foot moves actively WITH the moving body,
       // rather than lagging far behind at an old world coordinate stuck to the mat!
       const curLx = f.flx + (tl.x - f.flx) * e;
@@ -972,6 +1044,15 @@ export class Robot {
         sway += -s * 0.07 * w * (1 + run * 0.6); // quiet weight shift over the stance foot (no waddle)
         roll += -s * 0.028 * w * (1 + run * 0.8); // a whisper of pelvis drop on the swinging side
         swingW = Math.max(swingW, w);
+      } else if (f.aliStep) {
+        // the dance: a light toe-tap roll and a strong lateral weight rock (that rock is the shuffle's whole read)
+        f.pitch = lerp(f.p0, restP[i] + 0.06 * w, sm(u));
+        f.yawOff = lerp(f.yawOff, restYaw[i] * (1 - 0.3 * aliAmt), 1 - Math.exp(-18 * dt));
+        // THE ROCK: the weight swings hard onto the foot that just landed and the hips swing with it. This is what
+        // makes a shuffle read as a DANCE instead of as fidgeting, so it is deliberately not subtle.
+        sway += -s * 0.22 * w;
+        roll += s * 0.14 * w;
+        yawS += -s * 0.1 * w;
       } else if (f.punchStep) {
         // Deliberate step-in: foot lifts with intent and plants authoritative power into the canvas
         f.pitch = lerp(f.p0, restP[i] + 0.05 * w, sm(u));
@@ -995,7 +1076,11 @@ export class Robot {
           f.pitch += clamp(target - f.pitch, -0.05, 0.05);
         };
         f.p0 = f.pitch; // the pitch this stance has to roll out of
-        if (f.shuffle) {
+        if (f.aliStep) {
+          f.aliStep = false;
+          settle(restP[i]);
+          this.sLand.v -= 0.16; // a light tap, not a stamp — the canvas answers softly
+        } else if (f.shuffle) {
           f.shuffle = false;
           settle(restP[i]);
           this.sLand.v -= 0.3;

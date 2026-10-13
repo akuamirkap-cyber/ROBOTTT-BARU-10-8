@@ -42,6 +42,8 @@ export function ModeHub({
   const rankOpp = OPPONENTS[rankOpponent(profile.rp, OPPONENTS.length)];
   const hint: Record<ModeId, string> = {
     play: `VS ${def.name} · ${ultra ? 'ULTRA HARD' : 'STANDAR'}`,
+    star: `⭐ ${def.name} · AUTO-RANGE + AUTO-GUARD`,
+    atlas: 'VS ATLAS PRIME · SKIN BEBAS (ZEUS / ATLAS)',
     rank: `${tier.icon} ${tier.name} · ${profile.rp} RP · LAWAN: ${rankOpp.name}`,
     tournament: `${profile.titles} GELAR · 16 TITAN · 4 BABAK GUGUR`,
     team: `${profile.teamWins} TEAM WINS · 2v2 TAG · RING LEBAR`,
@@ -162,6 +164,74 @@ export function ModeDossier({ mode, profile, onStart, ultra }: { mode: ModeId; p
         </div>
       )}
 
+      {mode === 'star' && (
+        <>
+          <div className="aaa-stats" style={{ borderLeftColor: '#ffd34a' }}>
+            <div className="aaa-coach-k" style={{ color: '#ffd34a' }}>
+              SISTEM BANTUAN (OTO)
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">JARAK</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>AUTO-RANGE KE POCKET 3.25 m</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">GUARD</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>NAIK SENDIRI SAAT DIAM (RINGAN)</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">HINDAR</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>SPACE PILIH ARAH SENDIRI + SLOW-MO BACA</span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">OVERDRIVE</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left' }}>LEPAS OTOMATIS SAAT METER PENUH</span>
+            </div>
+          </div>
+          <div className="aaa-coach" style={{ borderLeftColor: m.color, background: `${m.color}12` }}>
+            <div className="aaa-coach-k" style={{ color: m.color }}>
+              KAMERA &amp; TOMBOL
+            </div>
+            <p>
+              Kamera pindah ke preset STAR — di belakang pundakmu, lawan selalu di tengah frame. Tidak ada tombol
+              baru: W/A/S/D tetap untuk mengatur sendiri kalau mau, H J K X memukul, SPACE menghindar, G guard kuat,
+              L counter, R Overdrive (boleh juga manual), Q sasaran kepala/dada.
+            </p>
+          </div>
+        </>
+      )}
+
+      {mode === 'atlas' && (
+        <>
+          <div className="aaa-stats" style={{ borderLeftColor: '#7fe4ff' }}>
+            <div className="aaa-coach-k" style={{ color: '#bff0ff' }}>
+              DUEL ZEUS vs ATLAS PRIME
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">KAMU</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left', color: '#9fe6ff' }}>
+                SKIN PILIHANMU · ZEUS ATAU ATLAS (GARASI)
+              </span>
+            </div>
+            <div className="aaa-stat">
+              <span className="aaa-stat-k">LAWAN</span>
+              <span className="aaa-stat-v" style={{ textAlign: 'left', color: '#ffc63a' }}>
+                ATLAS PRIME · JUARA BERTAHAN WRC
+              </span>
+            </div>
+          </div>
+          <div className="aaa-coach" style={{ borderLeftColor: m.color, background: `${m.color}12` }}>
+            <div className="aaa-coach-k" style={{ color: m.color }}>
+              CHASSIS SANG JUARA
+            </div>
+            <p>
+              ATLAS PRIME memakai plating 1.6× lebih tebal (seperti Zeus) dan chassis Atlas yang meninju 19% lebih
+              cepat. Satu pertandingan, Best of 3 ronde — tidak mempengaruhi Rank Points. Skinmu tidak diubah:
+              bertarunglah dengan ZEUS, atau mirror ATLAS vs ATLAS PRIME, sesuai yang dipakai di GARASI.
+            </p>
+          </div>
+        </>
+      )}
+
       {mode === 'team' && (
         <>
           <div className="grid grid-cols-2 gap-2">
@@ -245,7 +315,7 @@ export function Leaderboard({ profile }: { profile: Profile }) {
         <div className="aaa-coach-k" style={{ color: '#ff8a5a' }}>
           WEEKLY POINTS
         </div>
-        <p>RANK +140 · TOURNAMENT +160 · TEAM +120 · PLAY +100. Peringkat 3 besar mendapat badge musiman.</p>
+        <p>RANK +140 · TOURNAMENT +160 · TEAM +120 · ATLAS +140 · PLAY +100. Peringkat 3 besar mendapat badge musiman.</p>
       </div>
     </>
   );

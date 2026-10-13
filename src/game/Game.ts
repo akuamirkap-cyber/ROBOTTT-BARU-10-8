@@ -203,7 +203,8 @@ export const smartDef = (d: OpponentDef, iq: number): OpponentDef => {
 export const ULTRA_COLOR = '#ff2a4a';
 
 export const PLAYER_NAME = 'ATLAS';
-export const PLAYER_STYLE: RobotStyle = { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0x1f66ff, glow: 0x3fd8ff };
+// the player's machine IS the ATLAS chassis — the heavyweight that resists knockback (see chassisKnock)
+export const PLAYER_STYLE: RobotStyle = { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0x1f66ff, glow: 0x3fd8ff, atlasChassis: true };
 
 const LS_HELMET = 'steel-titans-helmet-v1';
 const LS_GLOVE = 'steel-titans-glove-v1';
@@ -249,7 +250,14 @@ export const OPPONENTS: OpponentDef[] = [
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
   { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.0, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
+  // ATLAS PRIME — the reigning champion's OWN chassis (the machine the player drives), so the mirrored duel can be
+  // played straight from the roster and the LAWAN ATLAS mode locks onto him. Silver plating with champion gold
+  // trim: the same build as the player's robot, tuned like a boss (the fastest, hardest-hitting machine in the
+  // WRC, and it carries the twin advantages of the ATLAS chassis — 19% faster hands, see startMove/atkSpd).
+  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a, atlasChassis: true } },
 ];
+/** where ATLAS PRIME sits in the roster — the LAWAN ATLAS mode locks the bout onto him */
+export const ATLAS_IDX = OPPONENTS.findIndex((o) => o.name === 'ATLAS PRIME');
 // NYAWA LEBIH TEBAL 1.8×. The chassis of every fighter in the WRC is built on this one scale: the player's 100
 // baseline, the roster numbers above, and the Ultra Hard ×1.4 upgrade all end up 1.8× thicker, so the MATCH-UP
 // ratios are exactly what they were — every fight just lasts longer. Chip damage and the guard teardown are
@@ -343,6 +351,30 @@ export interface HudState {
   eHp: number;
   eMax: number;
   stam: number;
+  /** THE DODGE ECONOMY, on screen: true while the player is below the gas line (slower hands, half recovery) */
+  gassed: boolean;
+  /** ...and the same for the opponent, so you can see the moment to press your advantage */
+  eGassed: boolean;
+  /** > 0 while the OPPONENT is over-committed after a missed swing — the window to punish him */
+  eWhiff: number;
+  /** STAR MODE is running (the HUD switches to the comfort layout: auto-range badge, buffered-tap hints) */
+  star: boolean;
+  /** ...and the low guard is up by itself right now */
+  autoGuard: boolean;
+  /** ALI STYLE is equipped (the HUD shows it, so the low guard is never a mystery) */
+  ali: boolean;
+  /** PANJER OTOMATIS (SHIFT): every punch comes out on the press, at the ceiling. The HUD has to say so. */
+  panjerMode: boolean;
+  /** PANJER: 0..1 of the load the player is building on a held strike button (0 = a flick, nothing to show) */
+  panjer: number;
+  /** how hard the punch would land if the button came up right now, written for the screen: "1,6" */
+  panjerMul: string;
+  /** ...and true once the load is FULL (a full second): the next release lands the 2× punch */
+  panjerReady: boolean;
+  /** THE N COMBO: which link of COMBO_SCRIPT is next (-1 = the script is not running). The HUD reads it as "3/6". */
+  nCombo: number;
+  /** ...and true while N is on the post-combo cooldown (so the badge can say WHY nothing happened) */
+  nComboLocked: boolean;
   meter: number;
   combo: number;
   wins: [number, number];
@@ -407,9 +439,12 @@ export interface HudState {
   } | null;
 }
 
-type MoveId = 'jab' | 'cross' | 'hook' | 'upper' | 'slam' | 'bolt' | 'windmill' | 'skyhook' | 'grab' | 'counter';
-// overdrive moves — the four R variants: the straight (bolt), the spinning smash (windmill), the slam and the launcher
-const isOD = (id: MoveId) => id === 'slam' || id === 'bolt' || id === 'windmill' || id === 'skyhook';
+type MoveId = 'jab' | 'cross' | 'hook' | 'upper' | 'slam' | 'bolt' | 'windmill' | 'skyhook' | 'grab' | 'counter' | 'finisher';
+// overdrive moves — the four R variants: the straight (bolt), the spinning smash (windmill), the slam and the launcher.
+// The FIFTH member of the family is the finisher: it is not on R, it is the tail of the N combo (see COMBO_SCRIPT),
+// and it is priced at half a meter instead of a full one. Everything the family shares — the cinematic charge, the
+// long tell, the fact that it cannot be cancelled out of, stuffed or blocked — it inherits from being in here.
+const isOD = (id: MoveId) => id === 'slam' || id === 'bolt' || id === 'windmill' || id === 'skyhook' || id === 'finisher';
 type Ease = 'in' | 'out' | 'io' | 'flow';
 interface Key {
   t: number;
@@ -592,6 +627,32 @@ const MOVES: Record<MoveId, Move> = {
       k(1.36, GUARD),
     ],
   },
+  // ================= PUKULAN MEMATIKAN / THE FINISHER (tail of the N combo — see COMBO_SCRIPT) =================
+  // The heaviest single strike in the book, and the only one that is BOTH two-handed and unblockable. It is not on a
+  // key of its own and it cannot be spammed: it fires as the last link of the N combo (H-H-J-J-K → this), and it is
+  // priced at half an Overdrive meter (FINISHER_METER) plus a real bite out of the tank, which is why nothing else in
+  // the game hands it out. The shape is a boxer's two-handed ram: BOTH fists are drawn in tight to the chest while
+  // the machine sinks onto its legs (the hunch is the tell, and it is deliberately the longest in the book), the
+  // load holds for a beat so it can be read and slipped, and then both fists leave together on ONE line while the
+  // whole body uncoils off the back foot — and it stays there, holding the extension while the opponent travels.
+  // Everything the Overdrive family gets, it gets: it shatters a wind-up, it cannot be blocked (only slipped or
+  // stepped off), and it launches.
+  finisher: {
+    id: 'finisher', arm: 2, dur: 1.5, strikeAt: 0.5, impact: 0.62, cancel: 99, dmg: 44, reach: 4.5, cost: 30, stun: 1.5, knock: 15, blockMul: 0.1, power: 1, hitY: 4.4, step: 3.4, kind: 'front',
+    keys: [
+      k(0, GUARD),
+      // THE HUNCH: both fists pulled in tight to the chest, elbows pinned to the ribs, the whole stack sinking down
+      // and hanging forward over the toes — load it where the opponent can SEE it load.
+      k(0.3, P(-0.52, 0.62, -0.34, -2.72), 0, -0.44, -0.5, 0.74, 'out'),
+      // ...plateau: the beat of stillness that makes the ram readable before it fires. This is the whole tell.
+      k(0.5, P(-0.46, 0.7, -0.4, -2.78), 0, -0.52, -0.62, 0.86, 'io'),
+      // THE RAM: both fists leave on the same line — arms near straight, the body uncoiling off the back foot into it
+      k(0.62, P(-1.62, -0.3, 0.1, -0.06), 0, 0.66, 1.62, 0.1, 'in'),
+      // ...and it STAYS: a finisher holds its extension while the opponent travels. No recoil — it is the last word.
+      k(1.0, P(-1.62, -0.3, 0.1, -0.06), 0, 0.66, 1.62, 0.1),
+      k(1.5, GUARD),
+    ],
+  },
   grab: {
     id: 'grab', arm: 2, dur: 1.25, strikeAt: 0.1, impact: 0.3, cancel: 99, dmg: 20, reach: 3.5, cost: 14, stun: 1, knock: 8, blockMul: 0.1, power: 0.85, hitY: 3.6, step: 1.4, kind: 'front',
     keys: [
@@ -643,6 +704,8 @@ const MOVE_EXTRA: Record<MoveId, { width: number; launch: boolean; unblock: bool
   skyhook: { width: 2.4, launch: true, unblock: true },
   grab: { width: 2.4, launch: true, unblock: true },
   counter: { width: 1.7, launch: false, unblock: false },
+  // the finisher is a two-fisted ram: it covers the widest colliding front of any single strike and it launches
+  finisher: { width: 3.0, launch: true, unblock: true },
 };
 
 // ------------------------------------------------------------------ MATCHMAKING FACE-OFF
@@ -916,7 +979,7 @@ const GRAVITY = 34;
 const POISE_MAX = 125; // ~6–7 clean hits in a row before a knockdown (it used to be ~5)
 const POISE_REGEN = 38; // per second
 const POISE_DELAY = 1.0; // seconds of no damage before it starts refilling
-const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20, hook ≈ 22 → ~5 clean hits in a row
+export const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20, hook ≈ 22 → ~5 clean hits in a row
 
 /**
  * ENEMY ATTACK WARNING ("tell"). The moment the enemy commits to a move it freezes in its wind-up pose for this long
@@ -924,11 +987,11 @@ const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20
  * the start of the warning and the moment the strike lands (≈ 0.6–1.0 s in total) and the attack cannot hit you.
  * Unblockable / heavy moves (grab, Overdrive) get the longest warning.
  */
-const TELL: Record<MoveId, number> = { jab: 0.48, cross: 0.55, hook: 0.6, upper: 0.62, grab: 0.68, slam: 0.9, bolt: 0.9, windmill: 0.92, skyhook: 0.92, counter: 0.5 };
+const TELL: Record<MoveId, number> = { jab: 0.48, cross: 0.55, hook: 0.6, upper: 0.62, grab: 0.68, slam: 0.9, bolt: 0.9, windmill: 0.92, skyhook: 0.92, counter: 0.5, finisher: 0.98 };
 const TELL_CHAIN = 0.2; // follow-up hits in a combo or counter flow fast while staying readable to the human eye
-const UNBLOCKABLE: MoveId[] = ['grab', 'slam', 'bolt', 'windmill', 'skyhook']; // shown with a RED indicator, like God of War's unblockable attacks
+const UNBLOCKABLE: MoveId[] = ['grab', 'slam', 'bolt', 'windmill', 'skyhook', 'finisher']; // shown with a RED indicator, like God of War's unblockable attacks
 
-const TRACK: Record<MoveId, number> = { jab: 0.35, cross: 0.42, hook: 0.9, upper: 0.55, slam: 0.5, bolt: 0.25, windmill: 0.42, skyhook: 0.4, grab: 0.52, counter: 0.45 };
+const TRACK: Record<MoveId, number> = { jab: 0.35, cross: 0.42, hook: 0.9, upper: 0.55, slam: 0.5, bolt: 0.25, windmill: 0.42, skyhook: 0.4, grab: 0.52, counter: 0.45, finisher: 0.3 };
 
 /**
  * HOW THE AI MEETS A MOVE. Blocking is the right answer to most punches, but anything that comes down a STRAIGHT
@@ -942,10 +1005,212 @@ export const defenceAgainst = (id: MoveId, dodge: number): 'block' | 'side' | 'b
   if (id === 'bolt') return Math.random() < 0.65 ? 'side' : 'back'; // a straight: sidestepping it is the answer
   if (id === 'windmill') return Math.random() < 0.65 ? 'side' : 'back';
   if (id === 'skyhook') return Math.random() < 0.6 ? 'back' : 'side'; // the launcher comes UP: give ground or clear the line
+  if (id === 'finisher') return Math.random() < 0.55 ? 'side' : 'back'; // the two-fisted ram: nothing blocks it, clear the line
   if (id === 'counter') return Math.random() < 0.7 ? 'side' : 'back'; // the counter straight is the same punch
   if (id === 'hook') return Math.random() < dodge ? 'back' : 'block'; // wide sweep: a sidestep cannot clear it
   if (id === 'upper') return Math.random() < dodge * 0.8 ? 'back' : 'block';
   return Math.random() < dodge ? 'side' : 'block'; // straights are sidestepped
+};
+
+/**
+ * ============================== ALI STYLE — float like a butterfly ==============================
+ * Press Y and the player fights like Muhammad Ali. Three things make the style, and all three live here so a test can
+ * hold them still:
+ *
+ *   THE LOW LOOSE GUARD  hands carried down around the chest instead of up at the jaw, chin tucked behind the LEAD
+ *                        SHOULDER rather than behind the gloves, elbows a little wider. It is the stance he actually
+ *                        fought out of — and it is deliberately worse at covering up than the game's guard, which is
+ *                        exactly why it is a style and not a free upgrade.
+ *   THE FLOAT           the upper body never settles: a slow weave across the centre line with a lazy pelvis roll and
+ *                        the head moving with it (a moving target — which is the entire point of it).
+ *   THE ALI SHUFFLE     the signature. Standing on the spot the feet DANCE — rapid, light, alternating half-steps
+ *                        around the stance with the weight rocking side to side (rigged in robot.ts: `shuffle`).
+ *
+ * It is a STANCE, so it moves exactly ONE gameplay number — the footwork pace (+8%) — because pace IS the style. The
+ * dodge economy, the damage tables, the tells and the punch speeds are all untouched (asserted in `alitest.mjs`).
+ */
+export const ALI_GUARD: Pose = P(-0.16, -0.2, 0.34, -1.34);
+export const ALI_GUARD_DRIFT = 0.12; // how far the shoulders ride up and down over the low guard on the float
+export const ALI_SPEED = 1.08; // the feet are a touch quicker: "float like a butterfly" is a footwork claim
+export const ALI_FLOAT_RATE = 5.2; // how fast the upper body drifts (rad/s of the weave: ≈0.83 Hz, one weave every 1.2 s)
+export const ALI_WEAVE = 0.17; // rad — shoulder weave across the centre line (big enough to SEE from the fight camera)
+export const ALI_TILT = 0.12; // rad — the pelvis roll that goes with it
+export const ALI_HEAD = 0.22; // rad — the head moves with the weave (a moving target, never a static face)
+export const ALI_FLOAT = 0.09; // the sink-and-rise of the float (hip dip, metres)
+export const ALI_CARRY = 0.55; // how much of the stance he carries into the walk (a moving fighter still floats)
+/** the idle pose of the style: hands low and loose, the shoulders riding up and down over the low guard */
+export const aliIdlePose = (t: number): Pose => P(ALI_GUARD.sx + (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE)) * ALI_GUARD_DRIFT, ALI_GUARD.sy, ALI_GUARD.sz, ALI_GUARD.ex);
+/** ...and the three body terms that ride with it: the weave, the pelvis roll and where the head goes */
+export const aliWeave = (t: number) => Math.sin(t * ALI_FLOAT_RATE) * ALI_WEAVE;
+export const aliRoll = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 1.1) * ALI_TILT;
+export const aliHead = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 0.5) * ALI_HEAD;
+export const aliFloat = (t: number) => (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE * 2 + 0.9)) * ALI_FLOAT;
+/** how much of the style is showing, by what the fighter is doing: it needs the feet (standing, not swinging) */
+/** how much of the style is showing, by what the fighter is doing: full while standing, CARRIED into the walk, and
+ *  gone the moment he is blocking or swinging (the ordinary fight stance owns those frames) */
+export const aliStanceWeight = (state: string, blocking: boolean, moving: boolean) => (state === 'idle' && !blocking ? (moving ? ALI_CARRY : 1) : 0);
+
+/**
+ * ============================== PANJER — hold a punch button to load it ==============================
+ * "PANJER" = TAHAN tombol pukulan. The four strike keys (H jab · J/C hook · K/V upper · X straight) no longer fire
+ * on the press: they LOAD while they are held, and the punch comes out the moment the button is let go.
+ *   • released before PANJER_T  → the ordinary punch, exactly the punch the game has always thrown;
+ *   • held for PANJER_T or more → the SAME punch, landed PANJER_DMG× as hard and driving him PANJER_KNOCK× as far
+ *     (both the standing pushback AND the launch of a knockdown).
+ * The price is the second spent standing there with the arm coiled back and the fist burning — the load is
+ * telegraphed all the way (the move's own coil pose, sparks on the fist, a rising tick, the HUD gauge), so the
+ * trade cuts both ways: your opponent can see it coming and the answer to it is simply not to be there.
+ * The AI loads one up under the same rule — the same 1 s, the same 2× (see panjerAiRate).
+ * The keys that have to stay instant keep their old semantics on purpose: L (COUNTER) answers a punch that is
+ * already in the air, P (grab) is a throw, and N / R are the scripted combo and the Overdrive — not loadable.
+ */
+export const PANJER_FREE = 0.4; // a FLICK shorter than this is always an ordinary punch (0.1-0.3 s = just a tap)
+export const PANJER_T = 1.0; // seconds of HOLD that make the load full
+export const PANJER_DMG = 2.0; // ×damage at a full load
+export const PANJER_KNOCK = 2.0; // ×knockback at a full load (the pushback AND the launch)
+/**
+ * PANJER OTOMATIS — the SHIFT button. Pressing it turns the whole load mechanic into a STATE: while it is on, the
+ * four punch keys fire ON THE PRESS again (full speed, nothing to hold) and every one of them comes out at the
+ * ceiling — PANJER_DMG× damage and PANJER_KNOCK× hajar. That is the "pukulan otomatis yang mentok maks" the user
+ * asked for: no more holding H/J/K/X to get the big punch.
+ * ...and it is also the SPAM switch ("saya mau saya bisa spam pukulan"): while it is on you may simply KEEP THE
+ * BUTTON DOWN and he keeps punching. The rhythm is still the swing's own cancel window (the animation stays honest),
+ * but the two things that used to stop a punch stream are lifted for the player in this mode:
+ *   • the WHIFF LOCKOUT — missing no longer locks the next punch out for WHIFF_TAIL (the slow tail still plays);
+ *   • having to press again — the held button re-fires itself (updateAutoFire).
+ * The tell does not disappear with the wind-up — it moves from the punch to the FIGHTER: while the mode is on his
+ * fists burn (glow + sparks) and the HUD says so, so the other corner can still read what he is holding.
+ * SHIFT used to be the sprint key; the sprint now lives on F (and on the double-tap W run latch), because one key
+ * cannot mean "run" and "load every punch to the ceiling" at the same time.
+ */
+export const PANJER_MODE_KEYS: readonly string[] = ['ShiftLeft', 'ShiftRight'];
+export const LS_PANJER_MODE = 'steel-titans-panjer-mode-v1';
+export const loadPanjerMode = (): boolean => {
+  try {
+    return localStorage.getItem(LS_PANJER_MODE) === 'true'; // default OFF: the hold mechanic is the default game
+  } catch {
+    return false;
+  }
+};
+export const savePanjerMode = (on: boolean) => {
+  try {
+    localStorage.setItem(LS_PANJER_MODE, String(on));
+  } catch {
+    /* ignore */
+  }
+};
+export const PANJER_KEYS: Record<string, MoveId> = {
+  KeyH: 'jab',
+  KeyJ: 'hook',
+  KeyC: 'hook',
+  KeyK: 'upper',
+  KeyV: 'upper',
+  KeyX: 'cross',
+};
+/** the one rule, in one place: a hold counts as loaded once it has been held for PANJER_T */
+/** PANJER OTOMATIS SPAM: the order the held buttons are read in — the last one you PRESSED wins, this is only the
+ *  tie-break when you are holding two of them at once */
+export const PANJER_AUTO_ORDER: readonly string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX'];
+/** ...and how often the empty-tank shout may repeat while a button is held down (it used to fire every attempt) */
+export const TANK_POP_CD = 0.7;
+/** the four punches a load can ride on — and the ONLY moves it can ride on */
+export const PANJER_LOADABLE: MoveId[] = ['jab', 'hook', 'upper', 'cross'];
+/**
+ * HOW HARD THE PUNCH IS, as one pure function of how long the button was held. Two zones:
+ *   • up to PANJER_FREE (0.4 s) — a flick, a blink, a normal tap: ×1. Exactly the punch the game has always thrown.
+ *   • PANJER_FREE → PANJER_T      — the load RAMPS: 0.4 s is ×1, every extra moment is worth more, 1.0 s is ×2.
+ *   • PANJER_T and beyond         — capped at PANJER_DMG: two full seconds are not four times the punch.
+ * The ramp is straight (predictable, and the HUD prints the number live), it is sampled on the wall clock, and it
+ * is the SAME curve the pose, the glow, the sparks and the HUD gauge read — so what you see is what you throw.
+ */
+export const panjerPower = (held: number) => {
+  if (held <= PANJER_FREE) return 1;
+  if (held >= PANJER_T) return PANJER_DMG;
+  return 1 + (PANJER_DMG - 1) * ((held - PANJER_FREE) / (PANJER_T - PANJER_FREE));
+};
+/** the same curve, normalised 0..1: how much of the load is showing on the body (0 = still a flick) */
+export const panjerCharge = (held: number) => (panjerPower(held) - 1) / (PANJER_DMG - 1);
+export const panjerLoaded = (held: number) => panjerPower(held) >= PANJER_DMG;
+/**
+ * ...and the whole decision a RELEASE turns into, as one pure function. A flick gives back exactly the punch the
+ * game has always thrown (×1 damage, ×1 knockback); a full second gives back the PANJER (×2/×2); everything in
+ * between is on the ramp. `panjertest.mjs` asserts the ramp, the flick window and the cap.
+ */
+export const panjerShot = (held: number) => {
+  const mul = panjerPower(held);
+  return { armed: mul > 1, dmgMul: mul, knockMul: mul * (PANJER_KNOCK / PANJER_DMG) };
+};
+/** the multiplier as it is written on screen: 1,4 — not 1.4 (this is an Indonesian HUD) */
+export const panjerLabel = (mul: number) => `×${mul.toFixed(1).replace('.', ',')}`;
+/** the AI's appetite for a loaded punch, per second of opportunity. It grows with the difficulty and with how hurt
+ *  the player looks, and it is CAPPED: a loaded fist has to stay an event you can read, never a rhythm. */
+export const PANJER_AI_RATE = 0.3;
+export const panjerAiRate = (react: number, foeSoft: boolean) => Math.min(0.85, PANJER_AI_RATE + react * 0.35 + (foeSoft ? 0.2 : 0));
+export const PANJER_AI_STAM = 40; // he will not gamble the tank on a load
+export const PANJER_AI_CD_MIN = 7; // ...and after one, this is how long before he even thinks about the next
+export const PANJER_AI_CD_MAX = 13;
+
+/**
+ * ============================== SWING DYNAMICS — the boxer's kinetic chain ==============================
+ * What makes a Boxing Star punch land is that the whole machine throws itself, not just the arm. The data in
+ * `MOVES[*].keys` is the arm's own journey (coil → extension → overshoot → settle); this is the layer that rides on
+ * top of it, and it is what turns a correct punch into a punch that READS. Four terms, all pure functions of the
+ * swing's own clock, all four identical for the player and the AI (see `swingtest.mjs`):
+ *
+ *   swingPhase    — WHERE the swing is: 0 before the wind-up, 1 on the exact frame the fist lands, back to 0 as the
+ *                   arm settles into the guard. Everything below is driven by this one clock, so they peak together.
+ *   swingStiff    — the arm springs TIGHTEN through the release and go SOFT through the recoil. That asymmetry is the
+ *                   whole trick: a piston going out (the fist is at full extension ON the impact frame, instead of
+ *                   arriving a couple of frames late and hitting soft) and sprung steel coming back.
+ *   offArmCounter — the off hand answers the punch: back and in to the chin on a straight, across the chest on an
+ *                   arc, down to the ribs on an uppercut. A boxing punch is never one arm, and a static off hand is
+ *                   exactly what makes a hand-animated punch look stiff.
+ *   swingRoll     — the body rolls INTO the punch as it commits (hardest on the arcing punches), so the silhouette
+ *                   leans across its own centre line instead of standing up straight behind the fist.
+ *   trailWidthFor — how wide the fist's ribbon is drawn (see the fist-trail block): scaled by the punch's own power,
+ *                   widened for the arcing punches, and capped so no punch can smear across the whole screen.
+ */
+export type SwingKind = 'front' | 'side' | 'up';
+
+/** how far into the swing we are: 0 before the wind opens, 1 at the moment of contact, back to 0 at rest */
+export const swingPhase = (moveT: number, strikeAt: number, impact: number, dur: number) => {
+  // the envelope opens a beat BEFORE the punch leaves the coil (that is the last of the load) and takes as long to
+  // close as the swing has left to recover in, so the terms above relax exactly as the arm comes home
+  const lead = Math.max(0.04, (impact - strikeAt) * 0.5);
+  if (moveT <= strikeAt - lead) return 0;
+  if (moveT < impact) return (moveT - (strikeAt - lead)) / Math.max(0.001, impact - (strikeAt - lead));
+  return Math.max(0, 1 - (moveT - impact) / Math.max(0.08, dur - impact));
+};
+
+export const SWING_LIFT = 0.45; // +45% arm spring through the release: the fist arrives ON the impact frame
+export const SWING_SETTLE = 0.3; // −30% through the recoil: it comes back like sprung steel, not like a piston
+/**
+ * The arm-spring target during a strike. `passed` = the swing is already past its impact frame (the recoil half).
+ * Relaxing the spring afterwards is what lets the arm visibly settle — a rigid return has no follow-through to read.
+ */
+export const swingStiff = (base: number, phase: number, passed: boolean) => base * (passed ? 1 - SWING_SETTLE * phase : 1 + SWING_LIFT * phase);
+
+/** the off hand's counter-balance, at full commitment (Pose deltas are written in the rig's own mirrored space) */
+export const offArmCounter = (kind: SwingKind, phase: number): Pose => {
+  const a = Math.max(0, Math.min(1, phase));
+  if (kind === 'side') return P(-0.1 * a, -0.3 * a, 0.06 * a, 0.1 * a); // arc: the off fist crosses to the far ear
+  if (kind === 'up') return P(0.26 * a, -0.14 * a, -0.05 * a, -0.16 * a); // uppercut: it drops to the ribs and cinches
+  return P(-0.14 * a, -0.22 * a, -0.08 * a, -0.2 * a); // straight: back to the chin, elbow cinched tight
+};
+
+export const SWING_ROLL = 0.12; // how far the body rolls into a straight...
+export const SWING_ROLL_ARC = 1.6; // ...and how much harder it rolls on an arc (the hook is the rolling punch)
+export const SWING_ROLL_UP = 0.7; // an uppercut rolls, but it is a vertical punch — most of its travel is the rise
+export const swingRoll = (kind: SwingKind, phase: number, sgn: number) =>
+  sgn * SWING_ROLL * (kind === 'side' ? SWING_ROLL_ARC : kind === 'up' ? SWING_ROLL_UP : 1) * Math.max(0, Math.min(1, phase));
+
+/** the fist's ribbon width: by the punch's own power, wider on the arcs, capped so it can never smear the screen */
+export const TRAIL_CAP = 0.8;
+export const trailWidthFor = (id: MoveId, scale: number, rage = false) => {
+  const m = MOVES[id];
+  const arc = m.kind === 'side' ? 1.35 : 1;
+  const heavy = isOD(id) ? 1.45 : rage ? 1.25 : 1;
+  return Math.min(TRAIL_CAP, 0.3 * scale * (0.85 + 0.75 * m.power) * arc * heavy);
 };
 
 /**
@@ -997,14 +1262,209 @@ const AIM_DRAIN = [0.0, 1.2]; // stamina torn off on a clean hit (body only, wea
 const AIM_KNOCK = [1.06, 0.78]; // body shots push less: they sit you down by draining you, not by shoving you
 
 /**
+ * THE HEAVY CHASSIS — knockback. Zeus holds his ground like a two-ton anvil: the shove that sends a standard Titan
+ * skidding across the canvas barely rocks him. The champion's own ATLAS — the machine the player drives, and the
+ * ATLAS PRIME he meets in the LAWAN ATLAS duel — is a heavyweight in the same class, just not a wall.
+ * Every knockback that acts on a DEFENDER runs through these numbers: the boot-skid under a raised guard, the push
+ * of a landed hit, the juggle pop in mid-air, and the throw of a launch.
+ */
+export type Chassis = 'standard' | 'atlas' | 'zeus';
+export const ZEUS_KNOCK_RESIST = 0.4; // a landed hit or a blocked guard drives Zeus back 4/10 as far
+export const ZEUS_LAUNCH_RESIST = 0.45; // when he IS swept off his feet he is thrown 45% of the usual distance...
+export const ZEUS_LAUNCH_LIFT = 0.62; // ...and lifts off at 62% of the height — he comes straight back down on his boots
+export const ZEUS_POISE_COST = 0.55; // his stability bank eats 55% of the punishment (≈ twice as many clean hits)
+export const ZEUS_POISE_COST_HJ = 0.12; // and a jab / hook barely dents it at all
+export const ATLAS_KNOCK_RESIST = 0.62; // ATLAS: 62% of the shove gets through — heavy, but still movable
+export const ATLAS_LAUNCH_RESIST = 0.7; // thrown 70% of the distance...
+export const ATLAS_LAUNCH_LIFT = 0.85; // ...and lifts 85% of the height
+export const ATLAS_POISE_COST = 0.8; // his stability bank is 20% tougher than a standard Titan's
+export const ATLAS_POISE_COST_HJ = 0.6; // a jab / hook dents it, but only just
+/** the only strikes that still sweep a BRACED heavyweight off his feet: the Overdrive specials, the throw and the
+ *  skyhook (everything else just rocks him — see the brace rule in resolveHit) */
+const HEAVY_LAUNCHERS: MoveId[] = ['slam', 'bolt', 'windmill', 'skyhook', 'grab'];
+
+/** which chassis a robot is wearing (see RobotStyle.atlasChassis / isZeus100) */
+export const chassisOf = (isZeus: boolean, hasAtlasChassis = false): Chassis => (isZeus ? 'zeus' : hasAtlasChassis ? 'atlas' : 'standard');
+/** how far a landed hit / a blocked guard shoves that chassis */
+export const chassisKnock = (c: Chassis) => (c === 'zeus' ? ZEUS_KNOCK_RESIST : c === 'atlas' ? ATLAS_KNOCK_RESIST : 1);
+/** how far a launch throws it */
+export const chassisLaunch = (c: Chassis) => (c === 'zeus' ? ZEUS_LAUNCH_RESIST : c === 'atlas' ? ATLAS_LAUNCH_RESIST : 1);
+/** how high a launch / juggle lifts it */
+export const chassisLift = (c: Chassis) => (c === 'zeus' ? ZEUS_LAUNCH_LIFT : c === 'atlas' ? ATLAS_LAUNCH_LIFT : 1);
+/** what share of a clean hit's poise cost that chassis eats (a jab / hook is charged the softer rate) */
+export const chassisPoise = (c: Chassis, isHJ: boolean) =>
+  c === 'zeus' ? (isHJ ? ZEUS_POISE_COST_HJ : ZEUS_POISE_COST) : c === 'atlas' ? (isHJ ? ATLAS_POISE_COST_HJ : ATLAS_POISE_COST) : 1;
+
+/**
+ * DOES IT BRACE? True = the strike rocks him but cannot take him off his feet (he eats it standing, "KEBAL TITAN!").
+ * Zeus is the wall: a jab or a hook never moves him, and an ordinary punch only gets through once he is SOFTENED —
+ * his stability bar nearly empty, already rocked by the previous shot, or nearly out of HP. The ATLAS chassis is one
+ * notch lighter: any punch can sit it down once it is softened, but never while it is still fresh. A standard Titan
+ * braces at nothing. The designated launchers always go through, and then throw a heavyweight short and low.
+ * Pure and exported so `zeustest.mjs` / `balancetest.mjs` assert the rule instead of trusting the reader.
+ */
+export const chassisBraces = (c: Chassis, id: MoveId, isHJ: boolean, softened: boolean) => {
+  if (HEAVY_LAUNCHERS.includes(id)) return false; // the Overdrive specials, the throw and the skyhook always land
+  // both heavy chassis share the rule's SHAPE — a jab / hook never sits them down, and an ordinary punch only does
+  // once they are softened. What differs is everything around it: ATLAS softens 25% faster (its poise bank is 80%,
+  // not 55%), is shoved 62% of the way instead of 40%, and flies at 70%/85% when it finally leaves the canvas.
+  if (c === 'zeus' || c === 'atlas') return isHJ || !softened;
+  return false;
+};
+/** the Zeus-only spelling of the rule above (kept for readability at the Zeus call sites and in the tests) */
+export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => chassisBraces('zeus', id, isHJ, softened);
+
+/**
+ * ======================================= THE N COMBO — the finisher button =======================================
+ * ONE button (N) throws the whole sequence: JAB-JAB-HOOK-HOOK-UPPERCUT and then the PUKULAN MEMATIKAN (MOVES.finisher).
+ * It is a script the fight plays for you, not a new move: every link is the same punch the same key throws by hand, so
+ * the damage, the tells, the stamina and the over-commitment rules are all the ordinary ones.
+ *
+ * THE RULES THAT KEEP IT A PUNCH AND NOT A CHEAT:
+ *   • IT BREAKS. Blocked, slipped, stepped off or whiffed — the very next frame the script stops on the spot and the
+ *     control is yours again (plus a short cooldown, so N cannot be mashed). A clean five is the whole requirement.
+ *   • THE FINISHER IS PAID FOR. It costs half an Overdrive meter (FINISHER_METER) and a real bite of the tank, and a
+ *     landed jab chain is what charges that meter — so a CLEAN combo pays for its own ending, and the one you did not
+ *     land does not happen. If the meter is not there, the combo simply stops after the uppercut.
+ *   • IT CAN BE READ. The finisher's tell is the longest in the book (TELL.finisher), so an alert opponent can still
+ *     slip the last punch — and then the meter is gone.
+ */
+export const FINISHER_METER = 50; // the finisher is priced at half an Overdrive meter, so R is never wasted on it
+export const COMBO_MIN_STAM = 15; // ...and it needs this much left in the tank to even come out
+export const COMBO_SCRIPT: MoveId[] = ['jab', 'jab', 'hook', 'hook', 'upper', 'finisher'];
+export const COMBO_STEP_WIN = 1.1; // s — how long each link has to get itself thrown before the script gives up
+export const COMBO_BREAK_CD = 1.4; // s — after a broken/finished combo, N is dead for this long (no mashing)
+/**
+ * CAN THIS STRIKE BE CAUGHT ON A GUARD? Everything can, except the two moves that are answered by NOT BEING THERE:
+ * the throw (blocking a throw is not a thing) and the PUKULAN MEMATIKAN, whose entire counterplay is its long tell —
+ * you slip it or you step off the line, and if you are still standing in front of it when it arrives, it lands.
+ * Pure and exported so `combotest.mjs` can hold that line instead of trusting the reader (and so a future move can
+ * never quietly become unblockable by accident).
+ */
+export const blockable = (id: MoveId) => id !== 'grab' && id !== 'finisher';
+
+/** the keys that hand the fight back to the player mid-combo (footwork is deliberately NOT in here — see onEdge) */
+const N_COMBO_TAKEOVER: string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX', 'KeyP', 'KeyL', 'KeyR', 'KeyE', 'KeyU', 'KeyG'];
+/** can the finisher be paid for out of this fighter's meter and tank? (the runtime asks exactly this — see tryFinisher) */
+export const comboCanFinish = (meter: number, stam: number) => meter >= FINISHER_METER && stam >= COMBO_MIN_STAM;
+
+/**
+ * ============================== STAR MODE — "Boxing Star" comfort, same buttons ==============================
+ * The idea: in a Boxing Star-style fight you almost never wrestle the stick. The game walks you into range, keeps
+ * the guard up, picks the slip direction for you and lets a tap chain into the next punch — your hands only ever
+ * decide WHEN to hit and WHEN to slip. STAR MODE is exactly that layer on top of the fight that is already here:
+ * NO new keys, no new moves. Every assist below rides the buttons that exist.
+ *
+ *   AUTO-RANGE      — with no direction key held you drift to the pocket (3.25 m) and stop: the punch you press
+ *                     always comes out at the right distance, so you can play the whole round with H/J/K/X/SPACE.
+ *   AUTO-GUARD      — standing still IS guarding (the guard comes up by itself) with a light recovery rate, so the
+ *                     comfort player is never punished for not holding G. Holding G is still the strong block.
+ *   RANGE ASSIST    — a committed punch reaches 18% further, which reads as the fighter stepping in with the punch.
+ *   SMART SLIP      — SPACE with no direction key picks the slip the boxer would pick (off the punching arm, away
+ *                     from the ropes) and a PERFECT slip gets a short, cinematic slow-mo beat.
+ *   PUNCH BUFFER    — a tap during a swing is remembered almost twice as long and fires the instant it is legal,
+ *                     so chaining combos never feels dropped.
+ *   FINISHER ASSIST — the Overdrive (R) fires ITSELF the moment the meter is full and the opponent is open
+ *                     (staggered, or committing to an attack = a reversal). R still works by hand at any time.
+ *
+ * Everything here is PLAYER-ONLY and lives behind one flag: `Game.setStarMode(true)`. The AI keeps its own brain,
+ * and the ordinary fight (PLAY MATCH, RANK, TOURNAMENT…) is bit-for-bit what it was.
+ */
+export const STAR_POCKET = 3.25; // the distance auto-range holds — the pro-boxing pocket the game already uses
+export const STAR_DEAD = 0.42; // ...and the dead zone around it where auto-range stops nudging (no jitter)
+export const STAR_DRIFT = 0.72; // fraction of walking speed the auto-step uses (a shuffle, not a march)
+export const STAR_RANGE_ASSIST = 1.18; // a committed punch reaches this much further (step-in assist)
+export const STAR_QUEUE_WIN = 0.5; // input buffer while a swing is playing (the standard game remembers 0.34 s)
+export const STAR_GUARD_REGEN = 22; // stamina/s while auto-guarding (holding G stays the slow, strong guard: 9/s)
+export const STAR_SLIP_SLOW_T = 0.18; // the cinematic beat on a PERFECT slip...
+export const STAR_SLIP_SLOW_SCALE = 0.55; // ...and how far the world slows inside it
+export const STAR_OD_STAM = 20; // the finisher assist waits until the player has this much left (never empty it)
+
+/** AUTO-RANGE: where should the auto-step push, given the gap? -1 = step in, +1 = step out, 0 = hold the pocket. */
+export const starAutoStep = (dist: number) => (dist > STAR_POCKET + STAR_DEAD ? -1 : dist < STAR_POCKET - STAR_DEAD ? 1 : 0);
+/** AUTO-GUARD: the guard is up whenever the fighter is standing there doing nothing else. */
+export const starShouldGuard = (state: string, dodgeT: number, tauntT: number, loading = false) =>
+  state === 'idle' && dodgeT <= 0 && tauntT <= 0 && !loading; // a fist being LOADED is not a resting fighter (PANJER)
+/** FINISHER ASSIST: fire the Overdrive by itself? Only with a full meter, an open opponent and something left in the tank. */
+export const starShouldFireOd = (meter: number, enemyOpen: boolean, stam: number) => meter >= 100 && enemyOpen && stam > STAR_OD_STAM;
+
+/**
  * DODGE ADVANTAGE — the "whoever dodges first gets the hit" rule. A dodge (SPACE) can be cancelled straight into a
  * punch, and for a short window after a dodge your next strike comes out faster and lands harder. The fighter who
  * reads the exchange first owns the opening, while a dodge that leads nowhere just costs stamina.
  */
 const DODGE_WIN = 0.5; // how long after a dodge the advantage stays alive
-const DODGE_WIN_SPD = 1.18; // the next strike plays faster out of a dodge while staying readable
-const DODGE_WIN_DMG = 1.22; // ...and lands this much harder
+export const DODGE_WIN_SPD = 1.20; // the next strike plays faster out of a dodge while staying readable
+export const DODGE_WIN_DMG = 1.26; // ...and lands this much harder (the reward for READING the punch, not for hopping)
 const DODGE_CANCEL_AT = 0.6; // you may cancel out of a dodge once this much of it has played (its i-frames are spent)
+
+/**
+ * THE DODGE ECONOMY (balance pass). A dodge is a DECISION, not a habit: it is the one move that both negates the
+ * opponent's committed punch and hands you the tempo, so it has to cost something the attacker can punish you for
+ * wasting. The old numbers were free — 3.6–4.8 stamina out of 100 against 30/s of recovery, i.e. dodge-spam was
+ * sustainable forever, and the game came down to whoever hopped first.
+ *   - the step itself costs ~2.5× what it did (a dodge is a real slice of the tank now)
+ *   - the recovery cooldown roughly doubles, so you cannot chain hops back to back
+ *   - ONLY a read is cheap: a TIMED dodge (an attack already in flight) still refunds stamina and pays the meter
+ *     (see perfectDodge), and it stays available on an empty tank — the "DESPERATE" dodge below — because being
+ *     locked out of slipping a lethal blow is not a fight, it is a cutscene. It just leaves you GASSED.
+ */
+export interface DodgeCfg {
+  dur: number; // the step itself
+  speed: number; // m/s of the step
+  inv: boolean; // i-frames over the step
+  cost: number; // stamina, BEFORE STAM_SCALE
+  cd: number; // recovery before another dodge
+}
+export const DODGE_CFG: Record<'evade' | 'fwd' | 'back' | 'side', DodgeCfg> = {
+  evade: { dur: 0.28, speed: 5.6, inv: true, cost: 13, cd: 0.34 },
+  fwd: { dur: 0.25, speed: 6.0, inv: false, cost: 10, cd: 0.30 },
+  back: { dur: 0.28, speed: 5.2, inv: true, cost: 12, cd: 0.34 },
+  side: { dur: 0.28, speed: 5.5, inv: true, cost: 11, cd: 0.32 },
+};
+/**
+ * Can this dodge be paid for? A DESPERATE dodge — thrown while an attack is already in flight at you — is always
+ * allowed (fairness: you may always try to slip a lethal blow), even on an empty tank. Everything else needs the
+ * stamina. Exported so the balance harness asserts the rule instead of trusting the reader.
+ */
+export const dodgeAffordable = (stam: number, cost: number, desperate: boolean) => stam >= cost || desperate;
+/** what the bank looks like after the step: a desperate dodge can empty it, it never goes into debt */
+export const dodgeStaminaAfter = (stam: number, cost: number) => Math.max(0, stam - cost);
+
+/**
+ * GASSED (the other half of the economy). Below this line a fighter is out of gas: recovery crawls, so a dodge or a
+ * flurry you could not afford is not a free reset — it is a debt you pay for the next several seconds, at 8% slower
+ * hands, while the opponent reads you. Both corners run the same numbers.
+ */
+export const GAS_FLOOR = 25;
+export const GAS_REGEN_MUL = 0.5;
+export const GAS_ATK_MUL = 0.92;
+export const isGassed = (stam: number) => stam < GAS_FLOOR;
+export const gasAtkMul = (stam: number) => (isGassed(stam) ? GAS_ATK_MUL : 1);
+export const gasRegenMul = (stam: number) => (isGassed(stam) ? GAS_REGEN_MUL : 1);
+
+/**
+ * OVER-COMMITMENT (the punch side of the balance). A punch that lands is safe — it opens its cancel window and hands
+ * you the tempo. A punch that MISSES is not: the body has already thrown its weight down the line, so the tail of
+ * the swing plays at a fraction of its speed and no new punch can come out of it until it is over. On top of the
+ * recovery, the fighter cannot dodge-cancel out of the whiff, which is exactly the opening the AI has always been
+ * coded to punish (see the WHIFF DETECTION block) — and now it is a real one on both sides.
+ * The Overdrive is deliberately exempt from the gate: spending a full meter to cover a mistake is a legitimate
+ * escape, and it is priced like one.
+ */
+export const WHIFF_TAIL = 0.42; // seconds of over-commitment after the miss
+export const WHIFF_SLOW = 0.6; // the rest of the swing plays at 60% speed
+/** the tail stretches the leftover animation of a whiffed move; the blow whiffed at `impact`, of `dur` total */
+export const whiffRecovery = (impact: number, dur: number, atkSpd = 1) => Math.max(0, dur - impact) / Math.max(0.2, atkSpd * WHIFF_SLOW);
+/** a new ordinary punch may not start inside the tail (the Overdrive is exempt — see above) */
+export const whiffGates = (whiffT: number) => whiffT > 0;
+/**
+ * Can a fighter still DODGE-CANCEL out of his own swing? Normally yes (you may always bail out of a punch you
+ * regret), but NOT inside a whiff tail — that is the whole punishment. The one exception is the fairness floor
+ * above: if a strike is already in flight at him, he may always try to slip it (it just costs stamina and leaves
+ * him gassed). Exported so `balancetest.mjs` audits the rule.
+ */
+export const canBailOut = (whiffT: number, incomingDeadly: boolean) => !whiffGates(whiffT) || incomingDeadly;
 
 /**
  * CINEMATIC CAMERAS. The fight camera is a broadcast operator; these beats are the director stepping in to make
@@ -1019,7 +1479,7 @@ type CineKind = 'od' | 'hit' | 'rip';
 const CINE_DUR: Record<CineKind, number> = { od: 0.35, hit: 0.28, rip: RIP_DUR };
 
 /** STAMINA: a fight is about reading, not about running dry — strikes cost 40% less and everything recovers faster */
-const STAM_SCALE = 0.6;
+export const STAM_SCALE = 0.6;
 const REGEN_IDLE = 30; // per second, standing
 const REGEN_BLOCK = 9; // per second, behind the guard
 const REGEN_AI = 32; // per second, for the opponent (supports relentless offense + active slip defense)
@@ -1067,6 +1527,9 @@ class Fighter {
   queued: MoveId | null = null;
   queuedT = 0;
   blocking = false;
+  /** STAR MODE: the low guard is being held automatically by the assist (not by the player's key), so it recovers
+   *  at the light STAR rate instead of the slow, strong manual-guard rate. */
+  autoGuard = false;
   stunT = 0;
   stunImmune = 0;
   dodgeT = 0;
@@ -1157,6 +1620,7 @@ class Fighter {
   mixN = 0; // REMIX: punches thrown so far in the current combination (drives the head/body pattern)
   aimT = 0; // how long the "target switched" flash stays up (HUD)
   dodgeWinT = 0; // DODGE ADVANTAGE: time left in which the next strike is faster & heavier (after a dodge)
+  whiffT = 0; // OVER-COMMITMENT: seconds left of the recovery tail after a punch that missed (see WHIFF_TAIL)
   atkSpd = 1; // duration multiplier of the move being played (> 1 = thrown faster, out of a dodge)
   winStrike = false; // the move currently playing is a dodge-advantage strike
   rage = false; // RAGE MODE (G): hyper-aggressive fighting speed, movement, and heavy knockback
@@ -1191,6 +1655,19 @@ class Fighter {
   rollCharge = 0; // DEMPSEY ROLL charge 0..1 (builds while weaving)
   ippoStrike = false; // the current punch is a charged Dempsey punch
   strikeCharge = 0; // how much charge that punch carries
+  // ---- PANJER (hold a strike button to load it — see the PANJER block above the strike data) ----
+  panjerId: MoveId | null = null; // the punch the held button is loading (null = nothing held)
+  panjerKey: string | null = null; // PLAYER: which key is doing the holding — the RELEASE is what throws it
+  panjerHold = 0; // seconds it has been held
+  panjerReady = false; // the load is full: this punch will land 2× and drive him 2× as far
+  panjerNext = 0; // ...and how hard it is (×1 = an ordinary punch), carried into the punch that comes out
+  panjer = 1; // THIS swing's own multiplier from the load (1 = ordinary, 2 = a full PANJER) — read by resolveHit
+  pkVis = 0; // smoothed 0..1 for the loading pose (see animateFighter)
+  pkTick = 0; // the loading tick's own clock (the sound)
+  pkTick2 = 0; // ...and the spark clock on a full load
+  autoFireKey: string | null = null; // PANJER OTOMATIS: which punch button is being HELD (the spam repeat reads it)
+  tankPopT = 0; // throttle on the empty-tank shout, so a held button cannot shout it 60 times a second
+  panjerSince = 0; // performance.now() the button went down on: the load is timed on the clock, not on frames
   slipCd = 0; // short cooldown between two slips
   tellT = 0; // ENEMY wind-up warning left (the attack indicator is on screen while this runs)
   tellTotal = 0;
@@ -1224,6 +1701,19 @@ class Fighter {
     this.resetSprings();
   }
 
+  /**
+   * Drop the load without throwing it: the arm was taken away from the punch — he took a hit, he raised a guard,
+   * the bell went, the window lost focus. A load is a commitment, never a buff you get to keep.
+   */
+  clearPanjer() {
+    this.panjerId = null;
+    this.panjerKey = null;
+    this.panjerHold = 0;
+    this.panjerReady = false;
+    this.panjerNext = 0;
+    this.panjerSince = 0;
+  }
+
   resetSprings() {
     for (let i = 0; i < 2; i++) {
       const g = [GUARD.sx, GUARD.sy, GUARD.sz, GUARD.ex];
@@ -1241,6 +1731,11 @@ class Fighter {
     this.rollCharge = 0;
     this.ippoStrike = false;
     this.strikeCharge = 0;
+    this.clearPanjer();
+    this.panjer = 1;
+    this.pkVis = 0;
+    this.autoFireKey = null;
+    this.tankPopT = 0;
     this.slipCd = 0;
     this.tellT = 0;
     this.tellTotal = 0;
@@ -1330,6 +1825,7 @@ class Fighter {
     this.mixN = 0;
     this.aimT = 0;
     this.dodgeWinT = 0;
+    this.whiffT = 0;
     this.atkSpd = 1;
     this.winStrike = false;
     this.rage = false;
@@ -1543,6 +2039,9 @@ export class Game {
   private ultra = loadDifficulty() === 'ultra';
   private fwMul = loadFootwork();
   private camMode = loadCamMode();
+  /** STAR MODE: the comfort layer (auto-range, auto-guard, smart slip, buffered taps, finisher assist). See STAR_*. */
+  private starMode = false;
+  private camBeforeStar = -1; // the camera preset to hand back when STAR MODE ends
   private iq = loadIq(); // enemy AI IQ multiplier (1, 2, 3, 10)
   private helmetSkin = loadSkinSet();
   private gloveSkin = loadSkinSet();
@@ -1624,6 +2123,16 @@ export class Game {
   private hype = 0;
   private combo = 0;
   private comboT = 0;
+  // THE N COMBO (see COMBO_SCRIPT): -1 = not running, otherwise the index of the NEXT link to throw. `nComboT` is the
+  // whole script's clock, `nComboWait` the window the current link has to get itself thrown, `nComboCd` the
+  // post-combo cooldown that stops N from being mashed.
+  private nComboIdx = -1;
+  private nComboT = 0;
+  private nComboWait = 0;
+  private nComboCd = 0;
+  private nComboSeq = -1; // moveSeq of the link we last threw — how the script knows its own punch from yours
+  /** ALI STYLE (press Y): the player's stance — low loose hands, the float, and the Ali Shuffle on the feet. */
+  private aliStyle = false;
   private stats: MatchStats = freshStats();
   private walk: WalkTrack[] = [];
   private walkPyroT = 0;
@@ -1663,7 +2172,6 @@ export class Game {
   private baseFov = 58; // the gameplay lens, breathing with the distance
   private handPh = 0; // phase of the handheld drift
   private runLatch = false; // double-tap W and keep holding → sprint
-  private shiftHeld = false; // mirrors KeyboardEvent.shiftKey
   private sprintLock = false; // out of breath: no sprinting until some stamina has recovered
   private lastRoar = 0;
   private runFov = 0;
@@ -1715,6 +2223,11 @@ export class Game {
   private menuCamMode: 'hero' | 'arena' | 'full' = 'hero';
   directionalHeadSnap = loadDirectionalHeadSnap();
   noSlowMoNormal = loadNoSlowMoNormal();
+  /** PANJER OTOMATIS (SHIFT): every punch comes out on the press, at the ceiling. Remembered between visits. */
+  panjerMode = loadPanjerMode();
+  /** true while a full-screen React overlay (the robot editor, the real-steel sim) owns the screen: the game must
+   *  not read keys at all then — the editor uses SHIFT+click for multi-select and it must not toggle a fight mode */
+  private inputOff = false;
 
   constructor(container: HTMLElement, onHud: (h: HudState) => void) {
     this.container = container;
@@ -1974,11 +2487,16 @@ export class Game {
     return hpThick(base);
   }
 
-  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE), with Zeus +60% thicker HP and 2x IQ */
+  /** the opponent's tuning for the current difficulty AND IQ — and the 1.8× chassis (see HP_SCALE). The two HEAVY
+   *  chassis (Zeus and, for the LAWAN ATLAS duel, the champion's own ATLAS PRIME) are plated 60% thicker; Zeus in
+   *  addition is twice as smart (his 2× effective IQ). */
   private makeDef(idx: number) {
     const raw = this.ultra ? ultraDef(OPPONENTS[idx]) : OPPONENTS[idx];
     const isZeusOpp = raw.name.includes('ZEUS') || !!raw.style.isZeus100;
-    const tunedHp = isZeusOpp ? Math.round(raw.hp * 1.6) : raw.hp;
+    // ATLAS PRIME wears the champion's plating — the same 1.6× thickness as Zeus, so the LAWAN ATLAS duel is a real
+    // main event instead of a mirror match that ends in three exchanges (the brain stays his own; no IQ doubling).
+    const isHeavyChassis = isZeusOpp || raw.name.includes('ATLAS');
+    const tunedHp = isHeavyChassis ? Math.round(raw.hp * 1.6) : raw.hp;
     // Khusus Zeus: 2x lebih cerdas (IQ efektif digandakan 2×)
     const effectiveIq = isZeusOpp ? this.iq * 2 : this.iq;
     const d = smartDef({ ...raw, hp: tunedHp }, effectiveIq);
@@ -2135,6 +2653,40 @@ export class Game {
     }
     if (this.vsFoe2 && (this.vsFoe2.robot.ctx.style.isZeus100 || this.vs?.idx2 === 0 || this.vs?.idx2 === 3)) {
       mount100PercentZeus(this.vsFoe2.robot, this.vs?.idx2 === 3 ? '#c070ff' : '#22ff44');
+    }
+    this.emitHud(true);
+  }
+
+  get isStarMode() {
+    return this.starMode;
+  }
+
+  /**
+   * STAR MODE on/off. Turning it on moves the camera to the STAR shot (the Boxing Star look) and switches the
+   * player's assists on; turning it off hands the camera back to whatever preset was active before, so a normal
+   * fight is exactly the fight it was. Changing the camera lens by hand while STAR MODE runs is respected — the
+   * mode only sets the shot when it starts.
+   */
+  setStarMode(on: boolean) {
+    if (on === this.starMode) return;
+    this.starMode = on;
+    const starIdx = CAM_MODES.findIndex((m) => m.id === 'star');
+    if (on) {
+      if (starIdx >= 0 && this.camMode !== starIdx) {
+        this.camBeforeStar = this.camMode;
+        this.setCamMode(starIdx);
+      }
+      if (this.player) {
+        this.player.autoGuard = false;
+        this.popup(new THREE.Vector3(this.player.pos.x, 7.4, this.player.pos.y), '⭐ STAR MODE — AUTO-RANGE ON', 'pop-crit');
+      }
+      this.sfx.ready();
+    } else {
+      if (this.camBeforeStar >= 0) {
+        this.setCamMode(this.camBeforeStar);
+        this.camBeforeStar = -1;
+      }
+      if (this.player) this.player.autoGuard = false;
     }
     this.emitHud(true);
   }
@@ -3029,7 +3581,14 @@ export class Game {
     this.emitHud(true);
   }
 
+  /** the game steps out of the keyboard while another screen is in front of it (see openZeus / the real-steel sim) */
+  setInputOff(off: boolean) {
+    this.inputOff = off;
+    if (off) this.keys.clear();
+  }
+
   press(code: string) {
+    if (this.inputOff) return;
     if (this.keys.has(code)) return;
     this.keys.add(code);
     // Space dodges on the press (instant). KeyG is held to guard/block (reduces incoming attack damage by 90%).
@@ -3039,23 +3598,27 @@ export class Game {
   release(code: string) {
     if (code === 'KeyW' || code === 'ArrowUp') this.runLatch = false;
     this.keys.delete(code);
+    if (this.inputOff) return;
+    // PANJER: the loaded punch is thrown the moment the button is let go — release before PANJER_T and it is the
+    // ordinary punch, hold it for the full second and it lands 2× as hard and drives him 2× as far.
+    if (this.player && this.player.panjerKey === code) this.firePanjer(this.player);
+    if (this.player && this.player.autoFireKey === code) this.player.autoFireKey = null; // the spam repeat stops
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-    this.shiftHeld = e.shiftKey;
     if (e.repeat) return;
     this.sfx.init();
     this.press(e.code);
   };
   private onKeyUp = (e: KeyboardEvent) => {
-    this.shiftHeld = e.shiftKey;
     this.release(e.code);
   };
   private onBlur = () => {
     this.keys.clear();
     this.runLatch = false;
-    this.shiftHeld = false;
+    // a lost focus must never throw a punch: the load is dropped, not released
+    this.player?.clearPanjer();
   };
 
   /** coming back from another tab: the clock never counts the time we were away (one huge frameMs would upset the governor) */
@@ -3077,7 +3640,24 @@ export class Game {
       if (!this.paused) this.cycleCamMode(code === 'Slash' ? 1 : -1);
       return;
     }
+    if (code === 'KeyY') {
+      // ALI STYLE works ANYWHERE: in the lobby (the hero starts dancing), on the ring walk, in the fight, while
+      // paused. It has to be readable wherever it is pressed, so the toggle answers with a banner + a sound + a burst
+      // on the fighter — not just a line of text somewhere off screen.
+      this.toggleAliStyle();
+      return;
+    }
+    if (PANJER_MODE_KEYS.includes(code)) {
+      // PANJER OTOMATIS: one press of SHIFT and every punch is a full one (see the block above the strike keys).
+      // Read anywhere, like Y — this is a way of fighting, not a mid-fight trick.
+      this.togglePanjerMode();
+      return;
+    }
     if (this.phase !== 'fight' || this.paused) return;
+    // THE PLAYER ALWAYS OUTRANKS THE SCRIPT: throwing a punch (or slipping) by hand while the N combo is running hands
+    // the fight back to you on the spot — the script stops where it is, and the punch you just pressed is the punch
+    // that comes out. The direction keys are NOT in this list: holding W/A/S/D mid-combo is footwork, not a takeover.
+    if (this.nComboIdx >= 0 && (code === 'Space' || N_COMBO_TAKEOVER.includes(code))) this.breakNCombo('KOMBO DILEPAS');
     const p = this.player;
     const tapKind: Record<string, ['fwd' | 'back' | 'side', number]> = {
       KeyW: ['fwd', 0],
@@ -3109,22 +3689,27 @@ export class Game {
       case 'KeyU':
         this.toggleRage();
         break;
+      // ---------------- PANJER: HOLD A PUNCH TO LOAD IT ----------------
+      // These keys stopped firing on the press. Pressing one starts a LOAD (the arm coils back into the pose the
+      // punch is about to be thrown out of); the punch itself comes out on RELEASE, in `release()`. Held for a full
+      // second it is a PANJER — 2× damage, 2× knockback. Everything that can take the arm away from the load is
+      // checked every frame in updatePanjer.
       case 'KeyH':
-        this.tryAttack(p, 'jab');
-        break;
       case 'KeyJ':
       case 'KeyC':
-        this.tryAttack(p, 'hook');
-        break;
       case 'KeyK':
       case 'KeyV':
-        this.tryAttack(p, 'upper');
+      case 'KeyX':
+        // PANJER OTOMATIS: nothing to HOLD FOR — the punch comes out on the press, full, and keeping the button
+        // down keeps it coming (see updateAutoFire). Without the mode the key loads instead.
+        if (this.panjerMode) {
+          p.autoFireKey = code; // the last punch button pressed is the one the spam repeat throws
+          this.panjerMax(p, PANJER_KEYS[code]);
+        } else this.beginPanjer(p, PANJER_KEYS[code], code);
         break;
+      // L stays INSTANT — it is the reactive counter, the one punch that has to answer a fist already in flight.
       case 'KeyL':
         this.tryAttack(p, 'counter');
-        break;
-      case 'KeyX': // bonus straight kept from the old kit
-        this.tryAttack(p, 'cross');
         break;
       case 'KeyQ': // TARGET SWITCH: head ↔ body (T does the same)
       case 'KeyT':
@@ -3134,12 +3719,14 @@ export class Game {
         // (KeyE is the Peek-a-Boo stance now, it is read in playerInput)
         this.tryOverdrive(p);
         break;
+      case 'KeyN': // THE COMBO BUTTON: JAB-JAB-HOOK-HOOK-UPPERCUT → PUKULAN MEMATIKAN (see COMBO_SCRIPT)
+        this.startNCombo();
+        break;
       // ---------------- FREESTYLE ----------------
-      // The show-off book (poses.ts) sits on its own keys: M N B Y O Z 1 2 3 4 5 6.
+      // The show-off book (poses.ts) sits on its own keys: M B O Z 1 2 3 4 5 6 (N and Y are GAME buttons now — the
+      // combo and the ALI STYLE stance — so their poses are reached by cycling the book with the GAYA button).
       case 'KeyM':
-      case 'KeyN':
       case 'KeyB':
-      case 'KeyY':
       case 'KeyO':
       case 'KeyZ':
       case 'Digit1':
@@ -3207,6 +3794,10 @@ export class Game {
     this.roundTime = ROUND_TIME;
     this.timeUp = false;
     this.combo = 0;
+    this.nComboIdx = -1;
+    this.nComboT = 0;
+    this.nComboCd = 0;
+    this.nComboSeq = -1;
     this.stats = freshStats();
     this.decap.clear(); // any head torn off last round is bolted back on
     this.ripVictim = null;
@@ -4154,9 +4745,20 @@ export class Game {
           this.endRound(pr >= er ? this.player : this.enemy, 'time');
           break;
         }
+        // ---- STAR MODE assist #6: FINISHER ASSIST. The Overdrive fires itself the moment the meter is full AND the
+        // opponent is open — staggered, or committing to a punch (which turns it into a reversal). R always works by
+        // hand as well; this only exists so the casual player never has to remember the key to get the payoff.
+        if (this.starMode) {
+          const e = this.enemy;
+          const p = this.player;
+          const open = e.state === 'stagger' || (e.state === 'attack' && !!e.move && !e.impacted) || e.state === 'air' || e.state === 'down';
+          if (starShouldFireOd(p.meter, open, p.stam) && p.state === 'idle' && p.dodgeT <= 0) this.tryOverdrive(p);
+        }
         this.comboT -= dt;
         if (this.comboT <= 0) this.combo = 0;
         this.playerInput();
+        this.updatePanjer(dt);
+        this.updateNCombo(dt);
         this.updateEnemyAI(dt);
         if (this.teamMode && this.ally && this.enemy2) {
           if (this.ally.state !== 'ko') this.squadBrain(this.ally, this.foeOf(this.ally), this.squadA, dt);
@@ -4196,6 +4798,178 @@ export class Game {
     return v.multiplyScalar(1 / l);
   }
 
+  /**
+   * PANJER — a strike key went DOWN. Nothing is thrown yet: the load starts here, and the punch itself comes out of
+   * `firePanjer` when the button is released. The newest key wins, so the button you are actually holding is the
+   * one that is loading.
+   */
+  private beginPanjer(f: Fighter, id: MoveId, key: string | null) {
+    if (this.phase !== 'fight' || this.paused) return;
+    if (f.state === 'legend' || f.state === 'legendHit' || f.state === 'ko') return;
+    f.panjerId = id;
+    f.panjerKey = key;
+    f.panjerHold = 0;
+    f.panjerReady = false;
+    f.panjerSince = performance.now(); // the load is timed on the wall clock: a 1.01 s hold is a 1.01 s hold
+    f.pkTick = 0;
+  }
+
+  /**
+   * The button came up (or the AI decided to let it go): throw the punch it was holding.
+   * `armed` is the whole point of the mechanic — a full load rides on the swing as `f.panjer`, and that is what
+   * resolveHit reads to double the damage and the knockback. A short tap throws exactly the punch the game has
+   * always thrown. Either way the load is spent.
+   */
+  private firePanjer(f: Fighter) {
+    const id = f.panjerId;
+    // THE DECISION. Timed on the clock (so the frame the release lands on cannot change the answer), and taken
+    // AFTER clearPanjer so a tap and a full load can never be confused with each other.
+    const held = f.panjerSince > 0 ? Math.max(f.panjerHold, (performance.now() - f.panjerSince) / 1000) : f.panjerHold;
+    const shot = panjerShot(held);
+    f.clearPanjer();
+    if (!id || this.phase !== 'fight' || this.paused) return;
+    f.panjerNext = id && PANJER_LOADABLE.includes(id) ? shot.dmgMul : 0; // ← the ramp, carried onto the swing
+    if (f.isPlayer) {
+      this.tryAttack(f, id);
+    } else {
+      // the AI's own release: the moment the load is full he lets it go
+      this.startMove(f, id);
+      this.ai.panjerCd = PANJER_AI_CD_MIN + Math.random() * (PANJER_AI_CD_MAX - PANJER_AI_CD_MIN);
+      this.ai.combo = 0;
+      this.ai.cool = this.def.rest * (0.7 + Math.random() * 0.5);
+      this.ai.lastId = id;
+    }
+  }
+
+  /** the load just came FULL: the fist answers — a ring of sparks, a glow on the knuckles and a shout */
+  private panjerReady(f: Fighter) {
+    const arm = f.panjerId ? this.armOf(f, MOVES[f.panjerId]) : 0;
+    const fist = f.robot.fists[arm === 1 ? 1 : 0];
+    fist.localToWorld(this.aimTmp.set(0, 0, 0));
+    if (f.isPlayer) {
+      this.popup(new THREE.Vector3(f.pos.x, 7.0 * f.scale, f.pos.y), '💪 PANJER SIAP!', 'pop-crit');
+      this.sfx.ready();
+      this.fx.ring(f.pos.x, f.pos.y, 0xffd34a, 3.2, 0.32, 0.1);
+    } else {
+      // the opponent's load has to be READABLE: the same shout, in the other direction
+      this.popup(new THREE.Vector3(f.pos.x, 7.2 * f.scale, f.pos.y), '⚠️ PANJER MUSUH!', 'pop-block');
+      this.sfx.warn(true);
+      this.fx.ring(f.pos.x, f.pos.y, 0xff5a3c, 3.2, 0.32, 0.1);
+    }
+    this.fx.spark(this.aimTmp, 10, 6, f.isPlayer ? 0xffd34a : 0xff5a3c, undefined, 1.4, 0.5, 8);
+  }
+
+  /**
+   * PANJER OTOMATIS: one press, the ceiling, no wind-up. The load is never built because the arm is ALREADY loaded —
+   * so the punch leaves on the press, exactly as fast as it did before any of this existed, and lands at
+   * PANJER_DMG× / PANJER_KNOCK×. `panjerNext` is written before the call so the queue keeps it: a punch pressed
+   * during another swing still comes out full when the window opens.
+   */
+  private panjerMax(f: Fighter, id: MoveId) {
+    f.panjerNext = PANJER_DMG;
+    this.tryAttack(f, id);
+  }
+
+  /**
+   * SHIFT — PANJER OTOMATIS on/off. It answers the way the other modes do (banner + shout + a burst on the fighter),
+   * because a switch that changes how hard EVERY punch lands has to be impossible to miss. The world effects only
+   * fire inside the ring; in the lobby it is the banner and the sound.
+   */
+  togglePanjerMode() {
+    this.setPanjerMode(!this.panjerMode);
+  }
+
+  setPanjerMode(on: boolean) {
+    if (this.panjerMode === on) return;
+    this.panjerMode = on;
+    savePanjerMode(on);
+    if (on) this.player?.clearPanjer(); // the mode replaces the mechanic: no half-loaded arm left over
+    this.sfx.init();
+    const p = this.player;
+    if (on) {
+      this.sfx.charge();
+      this.sfx.ready();
+      this.sfx.say('Panjer otomatis!');
+    } else this.sfx.click();
+    this.showBanner('PANJER OTOMATIS', on ? 'MAKS ×2 · TAHAN TOMBOLNYA BUAT SPAM PUKULAN' : 'KEMBALI KE CARA LAMA (TAHAN TOMBOLNYA BUAT NGISI KEKUATAN)', on ? 'fight' : 'round', 1.6);
+    if (this.phase !== 'menu' && p) {
+      this.flashAmt = Math.max(this.flashAmt, on ? 0.5 : 0.25);
+      this.trauma = Math.min(0.5, this.trauma + (on ? 0.2 : 0.08));
+      this.fx.ring(p.pos.x, p.pos.y, on ? 0xffd34a : 0x9fe3ff, on ? 7.5 : 4.5, 0.5, 0.1);
+      this.fx.spark(new THREE.Vector3(p.pos.x, 4.6 * p.scale, p.pos.y), on ? 26 : 10, on ? 8.5 : 5, on ? 0xffd34a : 0x9fe3ff, undefined, 1.3, 0.5, 9);
+      this.popup(new THREE.Vector3(p.pos.x, 7.0 * p.scale, p.pos.y), on ? '💪 PANJER OTOMATIS: MAKS!' : 'PANJER OTOMATIS MATI', on ? 'pop-crit' : 'pop-info');
+    }
+    this.emitHud(true);
+  }
+
+  /**
+   * PANJER, the clock. Runs every frame of the fight for the player AND for the opponent:
+   *   • the hold counts up while the button is down (the player) or while the AI's load is running;
+   *   • at PANJER_T the load is full — the fist answers, and the AI lets it go;
+   *   • anything that would take the arm away from the load cancels it: a hit, being launched or put down, raising
+   *     a guard, the bell, a pause, the button disappearing with the window's focus. No punch, no refund.
+   */
+  private updatePanjer(dt: number) {
+    this.panjerStep(this.player, dt, true);
+    this.panjerStep(this.enemy, dt, false);
+    this.updateAutoFire();
+  }
+
+  /**
+   * THE SPAM ENGINE (PANJER OTOMATIS only). While the mode is on, a punch button that stays DOWN keeps punching:
+   * every frame we ask for the punch again and `tryAttack` decides — an idle fighter throws it, a fighter mid-swing
+   * gets it queued and it leaves the instant the cancel window opens, a fighter on his back gets nothing. So the
+   * CADENCE IS STILL THE ANIMATION (the swing's own cancel window is the metronome, and the jab chain keeps
+   * speeding it up exactly the way a hand-thrown 1-1-1-1 does), while the two gates that used to stop a punch
+   * stream are lifted in this mode: the whiff lockout (see tryAttack) and having to press the button again.
+   * The last button you pressed wins; the fixed order is only the tie-break when two are held at once.
+   */
+  private updateAutoFire() {
+    const p = this.player;
+    if (!this.panjerMode || this.phase !== 'fight' || this.paused) return;
+    if (p.state === 'ko' || p.state === 'down' || p.state === 'air' || p.state === 'legend' || p.state === 'legendHit') return;
+    let code = p.autoFireKey && this.keys.has(p.autoFireKey) ? p.autoFireKey : null;
+    if (!code) for (const c of PANJER_AUTO_ORDER) if (this.keys.has(c)) code = c; // fallback: whatever is still down
+    if (!code) return;
+    p.autoFireKey = code;
+    this.panjerMax(p, PANJER_KEYS[code]);
+  }
+
+  private panjerStep(f: Fighter, dt: number, isPlayer: boolean) {
+    if (f.tankPopT > 0) f.tankPopT = Math.max(0, f.tankPopT - dt);
+    if (!f.panjerId) {
+      f.panjerReady = false;
+      return;
+    }
+    const dead =
+      this.phase !== 'fight' ||
+      this.paused ||
+      f.blocking ||
+      f.autoGuard ||
+      f.state === 'ko' ||
+      f.state === 'down' ||
+      f.state === 'air' ||
+      f.state === 'stagger' ||
+      f.state === 'legend' ||
+      f.state === 'legendHit';
+    // the player's load also dies with the key itself (focus loss, an OS that swallowed the key-up)
+    if (dead || (isPlayer && (!f.panjerKey || !this.keys.has(f.panjerKey)))) {
+      f.clearPanjer();
+      return;
+    }
+    f.panjerHold = f.panjerSince > 0 ? (performance.now() - f.panjerSince) / 1000 : f.panjerHold + dt;
+    f.pkTick -= dt;
+    if (f.pkTick <= 0) {
+      f.pkTick = 0.15;
+      if (f.isPlayer) this.sfx.tick(0.3 + 0.45 * panjerCharge(f.panjerHold)); // the tick rises with the load
+    }
+    if (!f.panjerReady && panjerLoaded(f.panjerHold)) {
+      f.panjerReady = true;
+      this.panjerReady(f);
+    }
+    if (!isPlayer && f.panjerReady) this.firePanjer(f); // he lets it go the moment it is full
+  }
+
   private playerInput() {
     const p = this.player;
     if (p.state === 'legend' || p.state === 'legendHit') return; // the paired sequence owns the body
@@ -4223,27 +4997,39 @@ export class Game {
         p.queued = null;
       }
     }
+    // ---- STAR MODE assist #1: STANDING IS GUARDING. The moment the player is not holding anything and not acting,
+    // the low guard comes up by itself — no key to hold, exactly like a mobile boxing game. It is deliberately the
+    // LIGHT guard: the full manual guard (hold G) still blocks better through its slower recovery and its chip math.
+    p.autoGuard = false;
+    // ...and ALI STYLE switches the auto-guard off. A low loose guard is the OPPOSITE of a raised one, so the two
+    // cannot both be on: the style says "hands down, feet dancing". Holding G is still the strong block — the style
+    // never takes the manual guard away from the player.
+    // ...and the assist steps aside for PANJER as well: the auto-guard would cancel the load it is supposed to
+    // protect (a raised guard and a loading fist cannot be the same arm at the same time).
+    if (this.starMode && !this.aliStyle && !wantBlockKey && starShouldGuard(p.state, p.dodgeT, p.tauntT, !!p.panjerId) && p.stam > 2) {
+      p.autoGuard = true;
+    }
     if (p.state === 'idle' && p.dodgeT <= 0) {
-      p.blocking = wantBlockKey;
+      p.blocking = wantBlockKey || p.autoGuard;
       const holdW = this.keys.has('KeyW') || this.keys.has('ArrowUp');
-      // SPRINT: hold SHIFT (or F) and walk in any direction. A double-tap on W that you keep holding also runs.
+      // SPRINT: hold F and walk in any direction. A double-tap on W that you keep holding also runs. (SHIFT used to
+      // run — it is the PANJER OTOMATIS button now, because one key cannot both run and load every punch.)
       // A run only ends when the stamina is really empty, and only restarts once ~25 has recovered.
       if (p.stam <= 0.5) this.sprintLock = true;
       else if (p.stam > 25) this.sprintLock = false;
-      // (e.shiftKey is checked on every key event as well, so a Shift that was pressed before the window had focus,
-      //  or whose key-up got lost, can no longer make the run feel randomly unresponsive)
-      const shift = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('KeyF') || this.shiftHeld;
+      const runKey = this.keys.has('KeyF');
       const moving = fwd !== 0 || lat !== 0;
       // PEEK-A-BOO (hold E): a high, tight guard and a weaving body. It closes the distance on its own, slips straight
       // punches and charges the DEMPSEY ROLL. The price: stamina barely recovers, and throws beat it.
       const ippoOn = this.keys.has('KeyE') && p.stam > 2;
       p.ippo = ippoOn;
       if (ippoOn) p.blocking = true;
-      const wantRun = !p.blocking && moving && !this.sprintLock && (shift || (this.runLatch && holdW && fwd > 0));
+      const wantRun = !p.blocking && moving && !this.sprintLock && (runKey || (this.runLatch && holdW && fwd > 0));
       const isZeusPlayer = p.robot.isZeus;
       const zeusSpeedMul = isZeusPlayer ? 0.90 : 1.0; // khusus zeus: gerakan 10% lebih pelan
       const rageSpd = (p.rage ? 1.15 : 1) * zeusSpeedMul;
-      const walkMul = 0.88 + 0.16 * this.fwMul; // calibrated pro-boxer step speed (1.04× at 1×, 1.36× at 3× — fast, grounded, never cartoony)
+      // ALI STYLE is a footwork style: +8% pace for the player (ALI_SPEED is the only gameplay number the style moves)
+      const walkMul = (0.88 + 0.16 * this.fwMul) * (this.aliStyle ? ALI_SPEED : 1); // calibrated pro-boxer step speed (1.04× at 1×, 1.36× at 3× — fast, grounded, never cartoony)
       const runMul = 0.85 + 0.25 * this.fwMul; // fast ring sprint multiplier when holding Shift
       if (ippoOn) {
         const im = walkMul * rageSpd;
@@ -4254,6 +5040,20 @@ export class Game {
         p.wish.addScaledVector(f, fw * (fw > 0 ? IPPO_FWD : IPPO_BACK) * im).addScaledVector(r, lat * IPPO_SIDE * im);
         const lim = IPPO_FWD * im;
         if (p.wish.length() > lim) p.wish.setLength(lim);
+      } else if (this.starMode && !moving && !p.blocking && this.enemy.state !== 'ko' && this.enemy.state !== 'down') {
+        // ---- STAR MODE assist #2: AUTO-RANGE. With no direction key held the fighter shuffles himself into the
+        // pocket and holds it (a small dead zone so the feet never jitter). This is THE comfort feature: the player
+        // only ever presses a punch or SPACE, and still always throws from the right distance.
+        const dist = p.pos.distanceTo(this.enemy.pos);
+        const step = starAutoStep(dist);
+        const im = walkMul * rageSpd * STAR_DRIFT;
+        if (step !== 0) p.wish.addScaledVector(f, step * im);
+        // ...and if he is drifting into the ropes, the assist spends the idle time walking him back inside
+        const rad = Math.hypot(p.pos.x, p.pos.y);
+        if (rad > RING - 3.4) {
+          const inward = new THREE.Vector2(-p.pos.x, -p.pos.y).normalize();
+          p.wish.addScaledVector(inward, im * 0.55);
+        }
       } else if (wantRun) {
         p.sprinting = true;
         // forwards at full speed, sideways a little slower, backwards much slower
@@ -4317,7 +5117,9 @@ export class Game {
     const e = this.enemy;
     const incomingDeadly = e.state === 'attack' && !!e.move && !e.impacted;
     // dodge-cancel: you may always bail out of any non-Overdrive swing (or any swing when an enemy attack is incoming!) to dodge
-    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly)) {
+    // ...and a whiffed swing cannot be dodge-cancelled: the tail has to play out — UNLESS a punch is already in
+    // flight at him (see canBailOut: the same fairness floor the empty-tank dodge gets)
+    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly) && canBailOut(p.whiffT, incomingDeadly)) {
       p.state = 'idle';
       p.move = null;
       p.runStrike = false;
@@ -4627,6 +5429,12 @@ export class Game {
     }
     // No sluggish slow-mo on dodges — the slip remains fast, fluid, and responsive at full speed!
     this.slowT = 0;
+    // ...except in STAR MODE, where a PERFECT slip earns the one short cinematic beat that sells the read. It is
+    // 0.18 s long and only ever fires on a read (not on a hop), so the fight still plays at full speed.
+    if (this.starMode && d.isPlayer) {
+      this.slowT = STAR_SLIP_SLOW_T;
+      this.slowScale = STAR_SLIP_SLOW_SCALE;
+    }
     this.flashAmt = Math.max(this.flashAmt, 0.22);
     this.fovKick = 3.0;
     this.fx.ring(d.pos.x, d.pos.y, 0x5affc8, deadly ? 7.5 : 6, 0.5, 0.1);
@@ -4818,6 +5626,31 @@ export class Game {
   }
 
   /**
+   * THE MISS. Every way a punch can fail to connect — the opponent slipped it, stepped off its line, or the lunge
+   * simply came up short — calls this. It marks the attacker as OVER-COMMITTED for the rest of the swing
+   * (`whiffT`, a beat long) with the tail playing at WHIFF_SLOW, and it doubles as the AI's whiff feed: the enemy
+   * has always kept a dossier on how often the player swings at air; now the cost of that whiff is symmetric.
+   * Returns the tail it set, so the caller can hand it straight to `whiffT` and a test can read it.
+   */
+  private markWhiff(a: Fighter, m: Move) {
+    if (a.state !== 'attack') return 0;
+    // a link that sails through empty air (slipped, stepped off, or simply short) ends the N combo right there: this
+    // is the single hook that catches every way a punch can MISS, so the script can never carry on through a miss.
+    if (a.isPlayer) {
+      if (m.id === 'finisher') {
+        // the finisher is fired LAST, so by the time it can miss the script has already closed — the player still
+        // needs to be told the meter went with it, and that the tail of the swing is about to leave them open.
+        this.popup(new THREE.Vector3(a.pos.x, 6.6, a.pos.y), 'MEMATIKAN MELESET!', 'pop-block');
+      } else {
+        this.breakNCombo('KOMBO MELESET!');
+      }
+    }
+    const tail = whiffRecovery(m.impact, m.dur);
+    a.whiffT = Math.max(a.whiffT, Math.min(WHIFF_TAIL, tail));
+    return a.whiffT;
+  }
+
+  /**
    * THE POINT OF IMPACT, taken straight off the model: a HEAD target lands between the EYES (their live world
    * position, so it follows the opponent's head wherever he moves it) and a BODY target lands on the chest plate,
    * just above the ribs. Nothing is guessed and nothing has to be marked on screen.
@@ -4944,7 +5777,9 @@ export class Game {
     // the dash's first frame and read as a dragged or twisted leg. Forward/back dodge cancels remain unchanged.
     if (kind === 'side' && p.dodgeT > 0) return;
     const incomingDeadly = e.state === 'attack' && !!e.move && !e.impacted;
-    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly)) {
+    // ...and a whiffed swing cannot be dodge-cancelled: the tail has to play out — UNLESS a punch is already in
+    // flight at him (see canBailOut: the same fairness floor the empty-tank dodge gets)
+    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly) && canBailOut(p.whiffT, incomingDeadly)) {
       p.state = 'idle';
       p.move = null;
       p.runStrike = false;
@@ -4975,15 +5810,17 @@ export class Game {
   private startDodge(f: Fighter, dir: THREE.Vector2, kind: 'evade' | 'fwd' | 'back' | 'side' = 'evade') {
     if (f.state === 'legend' || f.state === 'legendHit') return false;
     // Authentic Muhammad Ali & pro boxing footwork: explosive step-slide (1.1m - 1.35m boxing repositioning) instead of anime teleport
-    const cfg = {
-      evade: { dur: 0.28, speed: 5.6, inv: true, cost: 8, cd: 0.18 },
-      fwd: { dur: 0.25, speed: 6.0, inv: false, cost: 6, cd: 0.16 },
-      back: { dur: 0.28, speed: 5.2, inv: true, cost: 7, cd: 0.18 },
-      side: { dur: 0.28, speed: 5.5, inv: true, cost: 6, cd: 0.16 },
-    }[kind];
-    // the enemy's dodge gets cheaper as its IQ grows (a clever fighter wastes less energy), the player's cost never changes
-    const cost = (f.isPlayer ? cfg.cost : cfg.cost / Math.pow(this.iq, 0.25)) * STAM_SCALE;
-    if (f.dodgeCd > 0 || f.stam < cost || f.state !== 'idle') return false;
+    // THE DODGE ECONOMY: the cost + cooldown table now lives at the top of the file (DODGE_CFG) so the balance
+    // harness audits the same numbers the game runs.
+    const cfg = DODGE_CFG[kind];
+    // the enemy's dodge gets cheaper as its IQ grows (a clever fighter wastes less energy), the player's cost never
+    // changes. The discount is deliberately MILD now: the old 1/iq^0.25 made a 12× brain dodge ~1.9× cheaper than
+    // you could, which at the new cost table would have handed the AI back the dodge-spam the balance pass removes.
+    const cost = (f.isPlayer ? cfg.cost : cfg.cost / Math.pow(this.iq, 0.15)) * STAM_SCALE;
+    // A DESPERATE DODGE (a punch already in flight at him) is always allowed — you may always try to slip a lethal
+    // blow, even on an empty tank. It just leaves you GASSED. An ordinary step needs the stamina.
+    const desperate = this.foeOf(f).state === 'attack' && !!(this.foeOf(f).move);
+    if (f.dodgeCd > 0 || f.state !== 'idle' || !dodgeAffordable(f.stam, cost, desperate)) return false;
     f.dodgeT = cfg.dur;
     f.dodgeDur = cfg.dur;
     f.dodgeTail = 0.14;
@@ -4997,8 +5834,9 @@ export class Game {
     f.dodgeDir.copy(dir);
     f.aliSign = (f.aliSign > 0 ? -1 : 1); // alternate weave rhythm for Muhammad Ali pendulum flow
     // enemy dodge cooldown: 2× the player's (the old value) was far too long to ever see it dodge twice in a row
-    f.dodgeCd = cfg.cd * (f.isPlayer ? (f.rage ? 0.78 : 1) : Math.max(0.6, 1.6 / Math.sqrt(this.iq)));
-    f.stam -= cost;
+    // ...and its recovery is floored at 70% of yours, not 60%: two dodges back to back have to cost the AI too
+    f.dodgeCd = cfg.cd * (f.isPlayer ? (f.rage ? 0.78 : 1) : Math.max(0.7, 1.6 / Math.sqrt(this.iq)));
+    f.stam = dodgeStaminaAfter(f.stam, cost); // never into debt — the desperate dodge simply empties the tank
     f.blocking = false;
     this.sfx.dodge();
     // Authentic boxing canvas squeak & friction dust (subtle canvas dust, zero anime shockwave rings / neon flashes)
@@ -5047,6 +5885,175 @@ export class Game {
       p.atkSpd = Math.max(p.atkSpd, 1.24 * atlasSpd);
       this.popup(new THREE.Vector3(p.pos.x, 7.1, p.pos.y), '🔥 OVERDRIVE COMEBACK!', 'pop-crit');
     }
+  }
+
+  /**
+   * Y — ALI STYLE. A stance toggle, not a buff: it changes how the fighter stands, floats and dances (see the ALI
+   * STYLE block) and stays on until it is pressed off again. Available in every mode, on the PLAYER only — the
+   * opponent keeps its own stance, so the style is something you do, not something that happens to you.
+   */
+  toggleAliStyle() {
+    this.aliStyle = !this.aliStyle;
+    const on = this.aliStyle;
+    // THE ANSWER: a banner across the screen, the crowd, and a burst on the fighter — so whether the button did
+    // anything is never a mystery again (an arms-only stance change was too quiet to read).
+    this.showBanner(on ? '🦋 ALI STYLE' : 'GUARD TINGGI', on ? 'FLOAT LIKE A BUTTERFLY · ALI SHUFFLE ON' : 'STANCE NORMAL', on ? 'crit' : 'info', 1.6);
+    this.sfx.init();
+    this.sfx.ready();
+    this.sfx.cheer(on ? 0.85 : 0.3);
+    this.flashAmt = Math.max(this.flashAmt, on ? 0.2 : 0.1);
+    const p = this.player;
+    if (p && this.phase !== 'menu') {
+      this.popup(new THREE.Vector3(p.pos.x, 7.0, p.pos.y), on ? '🦋 ALI STYLE — FLOAT!' : 'ALI STYLE OFF', on ? 'pop-crit' : 'pop-info');
+      this.fx.ring(p.pos.x, p.pos.y, on ? 0x8ff0ff : 0xffd27a, on ? 5.2 : 3.4, 0.5, 0.1);
+      this.fx.spark(new THREE.Vector3(p.pos.x, 1.1, p.pos.y), on ? 26 : 12, 6.5, on ? 0x8ff0ff : 0xffd27a, new THREE.Vector3(0, 1, 0), 1.2, 0.6, 9);
+      this.trauma = Math.min(1, this.trauma + 0.12);
+    }
+    this.emitHud(true);
+  }
+
+  /**
+   * N — THE COMBO BUTTON. Press once and the script (COMBO_SCRIPT: jab-jab-hook-hook-upper → the finisher) throws
+   * itself, link by link, as fast as the swings can cancel into each other. It is deliberately NOT a free win: the
+   * script only ever presses the same buttons H/J/K press by hand, the punches pay their own stamina, and the whole
+   * thing dies the instant a link is blocked, slipped, stepped off or whiffed (see breakNCombo). A clean five is the
+   * price of the finisher, and the finisher then pays half a meter for itself.
+   */
+  private startNCombo() {
+    // the script owns the body: a loaded fist never rides into the automatic combo (the load is spent, not banked)
+    this.player.clearPanjer();
+    const p = this.player;
+    if (p.state === 'legend' || p.state === 'legendHit' || p.state === 'ko' || p.state === 'air' || p.state === 'down') return;
+    if (this.nComboIdx >= 0) return; // already running: N is not a speed-up
+    if (this.nComboCd > 0) {
+      this.popup(new THREE.Vector3(p.pos.x, 5.8, p.pos.y), 'KOMBO BELUM SIAP', 'pop-info');
+      return;
+    }
+    if (p.state === 'attack' && !this.canCancel(p)) return; // mid-swing: let the swing finish, then press again
+    this.nComboIdx = 0;
+    this.nComboT = 0;
+    this.nComboWait = COMBO_STEP_WIN;
+    this.nComboSeq = -1;
+    this.popup(new THREE.Vector3(p.pos.x, 6.9, p.pos.y), '⭐ KOMBO! H-H-J-J-K', 'pop-crit');
+    this.sfx.tick(0.85);
+  }
+
+  /** stop the script where it is. `msg` is only shown for a break the player should know about (see the hooks). */
+  private breakNCombo(msg = '') {
+    if (this.nComboIdx < 0) return;
+    const p = this.player;
+    this.nComboIdx = -1;
+    this.nComboCd = COMBO_BREAK_CD;
+    this.nComboSeq = -1;
+    if (msg) {
+      this.popup(new THREE.Vector3(p.pos.x, 6.5, p.pos.y), msg, 'pop-block');
+      this.sfx.warn(false);
+    }
+  }
+
+  /**
+   * One link of the N combo. It throws the link if the beat is free (or if the current swing can already be cancelled
+   * into it, which is what makes the five read as one combination instead of five separate punches), and otherwise
+   * waits for the next frame. Returns true only if THIS link actually went out.
+   */
+  private nComboStep(p: Fighter, id: MoveId): boolean {
+    if (id === 'finisher') {
+      // THE FINISHER IS PAID FOR BEFORE IT IS THROWN (and it is NOT thrown if the combo cannot pay): the five links
+      // have just banked the meter for it, so this is the check that makes "land the combo, earn the finisher" true.
+      if (!comboCanFinish(p.meter, p.stam)) {
+        this.breakNCombo(p.meter < FINISHER_METER ? `METER ${Math.round(p.meter)}/${FINISHER_METER} — TANPA MEMATIKAN` : 'TENAGA HABIS — TANPA MEMATIKAN');
+        return false;
+      }
+      return this.tryFinisher(p);
+    }
+    if (p.state !== 'idle' && !(p.state === 'attack' && this.canCancel(p))) return false;
+    if (p.state === 'idle' && p.dodgeT > 0) return false;
+    if (whiffGates(p.whiffT)) return false; // over-committed: the tail has to play out before the next link
+    if (p.stam < Math.min(MOVES[id].cost * STAM_SCALE, 4)) {
+      this.breakNCombo('TENAGA HABIS — KOMBO PUTUS');
+      return false;
+    }
+    if (p.state === 'attack') {
+      // cancel the live swing straight into the next link (the same cancel window the game gives a hand-thrown combo)
+      p.state = 'idle';
+      p.move = null;
+      p.runStrike = false;
+      p.ippoStrike = false;
+      p.queued = null;
+    }
+    const seq = p.moveSeq; // startMove bumps this — the one reading TS cannot narrow away for us after the call
+    this.startMove(p, id);
+    return p.moveSeq !== seq;
+  }
+
+  /** the script's own clock. Runs every frame of the fight, before the AI moves. */
+  private updateNCombo(dt: number) {
+    if (this.nComboCd > 0) this.nComboCd = Math.max(0, this.nComboCd - dt);
+    if (this.nComboIdx < 0) return;
+    const p = this.player;
+    if (this.phase !== 'fight' || this.paused) {
+      this.nComboIdx = -1;
+      return;
+    }
+    // HIT: the script dies with the fighter — being staggered, launched or put down ends the combination outright
+    if (p.state === 'ko' || p.state === 'air' || p.state === 'down' || p.state === 'stagger') {
+      this.breakNCombo('KOMBO PUTUS!');
+      return;
+    }
+    this.nComboT += dt;
+    this.nComboWait -= dt;
+    if (this.nComboWait <= 0 || this.nComboT > COMBO_SCRIPT.length * COMBO_STEP_WIN + 2) {
+      this.breakNCombo('KOMBO PUTUS');
+      return;
+    }
+    const id = COMBO_SCRIPT[this.nComboIdx];
+    // THE LINK WE JUST THREW IS STILL COMMITTED: wait for its cancel window (that window is what makes the five read
+    // as ONE combination — and because the script tracks the swing by its sequence number, a JAB-JAB pair cancels
+    // into itself exactly like two jabs thrown by hand, instead of waiting the first one out).
+    if (this.nComboSeq >= 0 && p.moveSeq === this.nComboSeq && p.state === 'attack' && !this.canCancel(p)) return;
+    if (!this.nComboStep(p, id)) return;
+    this.nComboSeq = p.moveSeq;
+    this.nComboIdx++;
+    this.nComboWait = COMBO_STEP_WIN;
+    if (this.nComboIdx >= COMBO_SCRIPT.length) {
+      this.nComboIdx = -1; // the finisher is away: the script is done, and the meter is already paid
+      this.nComboCd = COMBO_BREAK_CD;
+    }
+  }
+
+  /**
+   * PUKULAN MEMATIKAN — the finisher itself (see MOVES.finisher). The price is half an Overdrive meter plus a real
+   * bite of the tank, and it is only ever reachable through a clean N combo. It cannot be blocked or stuffed (the
+   * Overdrive family's startup invincibility), but it telegraphs for the longest beat in the book — so the answer to
+   * it is to not be there, and the player who throws it into a slip has burned the meter for nothing.
+   */
+  private tryFinisher(f: Fighter): boolean {
+    if (f.state === 'legend' || f.state === 'legendHit') return false;
+    if (f.state === 'ko' || f.state === 'air' || f.state === 'down' || f.state === 'stagger') return false;
+    if (f.dodgeT > 0) return false;
+    if (f.state === 'attack') {
+      if (!this.canCancel(f)) return false;
+      f.state = 'idle';
+      f.move = null;
+      f.queued = null;
+    }
+    if (!comboCanFinish(f.meter, f.stam)) {
+      if (f.isPlayer) {
+        this.popup(
+          new THREE.Vector3(f.pos.x, 5.9, f.pos.y),
+          f.meter < FINISHER_METER ? `METER ${Math.round(f.meter)}/${FINISHER_METER} — BELUM CUKUP` : 'TENAGA HABIS',
+          'pop-info',
+        );
+      }
+      return false;
+    }
+    const seq = f.moveSeq;
+    f.meter = Math.max(0, f.meter - FINISHER_METER);
+    this.meterReadyShown = false;
+    this.startMove(f, 'finisher');
+    f.invuln = Math.max(f.invuln, 0.6); // the family's startup: a finisher cannot be stuffed out of its own wind-up
+    f.winStrike = false; // it is already the heaviest thing in the book — no dodge bonus on top of it
+    return f.moveSeq !== seq;
   }
 
   private tryAttack(f: Fighter, id: MoveId) {
@@ -5113,12 +6120,24 @@ export class Game {
       if (f.move && this.canCancel(f) && f.stam > 0) this.startMove(f, id);
       else {
         f.queued = id;
-        f.queuedT = 0.34;
+        // STAR MODE assist #4: a tap during a swing is remembered longer (and still fires the instant it is legal),
+        // so chaining combos at speed never feels like the input was dropped.
+        f.queuedT = this.starMode && f.isPlayer ? STAR_QUEUE_WIN : 0.34;
       }
       return;
     }
+    // OVER-COMMITMENT GATE: a punch thrown into empty air cannot be followed by another until the swing has played
+    // out (the Overdrive is exempt — spending a full meter to cover a mistake is a legitimate escape).
+    // PANJER OTOMATIS = the spam switch: inside it a missed punch no longer locks the next one out for WHIFF_TAIL
+    // (the slow tail still plays — the body still has to come back — you are simply allowed to keep swinging), and
+    // the empty-tank shout is throttled below so a held button cannot fire it sixty times a second.
+    const spam = this.panjerMode && f.isPlayer;
+    if (whiffGates(f.whiffT) && !isOD(id) && !spam) return;
     if (f.stam < Math.min(m.cost * STAM_SCALE, 4)) {
-      if (f.isPlayer) this.popup(new THREE.Vector3(f.pos.x, 5.8, f.pos.y), 'TENAGA HABIS', 'pop-info');
+      if (f.isPlayer && f.tankPopT <= 0) {
+        f.tankPopT = TANK_POP_CD;
+        this.popup(new THREE.Vector3(f.pos.x, 5.8, f.pos.y), 'TENAGA HABIS', 'pop-info');
+      }
       return;
     }
     this.startMove(f, id);
@@ -5178,6 +6197,17 @@ export class Game {
       f.aim = this.pickMixAim(f, id);
     }
     f.strikeCharge = f.ippoStrike ? f.rollCharge : 0;
+    // PANJER: the load that was on the button when it was let go rides on THIS swing — and only on a punch that
+    // can be loaded, and only for one swing (it is consumed here, so an ordinary punch after it is ordinary
+    // again). Anything else that reaches for the arm — an Overdrive, a throw, a scripted combo link — takes the
+    // load away with it instead of inheriting it: a 2× Overdrive is not a thing this game hands out.
+    if (PANJER_LOADABLE.includes(id)) {
+      f.panjer = f.panjerNext > 1 ? f.panjerNext : 1; // a flick (×1) is just the ordinary punch
+      f.panjerNext = 0;
+    } else {
+      f.panjer = 1;
+      f.clearPanjer();
+    }
     if (f.ippoStrike) {
       f.rollCharge = 0;
       this.fovKick = 2.5;
@@ -5206,7 +6236,9 @@ export class Game {
     // copy-pasted would read as sloppy on the one punch you are supposed to be able to repeat on beat
     const spamRhythm = id === 'jab' ? 1 : f.spamCount >= 2 ? 1 + ((f.strikeVar % 3) - 1) * 0.05 : 1;
     const atlasSpd = f.robot.isAtlas ? 1.19 : 1.0; // GERAKAN PUKULAN ATLAS LEBIH CEPAT 19 PERSEN
-    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd * atlasSpd;
+    // GASSED: hands slow down 8% below the gas line — the price of a flurry (or a dodge) you could not afford
+    const gasMul = gasAtkMul(f.stam);
+    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd * atlasSpd * gasMul;
     if (f.isPlayer) {
       const tgtYaw = Math.atan2(this.enemy.pos.x - f.pos.x, this.enemy.pos.y - f.pos.y);
       f.yaw += wrapAngle(tgtYaw - f.yaw) * (id === 'counter' || f.winStrike ? 0.9 : 0.6);
@@ -5243,8 +6275,20 @@ export class Game {
     if (isOD(id)) {
       this.sfx.charge();
       f.glowBoost = 3;
-      this.sfx.say('Overdrive');
+      this.sfx.say(id === 'finisher' ? 'Finisher' : 'Overdrive');
       this.fovKick = 3;
+      if (id === 'finisher') {
+        // the last word of the N combo: a two-tone charge (the two fists loading together) and the loudest call-out
+        this.sfx.whoosh(1);
+        this.sfx.crackle(0.5);
+        if (this.phase === 'fight') {
+          this.popup(
+            new THREE.Vector3(f.pos.x, 7.0 * f.scale, f.pos.y),
+            f.isPlayer ? '☠️ PUKULAN MEMATIKAN!' : '☠️ MEMATIKAN MUSUH!',
+            'pop-crit',
+          );
+        }
+      }
       if (id === 'windmill') {
         this.sfx.whoosh(0.8);
         if (this.phase === 'fight') {
@@ -5315,6 +6359,7 @@ export class Game {
       holdOD: 0, // how long it has been saving its Overdrive for the right moment
       zeusComboOD: false, // Zeus signature: combos player with punch combinations before Overdrive finisher
       zeusODStep: 0,
+      panjerCd: 4, // PANJER: how long before he even thinks about loading one up again (see updateEnemyAI)
     };
   }
 
@@ -5668,6 +6713,12 @@ export class Game {
     }
 
     // ---- HIT-CONFIRMED & PRESSURE COMBO CHAINING ----
+    // OVER-COMMITMENT (AI side): a swing that came up empty is not a free combo starter — the tail has to play out,
+    // exactly like the player's. This is what makes baiting a big punch and slipping it pay off on both sides.
+    if (e.state === 'attack' && e.move && e.impacted && !e.hitConfirmed && e.whiffT > 0) {
+      ai.combo = 0;
+      return;
+    }
     if (e.state === 'attack' && e.move && ai.combo > 0 && e.impacted && this.canCancel(e) && !pDown && p.state !== 'air') {
       const zChainP = ai.zeusComboOD ? 1.0 : e.robot.isZeus ? 0.95 : (ai.pressure ? 0.8 : 0.65);
       if (e.hitConfirmed || (dist <= 4.5 * e.scale && Math.random() < zChainP)) {
@@ -5928,6 +6979,28 @@ export class Game {
       }
     }
 
+    // ---- PANJER (AI): sometimes he does not tap — he LOADS. Same rule as the player's: the button goes down, the
+    // arm coils back for a full second, and the punch that comes out of it lands 2× / drives 2×. The load is
+    // telegraphed exactly the way yours is (coiled pose, sparks on the fist, a rising tick, a warning shout when it
+    // comes full), and it dies the same way if you hit him out of it. He only gambles on it with a real tank, and
+    // only now and then (panjerAiRate + the cooldown) — a loaded fist has to stay an event you can read.
+    if (ai.panjerCd > 0) ai.panjerCd = Math.max(0, ai.panjerCd - dt);
+    if (
+      ai.cool <= 0 &&
+      !e.panjerId &&
+      ai.panjerCd <= 0 &&
+      !pDown &&
+      !e.blocking &&
+      canAtk &&
+      dist <= reachNow &&
+      e.stam > PANJER_AI_STAM &&
+      Math.random() < dt * panjerAiRate(def.react, p.poise < p.poiseMax * 0.45 || p.stam < 35 || p.hp <= p.maxHp * 0.3)
+    ) {
+      const loadId: MoveId = dist > 3.9 * e.scale ? 'cross' : Math.random() < 0.55 ? 'hook' : 'upper';
+      this.beginPanjer(e, loadId, null);
+      return;
+    }
+
     if (ai.cool <= 0 && dist <= reachNow && !e.blocking && canAtk) {
       // Mind game: immediately crack a blocking or peek-a-boo player with a throw or uppercut!
       if ((p.blocking || p.ippo) && p.state === 'idle' && Math.random() < 0.52 + def.react * 0.35) {
@@ -6074,6 +7147,7 @@ export class Game {
     f.flash = Math.max(0, f.flash - dt * 7);
     f.dash.multiplyScalar(Math.exp(-7.5 * dt));
     f.dodgeCd -= dt;
+    f.whiffT = Math.max(0, f.whiffT - dt);
     f.counterT -= dt;
     f.handT = Math.max(0, f.handT - dt);
     f.aimT = Math.max(0, f.aimT - dt);
@@ -6153,9 +7227,16 @@ export class Game {
       f.comboTaken = 0;
       f.juggle = 0;
     }
+    // GASSED (below the gas line) recovery crawls at half speed — both corners — so an over-committed exchange has
+    // consequences a few seconds long instead of being erased by the next tick of the regen.
+    const gasReg = gasRegenMul(f.stam);
     if (f.sprinting) f.stam = Math.max(0, f.stam - SPRINT_DRAIN * dt); // running costs stamina and stops it from regenerating
-    else if (f.state === 'idle' && !f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_IDLE : REGEN_AI) * dt);
-    else if (f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_BLOCK : REGEN_BLOCK * 0.7) * dt);
+    else if (f.state === 'idle' && !f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_IDLE : REGEN_AI) * gasReg * dt);
+    else if (f.blocking) {
+      // holding G is the strong, slow guard; the STAR MODE auto-guard is a light barrier and recovers much faster
+      const rate = f.isPlayer ? (f.autoGuard ? STAR_GUARD_REGEN : REGEN_BLOCK) : REGEN_BLOCK * 0.7;
+      f.stam = Math.min(100, f.stam + rate * gasReg * dt);
+    }
 
     const fighting = this.phase === 'fight';
     if (f.state === 'attack' && f.move) {
@@ -6169,7 +7250,10 @@ export class Game {
         f.glowBoost = Math.max(f.glowBoost, 1.8);
         f.flash = Math.max(f.flash, 0.16 + 0.16 * Math.sin(f.animT * 32));
       } else {
-        f.moveT += (dt * f.atkSpd) / (f.tscale * PACE); // atkSpd > 1 = a dodge-advantage strike, thrown faster
+        // OVER-COMMITMENT: the rest of a MISSED swing plays at a fraction of its speed (whiffRecovery), so the
+        // attacker is genuinely stuck for a beat — that is the window the opponent gets to punish.
+        const tail = f.whiffT > 0 ? WHIFF_SLOW : 1;
+        f.moveT += (dt * f.atkSpd * tail) / (f.tscale * PACE); // atkSpd > 1 = a dodge-advantage strike, thrown faster
       }
       if (!f.whooshed && f.moveT >= m.strikeAt) {
         f.whooshed = true;
@@ -6748,6 +7832,24 @@ export class Game {
     const fz = f.pos.y + dir.y * 0.9;
     this.fx.spark(new THREE.Vector3(fx, 0.15, fz), 6 + Math.floor(m.power * 22), 3 + m.power * 4, 0x9a9aaa, undefined, 1.2, 0.4, 3);
     this.fx.flash(new THREE.Vector3(fx, this.aimY(f, m) * 0.7 * f.scale, fz), 0.7 + m.power * 1.6, 0xbfe6ff, 0.09); // the punch cuts the air
+    // THE SWING STREAK: the visual half of the whoosh above — a short, stretched fan of sparks laid down the line the
+    // fist is about to travel, sized by the punch's own power. It is what makes the air part BEFORE the punch lands.
+    const streak = new THREE.Vector3(dir.x, 0.06, dir.y);
+    const hx = f.pos.x + dir.x * 1.7 * f.scale;
+    const hz = f.pos.y + dir.y * 1.7 * f.scale;
+    this.fx.spark(
+      new THREE.Vector3(hx, this.aimY(f, m) * f.scale, hz),
+      4 + Math.floor(m.power * 15),
+      8 + m.power * 9,
+      isOD(m.id) ? 0xffd27a : 0xbfe6ff,
+      streak,
+      0.55,
+      0.26,
+      5,
+    );
+    // ...and the heavy swings are felt before they land: a touch of lens kick on anything with real mass behind it
+    // (a jab never moves the camera — that would turn a jab into a haymaker, and it is thrown ten times a round)
+    if (m.power >= 0.6) this.fovKick = Math.max(this.fovKick, 1.5 + 2.5 * m.power);
   }
 
   private resolveHit(a: Fighter, d: Fighter) {
@@ -6759,6 +7861,10 @@ export class Game {
     const dist = a.pos.distanceTo(d.pos);
     const toA = new THREE.Vector2().subVectors(a.pos, d.pos).normalize();
     const away = new THREE.Vector2(-toA.x, -toA.y);
+    // WHICH CHASSIS IS TAKING THE HIT: Zeus (a wall), the champion's ATLAS (heavy), or a standard Titan. Every
+    // knockback / brace / poise decision below runs through it, including the blocked-guard branch.
+    const chassis = chassisOf(d.robot.isZeus, d.robot.isAtlasChassis);
+    const isHJ = m.id === 'jab' || m.id === 'hook';
     // the impact point is exactly where the target is: between the eyes for a head shot, the chest plate for a body
     // shot — taken from the live model, so it sits on the optics no matter what the opponent is doing
     const aimP = this.aimPoint(d, aim, this.aimTmp);
@@ -6798,6 +7904,17 @@ export class Game {
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0x9fe6ff, 5.5, 0.42);
       this.fx.spark(fxp, 12, 10, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.5, 3);
     }
+    if (m.id === 'finisher') {
+      // PUKULAN MEMATIKAN: a two-fisted cannonade — a white-gold core ring inside a wide gold shockwave, both fists'
+      // worth of spark fanning out down the line of the ram, and a low band of dust kicked up off the canvas.
+      const fxp = new THREE.Vector3(a.pos.x - toA.x * 2.6, 3.6 * a.scale, a.pos.y - toA.y * 2.6);
+      const line = new THREE.Vector3(-toA.x, 0.06, -toA.y);
+      this.fx.ring(a.pos.x - toA.x * 2.0, a.pos.y - toA.y * 2.0, 0xffd27a, 15.5, 0.72);
+      this.fx.ring(a.pos.x - toA.x * 1.6, a.pos.y - toA.y * 1.6, 0xfff6dc, 9.5, 0.5, 0.06);
+      this.fx.spark(fxp, 30, 17, 0xffd268, line, 0.85, 0.85, 12);
+      this.fx.spark(fxp, 18, 14, 0xffffff, line, 0.7, 0.6, 8);
+      this.fx.ring(a.pos.x - toA.x * 1.0, a.pos.y - toA.y * 1.0, 0xffb040, 10.5, 0.55, 2.2 * a.scale);
+    }
     if (m.id === 'slam') {
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffb040, 14, 0.7);
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffffff, 8, 0.45);
@@ -6807,13 +7924,20 @@ export class Game {
     // TIMED DODGE: the defender (player OR enemy) dodged while THIS very attack was winding up → it whiffs cleanly!
     if (d.dodgeFor === a.moveSeq) {
       d.dodgeFor = -1;
+      a.whiffT = this.markWhiff(a, m); // ...and the attacker is left swimming through the empty air he punched
       this.perfectDodge(d, m);
       if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
       return;
     }
 
     const trueCounter = m.id === 'counter' || a.winStrike || a.counterT > 0;
-    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale) return; // out of range (a running punch / true counter reaches further)
+    // STAR MODE assist #3: a committed punch reaches 18% further (the fighter steps in with it), so a tap from a
+    // slightly wrong distance still lands instead of whiffing into the over-commitment tail.
+    const starReach = this.starMode && a.isPlayer ? STAR_RANGE_ASSIST : 1;
+    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale * starReach) {
+      a.whiffT = this.markWhiff(a, m); // thrown from too far out: the lunge came up short
+      return; // out of range (a running punch / true counter reaches further)
+    }
 
     // COUNTER STANCE (L / Enemy Counter Parry): a strike that arrives inside the parry window (or locked by parryFor) is caught, not eaten.
     // Works for both Player and Enemy!
@@ -6828,6 +7952,7 @@ export class Game {
     const avg = (a.scale + d.scale) * 0.5;
     const hitWidth = X.width * (trueCounter ? 1.45 : 1) * avg;
     if (lateral > hitWidth) {
+      a.whiffT = this.markWhiff(a, m); // stepped off the line: the swing is committed and the attacker is open
       if (d.dodgeT > 0 || d.invuln > 0) {
         this.perfectDodge(d, m);
         if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
@@ -6859,6 +7984,11 @@ export class Game {
     }
 
     let dmg = m.dmg * a.dmgMul;
+    // PANJER: the punch that was LOADED arrives with the whole machine behind it — and how much behind it is
+    // exactly the number the load had reached (1 = an ordinary punch, up to PANJER_DMG at a full second). The
+    // knockback rides the same number, because the user asked for the hajar to grow with the hold too.
+    const panjerKb = a.panjer;
+    if (a.panjer > 1) dmg *= a.panjer;
     if (a.robot.isZeus) {
       dmg *= 1.10; // Kekuatan attack serangan Zeus seperti Atlas cuma lebih kuat 10 persen (+10%)
     }
@@ -6906,6 +8036,15 @@ export class Game {
     // the target you picked decides what the punch does to him
     dmg *= AIM_DMG[aim];
     if (!label && aim === AIM_BODY) label = m.id === 'upper' ? 'LIVER SHOT!' : 'BODY BLOW!';
+    // the last punch has a name and it says it (set AFTER the crit/comeback book-keeping, so the finisher does not
+    // quietly inherit the counter-hit bonus just by being called something)
+    if (m.id === 'finisher') label = '☠️ PUKULAN MEMATIKAN!';
+    // PANJER names itself (and only itself: the charge is the story of this punch, and it says so out loud)
+    if (a.panjer > 1) {
+      label = `💪 PANJER! ${panjerLabel(a.panjer)}`;
+      this.fx.ring(d.pos.x, d.pos.y, 0xffd34a, 6.5, 0.45, 0.1);
+      this.trauma = Math.min(0.7, this.trauma + 0.16);
+    }
 
     // PEEK-A-BOO: the weaving head slips jabs and crosses completely (but not hooks, uppercuts, throws or Overdrive)
     if (d.ippo && d.state === 'idle' && d.slipCd <= 0 && (m.id === 'jab' || m.id === 'cross')) {
@@ -6913,26 +8052,34 @@ export class Game {
       d.rollCharge = Math.min(1, d.rollCharge + 0.28);
       d.meter = Math.min(100, d.meter + 6);
       this.popup(new THREE.Vector3(d.pos.x, 6.2 * d.scale, d.pos.y), 'SLIP!', 'pop-dodge');
+      if (a.isPlayer) this.breakNCombo('KOMBO DIPUTAR!'); // slipped under the pea-a-boo: the link missed
       this.sfx.dodge();
       this.fx.spark(hitPos, 10, 5, 0x9fe6ff, dirAD, 1, 0.35);
       return;
     }
 
     // ---------- blocked (90% attack strength reduction -> only 10% damage gets through, with MASSIVE sparks & heavy punch impact feel!) ----------
-    if (m.id !== 'grab' && d.blocking && (d.state === 'idle' || d.state === 'stagger')) {
+    // (the finisher is deliberately NOT blockable — see `blockable`: like the throw, it is answered by not being
+    // there. Only a slip or a step off the line beats it, which is exactly what its very long tell is for.)
+    if (blockable(m.id) && d.blocking && (d.state === 'idle' || d.state === 'stagger')) {
       a.hitConfirmed = true;
       if (!d.isPlayer) this.aiDefended('block', a.moveSeq);
       const big = m.power;
-      const chip = dmg * 0.10; // 90% damage reduction: only 10% of the attack damage lands!
+      // A HELD guard (G) is a wall: only 10% of the damage gets through. The STAR MODE AUTO-GUARD is the light
+      // barrier that comes up on its own — it still saves you, but 22% gets through and it drains under pressure,
+      // which is what keeps "just stand there" from being the best strategy even in the comfort mode.
+      if (a.isPlayer) this.breakNCombo('KOMBO DIBLOK!'); // the script does not punch through a guard
+      const guardMul = d.autoGuard ? 0.22 : 0.10;
+      const chip = dmg * guardMul;
       d.hp = Math.max(1, d.hp - chip);
       if (this.phase === 'fight') {
         this.stats.dmg[a.isPlayer ? 0 : 1] += chip;
       }
-      // Stamina drain is reduced by 90% (0.10x) when blocking
-      d.stam = Math.max(0, d.stam - dmg * 0.10 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
+      // Stamina drain is reduced the same way by the guard
+      d.stam = Math.max(0, d.stam - dmg * guardMul * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
 
       // Physical boot-skid pushback so the 2-ton punch force visibly shoves the defender's planted guard across the mat
-      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * (d.robot.isZeus ? 0.833 : 1);
+      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * chassisKnock(chassis);
       d.kb.addScaledVector(away, blockPush);
       if (dist > 2.85 * avg) a.kb.addScaledVector(away, blockPush * 0.45);
 
@@ -7108,11 +8255,11 @@ export class Game {
     // the target is what the punch does to him: the body tears down stamina and stability
     if (AIM_DRAIN[aim] > 0) d.stam = Math.max(0, d.stam - dmg * AIM_DRAIN[aim]);
     const isZeusDef = d.robot.isZeus;
-    const isHJ = m.id === 'jab' || m.id === 'hook';
     // drain stability; it only breaks after a sustained flurry of clean hits
     if (!wasAir && !armored) {
       const pCost = poiseCost(big) * AIM_POISE[aim] * (crit ? 1.6 : 1) * (epicComeback ? 1.45 : 1); // a counter-hit or comeback rocks much harder
-      d.poise -= (isZeusDef && isHJ ? pCost * 0.25 : pCost); // Zeus kokoh terhadap jab/hook biasa
+      // chassis-aware: Zeus 55% (jab/hook 12%), ATLAS 80% (jab/hook 60%), a standard Titan the full price
+      d.poise -= pCost * chassisPoise(chassis, isHJ);
       d.poiseT = POISE_DELAY;
     }
     // ---- WHEN DOES HE GO DOWN? Only when it is earned. A robot that falls over from every uppercut or every running
@@ -7148,8 +8295,8 @@ export class Game {
         } else {
           // Uppercut di udara juga tidak melempar terlalu tinggi (pop rendah agar tidak terbang jauh)
           const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : m.id === 'upper' ? 4.5 : 10) * (d.juggle >= 3 ? 0.75 : 1);
-          d.vy = pop;
-          d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? 0.833 : 1));
+          d.vy = pop * chassisLift(chassis);
+          d.kb.addScaledVector(away, (2.5 + big * 2) * chassisKnock(chassis));
           label = label || `JUGGLE x${d.juggle}`;
         }
       }
@@ -7157,9 +8304,14 @@ export class Game {
     // or a flurry that has emptied your stability. Ordinary jabs / crosses / hooks — even on a counter-hit — no
     // longer sweep you off your feet; they stagger you instead.
     } else if (!armored && (launcher || broken || runLaunch || ippoLaunch)) {
-      if (isZeusDef && isHJ) {
-        // ZEUS LEBIH KEBAL TERBANG DAN JATUH KALO CUMA DIPENCET H/J:
-        // Berdiri tegak tak tergoyahkan, tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
+      // ZEUS LEBIH SULIT TERPENTAL. The 2-ton chassis digs its boots in: a jab or a hook never moves him at all, and
+      // neither does any ordinary punch (a running cross, an uppercut, a flurry that empties his stability bar) until
+      // he is genuinely SOFTENED — stability nearly gone, already rocked by the shot before, or nearly out of HP.
+      // Only the designated launchers go through on a fresh Zeus: the Overdrive specials, the throw, the skyhook.
+      // Everything that DOES take him off his feet throws him far less far and less high (see ZEUS_LAUNCH_*).
+      const heavyBraced = chassisBraces(chassis, m.id, isHJ, softened);
+      if (heavyBraced) {
+        // Berdiri tegak tak tergoyahkan: tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
         d.state = 'stagger';
         d.move = null;
         d.queued = null;
@@ -7187,12 +8339,14 @@ export class Game {
         if (pd.lengthSq() < 1e-4) pd.copy(away);
         pd.normalize();
         const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
-        const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
-        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5);
+        const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1) * panjerKb;
+        // Zeus is thrown like a bag of anvils: much shorter across the canvas and a lower arc (ZEUS_LAUNCH_*)
+        // ...and a PANJER is allowed to throw him past the ordinary ceiling: that is what the 2× is for.
+        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5 * panjerKb) * chassisLaunch(chassis);
         // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
         // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
         // Uppercut biasa yang menembus pertahanan saat broken/KO tidak melempar ke angkasa (vertikal rendah & realistis)
-        const vert = m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5;
+        const vert = (m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5) * chassisLift(chassis);
         d.vy = vert;
         d.kb.copy(dir).multiplyScalar(m.id === 'upper' ? Math.min(horiz, 6.5) : horiz);
         // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
@@ -7206,7 +8360,7 @@ export class Game {
       // BOXING HIT PUSHBACK & RING DOMINANCE:
       // Each landed strike noticeably drives the defender backward across the canvas while the attacker steps in to press the advantage!
       const heavyNoDrop = (m.id === 'upper' || (a.runStrike && m.id === 'cross') || brokenRaw) ? 1.35 : 1; // kept on his feet, but driven back hard — often into the ropes
-      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * (isZeusDef ? 0.833 : 1);
+      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * panjerKb * chassisKnock(chassis);
       d.kb.addScaledVector(away, m.knock * pushMul);
       if (dist > 2.85 * avg) {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));
@@ -7561,7 +8715,7 @@ export class Game {
     return { a0, a1, dp, tw, ln, rl };
   }
 
-  private heroAnimState(pose: HeroPose, t: number, mx: number, my: number, mirror = false, staticPose = false) {
+  private heroAnimState(pose: HeroPose, t: number, mx: number, my: number, mirror = false, staticPose = false): AnimState {
     const poseT = staticPose ? 0 : t;
     const poseMx = staticPose ? 0 : mx;
     const poseMy = staticPose ? 0 : my;
@@ -8036,7 +9190,21 @@ export class Game {
     if (this.menuHeroPedestal) {
       this.menuHeroPedestal.rotation.y = t * 0.32;
     }
-    this.menuHero.animate(this.heroAnimState(this.heroPose, t, this.heroMouseX, this.heroMouseY), dt);
+    const heroSt = this.heroAnimState(this.heroPose, t, this.heroMouseX, this.heroMouseY);
+    // ALI STYLE in the LOBBY: the moment Y is pressed the hero drops his hands, starts floating and dances on the
+    // spot — so the button has an answer you can see without even starting a fight. (Only on the plain stances: a
+    // victory / taunt pose picked from the menu stays exactly as it is.)
+    if (this.aliStyle && (this.heroPose === 'ready' || this.heroPose === 'guard' || this.heroPose === 'stand')) {
+      const ap = aliIdlePose(t);
+      heroSt.arms = [lerpPose(heroSt.arms[0], ap, 0.8), lerpPose(heroSt.arms[1], ap, 0.8)];
+      heroSt.twist += aliWeave(t) * 0.9;
+      heroSt.roll += aliRoll(t) * 0.9;
+      heroSt.dip += aliFloat(t) * 0.9;
+      heroSt.headYaw = aliHead(t);
+      heroSt.shuffle = 1;
+      heroSt.idleBounce = 1;
+    }
+    this.menuHero.animate(heroSt, dt);
   }
 
   private animateFighter(f: Fighter, o: Fighter, dt: number) {
@@ -8050,6 +9218,8 @@ export class Game {
     let kk = 15;
     const t = f.animT;
     f.headYaw = 0;
+    // PANJER: the loading pose eases in and out (never a pop), driven by whether a punch is being held
+    f.pkVis += ((f.panjerId ? 1 : 0) - f.pkVis) * Math.min(1, dt * 14);
 
     const isAirRagdoll = (f.state === 'air' || (f.state === 'ko' && (f.y > 0.02 || f.vy > 0))) && this.phase !== 'walk' && this.phase !== 'menu';
 
@@ -8131,6 +9301,8 @@ export class Game {
     } else if (f.state === 'attack' && f.move) {
       const m = f.move;
       const s = sampleKeys(m.keys, f.moveT);
+      // SWING DYNAMICS: one clock for the whole kinetic chain (see the block above the strike data)
+      const phase = swingPhase(f.moveT, m.strikeAt, m.impact, m.dur);
       // the player's stance hand decides which fist throws it; posing the other arm mirrors the motion,
       // so the follow-through, the swing and the wind-up all come from the correct side of the body
       const arm = this.armOf(f, m);
@@ -8194,6 +9366,12 @@ export class Game {
             rl -= sgn * 0.08 * varEnv;
           }
         }
+        // THE OFF HAND ANSWERS THE PUNCH (biomechanics, on top of the style variation above): with both fists out
+        // (arm === 2, the finisher and the windmill) there is no off hand to move — they are both the punch.
+        if (arm !== 2) {
+          const off = offArmCounter(m.kind, phase);
+          offGuard = P(offGuard.sx + off.sx, offGuard.sy + off.sy, offGuard.sz + off.sz, offGuard.ex + off.ex);
+        }
         // REAL STEEL ANTI-PENETRATION & CONTACT STOPPING:
         // Calculates the distance to the opponent's outer physical body boundary (chest/jaw/guard hull).
         // The punching fist and forearm physically stop at contact instead of penetrating through the opponent!
@@ -8228,10 +9406,13 @@ export class Game {
         const extraTw = varEnv > 0.01 ? (v === 3 ? -sgn * 0.26 : v === 1 ? -sgn * 0.15 : 0) * varEnv : 0;
         tw = s.twist * (mirrored ? -1 : 1) * (f.ippoStrike ? 1.35 : 1) + extraTw;
         if (f.tellT > 0) tw += Math.sin(f.animT * 46) * 0.03; // the held wind-up trembles
+        rl += swingRoll(m.kind, phase, sgn); // ...and the body rolls into the punch as it commits
         ln += s.lean + (f.runStrike ? 0.22 : f.ippoStrike ? 0.16 : f.rage ? 0.12 : 0); // leaning into it
         lg = Math.min((s.lunge + (v === 2 ? 0.18 * varEnv : 0)) * (f.runStrike ? 1.3 : 1) * (f.aim === AIM_BODY ? 0.94 : 1), maxLungeAllowed);
         dp += s.dip + (this.aimsLow(f, m) ? 0.1 : 0); // and you sit down into a body shot
-        kk = f.rage ? 92 : 75;
+        // THE SNAP: crisp through the release, sprung-steel soft through the recoil (see swingStiff). The base the
+        // arms were tuned to is unchanged (75, 92 in Rage Mode) — only the shape of the swing moves.
+        kk = swingStiff(f.rage ? 92 : 75, phase, f.moveT > m.impact);
       }
     } else if (f.tauntT > 0) {
       // FREESTYLE: one beat of a move from the book (poses.ts). Which move it is only changes what the curves do —
@@ -8351,6 +9532,52 @@ export class Game {
       const sw = Math.sin(t * 4) * 0.06 * idle;
       a0 = lerpPose({ ...GUARD, sx: GUARD.sx + sw }, WALKG, stalk);
       a1 = lerpPose({ ...GUARD, sx: GUARD.sx - sw }, WALKG, stalk);
+      // ALI STYLE: the hands come down and the whole upper body starts drifting (see the ALI STYLE block). It blends
+      // in with the idle weight, so the moment he really walks or throws, the ordinary fight stance takes over.
+      if (this.aliStyle && f.isPlayer) {
+        const aw = aliStanceWeight(f.state, f.blocking, wk > 0.15);
+        if (aw > 0) {
+          // STANDING it is the whole stance; WALKING it is CARRIED (reduced) — a fighter who floats still floats with
+          // his feet moving, and the low loose hands are the thing you can actually read from the broadcast camera
+          const ap = aliIdlePose(t);
+          const carry = aw * (1 - 0.4 * stalk);
+          a0 = lerpPose(a0, ap, carry);
+          a1 = lerpPose(a1, ap, carry);
+          const fl = aw * (1 - 0.55 * stalk); // the float eases off while the stride owns the body
+          tw += aliWeave(t) * fl;
+          rl += aliRoll(t) * fl;
+          dp += aliFloat(t) * fl;
+          f.headYaw = aliHead(t) * fl; // the head rides with the weave: a moving target, never a static face
+        }
+      }
+      // ---------------- PANJER: THE FIST THAT IS LOADING ----------------
+      // The loading arm pulls back into the move's OWN coil key — the pose the punch is about to be thrown out of —
+      // and deepens as the second runs out, with a strain in it and the knuckles burning once the load is full.
+      // This is the tell that pays for the 2×: from the far side of the ring you can see him wind it up.
+      if (f.panjerId && f.pkVis > 0.01) {
+        const ld = MOVES[f.panjerId];
+        const coil = ld.keys[1] ?? ld.keys[0];
+        // the pose reads the CHARGE, not the clock: a flick never coils, and the coil grows with the punch
+        const ch = panjerCharge(f.panjerHold);
+        const vis = f.pkVis * ch;
+        const grow = 0.62 + 0.38 * ch; // the coil deepens as the load builds
+        const strain = (0.015 + 0.03 * ch) * Math.sin(t * (26 + 20 * ch));
+        const load = P(coil.p.sx - 0.16 * grow + strain, coil.p.sy + 0.14 * grow, coil.p.sz + 0.1 * grow, coil.p.ex - 0.18 * grow);
+        const lm = this.armOf(f, ld);
+        if (lm === 1) {
+          a1 = lerpPose(a1, load, vis);
+        } else if (lm === 2) {
+          a0 = lerpPose(a0, load, vis);
+          a1 = lerpPose(a1, load, vis);
+        } else {
+          a0 = lerpPose(a0, load, vis);
+        }
+        // the whole body coils with the arm: the shoulder turns away from the target and the hips sink under it
+        tw += coil.twist * 0.6 * grow * vis;
+        ln += coil.lean * 0.55 * grow * vis;
+        dp += coil.dip * 0.4 * grow * vis;
+        kk = Math.max(kk, 34);
+      }
       ln = lerp(ln, 0.1 + stalk * 0.05, stalk); // chin down, chest over the hips: he walks INTO the fight
       dp = 0.15 + stalk * 0.08 + Math.sin(t * 5.2) * 0.035 * idle; // a lower, springier stance than standing
       rl = Math.sin(t * 2.6) * 0.03 * idle;
@@ -8638,6 +9865,19 @@ export class Game {
       f.acc.y += (az - f.acc.y) * k;
     }
     f.prevV.set(mvx, mvz);
+    // PANJER: a full load spits sparks off the knuckles — the last, loudest part of the tell. With PANJER OTOMATIS
+    // the tell is a STATE instead of a wind-up: the fists of a fighter whose every punch is loaded keep burning, so
+    // the other corner can still see exactly what is coming.
+    const burning = (f.panjerReady && !!f.panjerId) || (this.panjerMode && f.isPlayer);
+    if (burning) {
+      f.pkTick2 -= dt;
+      if (f.pkTick2 <= 0) {
+        f.pkTick2 = f.panjerReady && f.panjerId ? 0.07 : 0.15;
+        const arm = f.panjerId ? this.armOf(f, MOVES[f.panjerId]) : f.hand;
+        f.robot.fists[arm === 1 ? 1 : 0].localToWorld(this.aimTmp.set(0, 0, 0));
+        this.fx.spark(this.aimTmp, f.panjerId ? 2 : 1, f.panjerId ? 3.4 : 2.6, 0xffd34a, undefined, 1.1, 0.28, 3);
+      }
+    }
     const pw = this.punchStepOf(f, o);
     // STRIKE OPTICS: 0 → 1 as the fist pulls out of the guard, 1 at the moment it is released. The eyes read
     // this every frame and fire their lock-on pulse on the crossing.
@@ -8671,7 +9911,13 @@ export class Game {
         hitSpin: f.hitSpin,
         fall: e,
         time: f.animT,
-        glow: f.glowBoost + (f.counterT > 0 ? 1.2 : 0) + (f.isPlayer && f.meter >= 100 ? 1.0 + Math.sin(f.animT * 10) * 0.6 : 0),
+        glow:
+          f.glowBoost +
+          (f.counterT > 0 ? 1.2 : 0) +
+          // PANJER: the load glows on the body — brightest in the last frames before it is full
+          (f.panjerId ? 0.4 + 0.9 * panjerCharge(f.panjerHold) : 0) +
+          (this.panjerMode && f.isPlayer ? 1.0 : 0) + // PANJER OTOMATIS: the fists are loaded for good
+          (f.isPlayer && f.meter >= 100 ? 1.0 + Math.sin(f.animT * 10) * 0.6 : 0),
         flash: f.flash,
         tilt: f.tilt,
         tiltZ: f.tiltZ,
@@ -8703,6 +9949,8 @@ export class Game {
         hitPower: f.hitPower,
         taunt: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0),
         idleBounce: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0) ? 0 : undefined,
+        // THE ALI SHUFFLE: the player only, and only out of the dance — a swing, a dodge or a hit takes the feet back
+        shuffle: this.aliStyle && f.isPlayer ? (f.state === 'idle' ? 1 : 0.35) : 0,
       },
       dt,
     );
@@ -8716,11 +9964,13 @@ export class Game {
       const isWindmill = !!m && m.id === 'windmill';
       const mine = !!m && (arm === 2 || arm === i || (isWindmill && f.moveT < m.strikeAt * 0.72));
       // Forward-only motion emission: stops immediately at impact / apex so the trail never folds back during recovery
-      const forwardStrike = !m ? false : isWindmill ? (f.moveT <= m.impact) : (f.moveT >= m.strikeAt - 0.02 && f.moveT <= m.impact + 0.015);
+      // the ribbon starts a hair before the punch leaves the coil, so the blur of the whole release is captured
+      const forwardStrike = !m ? false : isWindmill ? (f.moveT <= m.impact) : (f.moveT >= m.strikeAt - 0.06 && f.moveT <= m.impact + 0.015);
       const emit = dt > 0 && f.state === 'attack' && mine && forwardStrike;
       tmp.set(0, -1.0, 0.05);
       f.robot.fists[i].localToWorld(tmp);
-      f.trails[i].width = 0.28 * f.scale * (m && isOD(m.id) ? 1.45 : f.rage ? 1.25 : 1);
+      // the ribbon's weight: by the punch's own power, wider on the arcs, capped (see trailWidthFor)
+      f.trails[i].width = m ? trailWidthFor(m.id, f.scale, f.rage) : 0.28 * f.scale * (f.rage ? 1.25 : 1);
       // CHARGE: in the last instant of the wind-up (or throughout the Windmill spin!) the fist crackles with energy
       if (
         dt > 0 &&
@@ -9442,7 +10692,19 @@ export class Game {
       eHp: this.enemy.hp,
       eMax: this.enemy.maxHp,
       stam: this.player.stam,
+      gassed: isGassed(this.player.stam),
+      eGassed: isGassed(this.enemy.stam),
+      eWhiff: this.enemy.whiffT,
+      star: this.starMode,
+      autoGuard: this.player.autoGuard,
       meter: this.player.meter,
+      ali: this.aliStyle,
+      panjerMode: this.panjerMode,
+      panjer: this.player.panjerId ? panjerCharge(this.player.panjerHold) : 0,
+      panjerMul: panjerLabel(panjerPower(this.player.panjerHold)).slice(1),
+      panjerReady: this.player.panjerReady && !!this.player.panjerId,
+      nCombo: this.nComboIdx,
+      nComboLocked: this.nComboCd > 0,
       combo: this.combo,
       stats: this.stats,
       wins: [...this.wins] as [number, number],
