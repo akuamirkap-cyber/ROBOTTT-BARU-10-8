@@ -211,6 +211,18 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
         </div>
       )}
 
+      {/* ---------- ALI STYLE: the low loose guard is on, and the feet are dancing ---------- */}
+      {h.ali && (
+        <div className="absolute left-1/2 top-[112px] flex -translate-x-1/2 items-center gap-2 sm:top-[122px]">
+          <span className="rounded-sm bg-cyan-300/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(120,240,255,0.45)]">
+            🦋 ALI STYLE · FLOAT
+          </span>
+          <span className="rounded-sm bg-white/10 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-white/60" title="Guard diturunkan (tangan di dada) — liputan lebih longgar, tapi gerak kakinya paling lincah. Tekan Y lagi untuk kembali ke guard tinggi.">
+            GUARD RENDAH
+          </span>
+        </div>
+      )}
+
       {/* ---------- THE N COMBO: which link of H-H-J-J-K is next, and whether the finisher is paid for ---------- */}
       {(h.nCombo >= 0 || h.nComboLocked) && (
         <div className="absolute bottom-[64px] left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-[76px]">

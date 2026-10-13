@@ -361,6 +361,8 @@ export interface HudState {
   star: boolean;
   /** ...and the low guard is up by itself right now */
   autoGuard: boolean;
+  /** ALI STYLE is equipped (the HUD shows it, so the low guard is never a mystery) */
+  ali: boolean;
   /** THE N COMBO: which link of COMBO_SCRIPT is next (-1 = the script is not running). The HUD reads it as "3/6". */
   nCombo: number;
   /** ...and true while N is on the post-combo cooldown (so the badge can say WHY nothing happened) */
@@ -1001,6 +1003,40 @@ export const defenceAgainst = (id: MoveId, dodge: number): 'block' | 'side' | 'b
   if (id === 'upper') return Math.random() < dodge * 0.8 ? 'back' : 'block';
   return Math.random() < dodge ? 'side' : 'block'; // straights are sidestepped
 };
+
+/**
+ * ============================== ALI STYLE — float like a butterfly ==============================
+ * Press Y and the player fights like Muhammad Ali. Three things make the style, and all three live here so a test can
+ * hold them still:
+ *
+ *   THE LOW LOOSE GUARD  hands carried down around the chest instead of up at the jaw, chin tucked behind the LEAD
+ *                        SHOULDER rather than behind the gloves, elbows a little wider. It is the stance he actually
+ *                        fought out of — and it is deliberately worse at covering up than the game's guard, which is
+ *                        exactly why it is a style and not a free upgrade.
+ *   THE FLOAT           the upper body never settles: a slow weave across the centre line with a lazy pelvis roll and
+ *                        the head moving with it (a moving target — which is the entire point of it).
+ *   THE ALI SHUFFLE     the signature. Standing on the spot the feet DANCE — rapid, light, alternating half-steps
+ *                        around the stance with the weight rocking side to side (rigged in robot.ts: `shuffle`).
+ *
+ * It is a STANCE, so it moves exactly ONE gameplay number — the footwork pace (+8%) — because pace IS the style. The
+ * dodge economy, the damage tables, the tells and the punch speeds are all untouched (asserted in `alitest.mjs`).
+ */
+export const ALI_GUARD: Pose = P(-0.3, -0.24, 0.26, -1.5);
+export const ALI_SPEED = 1.08; // the feet are a touch quicker: "float like a butterfly" is a footwork claim
+export const ALI_FLOAT_RATE = 4.6; // how fast the upper body drifts (rad/s of the weave: ≈0.73 Hz, one weave every 1.4 s)
+export const ALI_WEAVE = 0.09; // rad — shoulder weave across the centre line
+export const ALI_TILT = 0.05; // rad — the pelvis roll that goes with it
+export const ALI_HEAD = 0.1; // rad — the head moves with the weave (a moving target, never a static face)
+export const ALI_FLOAT = 0.04; // the small extra sink-and-rise of the float (hip dip, metres)
+/** the idle pose of the style: hands low and loose, the shoulders drifting on the float */
+export const aliIdlePose = (t: number): Pose => P(ALI_GUARD.sx + Math.sin(t * ALI_FLOAT_RATE) * 0.06, ALI_GUARD.sy, ALI_GUARD.sz, ALI_GUARD.ex);
+/** ...and the three body terms that ride with it: the weave, the pelvis roll and where the head goes */
+export const aliWeave = (t: number) => Math.sin(t * ALI_FLOAT_RATE) * ALI_WEAVE;
+export const aliRoll = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 1.1) * ALI_TILT;
+export const aliHead = (t: number) => Math.sin(t * ALI_FLOAT_RATE + 0.5) * ALI_HEAD;
+export const aliFloat = (t: number) => (0.5 + 0.5 * Math.sin(t * ALI_FLOAT_RATE * 2 + 0.9)) * ALI_FLOAT;
+/** how much of the style is showing, by what the fighter is doing: it needs the feet (standing, not swinging) */
+export const aliStanceWeight = (state: string, blocking: boolean, moving: boolean) => (state === 'idle' && !blocking && !moving ? 1 : 0);
 
 /**
  * ============================== SWING DYNAMICS — the boxer's kinetic chain ==============================
@@ -1951,6 +1987,8 @@ export class Game {
   private nComboWait = 0;
   private nComboCd = 0;
   private nComboSeq = -1; // moveSeq of the link we last threw — how the script knows its own punch from yours
+  /** ALI STYLE (press Y): the player's stance — low loose hands, the float, and the Ali Shuffle on the feet. */
+  private aliStyle = false;
   private stats: MatchStats = freshStats();
   private walk: WalkTrack[] = [];
   private walkPyroT = 0;
@@ -3507,11 +3545,14 @@ export class Game {
       case 'KeyN': // THE COMBO BUTTON: JAB-JAB-HOOK-HOOK-UPPERCUT → PUKULAN MEMATIKAN (see COMBO_SCRIPT)
         this.startNCombo();
         break;
+      case 'KeyY': // ALI STYLE: the low loose guard, the float and the Ali Shuffle (see the ALI STYLE block)
+        this.toggleAliStyle();
+        break;
       // ---------------- FREESTYLE ----------------
-      // The show-off book (poses.ts) sits on its own keys: M N B Y O Z 1 2 3 4 5 6.
+      // The show-off book (poses.ts) sits on its own keys: M B O Z 1 2 3 4 5 6 (N and Y are GAME buttons now — the
+      // combo and the ALI STYLE stance — so their poses are reached by cycling the book with the GAYA button).
       case 'KeyM':
       case 'KeyB':
-      case 'KeyY':
       case 'KeyO':
       case 'KeyZ':
       case 'Digit1':
@@ -4636,7 +4677,8 @@ export class Game {
       const isZeusPlayer = p.robot.isZeus;
       const zeusSpeedMul = isZeusPlayer ? 0.90 : 1.0; // khusus zeus: gerakan 10% lebih pelan
       const rageSpd = (p.rage ? 1.15 : 1) * zeusSpeedMul;
-      const walkMul = 0.88 + 0.16 * this.fwMul; // calibrated pro-boxer step speed (1.04× at 1×, 1.36× at 3× — fast, grounded, never cartoony)
+      // ALI STYLE is a footwork style: +8% pace for the player (ALI_SPEED is the only gameplay number the style moves)
+      const walkMul = (0.88 + 0.16 * this.fwMul) * (this.aliStyle ? ALI_SPEED : 1); // calibrated pro-boxer step speed (1.04× at 1×, 1.36× at 3× — fast, grounded, never cartoony)
       const runMul = 0.85 + 0.25 * this.fwMul; // fast ring sprint multiplier when holding Shift
       if (ippoOn) {
         const im = walkMul * rageSpd;
@@ -5492,6 +5534,25 @@ export class Game {
       p.atkSpd = Math.max(p.atkSpd, 1.24 * atlasSpd);
       this.popup(new THREE.Vector3(p.pos.x, 7.1, p.pos.y), '🔥 OVERDRIVE COMEBACK!', 'pop-crit');
     }
+  }
+
+  /**
+   * Y — ALI STYLE. A stance toggle, not a buff: it changes how the fighter stands, floats and dances (see the ALI
+   * STYLE block) and stays on until it is pressed off again. Available in every mode, on the PLAYER only — the
+   * opponent keeps its own stance, so the style is something you do, not something that happens to you.
+   */
+  toggleAliStyle() {
+    this.aliStyle = !this.aliStyle;
+    const p = this.player;
+    if (p) {
+      this.popup(
+        new THREE.Vector3(p.pos.x, 6.9, p.pos.y),
+        this.aliStyle ? '🦋 ALI STYLE — FLOAT LIKE A BUTTERFLY' : 'ALI STYLE OFF — GUARD TINGGI',
+        this.aliStyle ? 'pop-crit' : 'pop-info',
+      );
+      this.sfx.ready();
+    }
+    this.emitHud(true);
   }
 
   /**
@@ -9043,6 +9104,20 @@ export class Game {
       const sw = Math.sin(t * 4) * 0.06 * idle;
       a0 = lerpPose({ ...GUARD, sx: GUARD.sx + sw }, WALKG, stalk);
       a1 = lerpPose({ ...GUARD, sx: GUARD.sx - sw }, WALKG, stalk);
+      // ALI STYLE: the hands come down and the whole upper body starts drifting (see the ALI STYLE block). It blends
+      // in with the idle weight, so the moment he really walks or throws, the ordinary fight stance takes over.
+      if (this.aliStyle && f.isPlayer) {
+        const aw = aliStanceWeight(f.state, f.blocking, wk > 0.15) * idle;
+        if (aw > 0) {
+          const ap = aliIdlePose(t);
+          a0 = lerpPose(a0, ap, aw);
+          a1 = lerpPose(a1, ap, aw);
+          tw += aliWeave(t) * aw;
+          rl += aliRoll(t) * aw;
+          dp += aliFloat(t) * aw;
+          f.headYaw = aliHead(t) * aw; // the head rides with the weave: a moving target, never a static face
+        }
+      }
       ln = lerp(ln, 0.1 + stalk * 0.05, stalk); // chin down, chest over the hips: he walks INTO the fight
       dp = 0.15 + stalk * 0.08 + Math.sin(t * 5.2) * 0.035 * idle; // a lower, springier stance than standing
       rl = Math.sin(t * 2.6) * 0.03 * idle;
@@ -9395,6 +9470,8 @@ export class Game {
         hitPower: f.hitPower,
         taunt: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0),
         idleBounce: f.mode === 'taunt' || f.tauntT > 0 || (this.phase === 'intro' && this.phaseT < 2.0) ? 0 : undefined,
+        // THE ALI SHUFFLE: the player only, and only out of the dance — a swing, a dodge or a hit takes the feet back
+        shuffle: this.aliStyle && f.isPlayer ? (f.state === 'idle' ? 1 : 0.35) : 0,
       },
       dt,
     );
@@ -10142,6 +10219,7 @@ export class Game {
       star: this.starMode,
       autoGuard: this.player.autoGuard,
       meter: this.player.meter,
+      ali: this.aliStyle,
       nCombo: this.nComboIdx,
       nComboLocked: this.nComboCd > 0,
       combo: this.combo,

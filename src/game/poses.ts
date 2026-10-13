@@ -138,7 +138,7 @@ export const FREESTYLE: Freestyle[] = [
   {
     // 5 — Y: both arms windmill right around, then slam the fists together
     id: 5,
-    key: 'KeyY',
+    key: '', // Y is the ALI STYLE stance now (see the ALI STYLE block in Game.ts) — cycle the book to reach it
     name: 'kincir tinju',
     tag: 'KINCIR LALU HENTAK!',
     say: 'Clang!',

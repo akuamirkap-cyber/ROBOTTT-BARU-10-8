@@ -102,7 +102,11 @@ console.log('\n§6  N is the combo button and nothing else');
 {
   ok('the champion pose gave the key up', FREESTYLE.every((fs) => fs.key !== 'KeyN'));
   ok('...but it is still in the book (the GAYA button cycles it)', FREESTYLE.some((fs) => fs.id === 1 && fs.name === 'angkat sabuk'));
-  ok('every other freestyle pose kept its own key', FREESTYLE.filter((fs) => fs.id !== 1).every((fs) => fs.key.startsWith('Key') || /^Digit/.test(fs.key)));
+  // N and Y are GAME buttons now (the combo and the ALI STYLE stance), so those two poses are keyless by design and
+  // reached by cycling the book. Every other pose must keep a key of its own — nothing else may be taken.
+  const keyless = FREESTYLE.filter((fs) => fs.key === '');
+  ok('only the two poses whose keys became game buttons are keyless', keyless.length === 2, keyless.map((fs) => fs.name).join(' · '));
+  ok('every other freestyle pose kept its own key', FREESTYLE.filter((fs) => fs.key !== '').every((fs) => fs.key.startsWith('Key') || /^Digit/.test(fs.key)));
 }
 
 console.log(fails === 0 ? '\nN COMBO + FINISHER: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);
