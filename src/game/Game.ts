@@ -1003,6 +1003,69 @@ export const defenceAgainst = (id: MoveId, dodge: number): 'block' | 'side' | 'b
 };
 
 /**
+ * ============================== SWING DYNAMICS — the boxer's kinetic chain ==============================
+ * What makes a Boxing Star punch land is that the whole machine throws itself, not just the arm. The data in
+ * `MOVES[*].keys` is the arm's own journey (coil → extension → overshoot → settle); this is the layer that rides on
+ * top of it, and it is what turns a correct punch into a punch that READS. Four terms, all pure functions of the
+ * swing's own clock, all four identical for the player and the AI (see `swingtest.mjs`):
+ *
+ *   swingPhase    — WHERE the swing is: 0 before the wind-up, 1 on the exact frame the fist lands, back to 0 as the
+ *                   arm settles into the guard. Everything below is driven by this one clock, so they peak together.
+ *   swingStiff    — the arm springs TIGHTEN through the release and go SOFT through the recoil. That asymmetry is the
+ *                   whole trick: a piston going out (the fist is at full extension ON the impact frame, instead of
+ *                   arriving a couple of frames late and hitting soft) and sprung steel coming back.
+ *   offArmCounter — the off hand answers the punch: back and in to the chin on a straight, across the chest on an
+ *                   arc, down to the ribs on an uppercut. A boxing punch is never one arm, and a static off hand is
+ *                   exactly what makes a hand-animated punch look stiff.
+ *   swingRoll     — the body rolls INTO the punch as it commits (hardest on the arcing punches), so the silhouette
+ *                   leans across its own centre line instead of standing up straight behind the fist.
+ *   trailWidthFor — how wide the fist's ribbon is drawn (see the fist-trail block): scaled by the punch's own power,
+ *                   widened for the arcing punches, and capped so no punch can smear across the whole screen.
+ */
+export type SwingKind = 'front' | 'side' | 'up';
+
+/** how far into the swing we are: 0 before the wind opens, 1 at the moment of contact, back to 0 at rest */
+export const swingPhase = (moveT: number, strikeAt: number, impact: number, dur: number) => {
+  // the envelope opens a beat BEFORE the punch leaves the coil (that is the last of the load) and takes as long to
+  // close as the swing has left to recover in, so the terms above relax exactly as the arm comes home
+  const lead = Math.max(0.04, (impact - strikeAt) * 0.5);
+  if (moveT <= strikeAt - lead) return 0;
+  if (moveT < impact) return (moveT - (strikeAt - lead)) / Math.max(0.001, impact - (strikeAt - lead));
+  return Math.max(0, 1 - (moveT - impact) / Math.max(0.08, dur - impact));
+};
+
+export const SWING_LIFT = 0.45; // +45% arm spring through the release: the fist arrives ON the impact frame
+export const SWING_SETTLE = 0.3; // −30% through the recoil: it comes back like sprung steel, not like a piston
+/**
+ * The arm-spring target during a strike. `passed` = the swing is already past its impact frame (the recoil half).
+ * Relaxing the spring afterwards is what lets the arm visibly settle — a rigid return has no follow-through to read.
+ */
+export const swingStiff = (base: number, phase: number, passed: boolean) => base * (passed ? 1 - SWING_SETTLE * phase : 1 + SWING_LIFT * phase);
+
+/** the off hand's counter-balance, at full commitment (Pose deltas are written in the rig's own mirrored space) */
+export const offArmCounter = (kind: SwingKind, phase: number): Pose => {
+  const a = Math.max(0, Math.min(1, phase));
+  if (kind === 'side') return P(-0.1 * a, -0.3 * a, 0.06 * a, 0.1 * a); // arc: the off fist crosses to the far ear
+  if (kind === 'up') return P(0.26 * a, -0.14 * a, -0.05 * a, -0.16 * a); // uppercut: it drops to the ribs and cinches
+  return P(-0.14 * a, -0.22 * a, -0.08 * a, -0.2 * a); // straight: back to the chin, elbow cinched tight
+};
+
+export const SWING_ROLL = 0.12; // how far the body rolls into a straight...
+export const SWING_ROLL_ARC = 1.6; // ...and how much harder it rolls on an arc (the hook is the rolling punch)
+export const SWING_ROLL_UP = 0.7; // an uppercut rolls, but it is a vertical punch — most of its travel is the rise
+export const swingRoll = (kind: SwingKind, phase: number, sgn: number) =>
+  sgn * SWING_ROLL * (kind === 'side' ? SWING_ROLL_ARC : kind === 'up' ? SWING_ROLL_UP : 1) * Math.max(0, Math.min(1, phase));
+
+/** the fist's ribbon width: by the punch's own power, wider on the arcs, capped so it can never smear the screen */
+export const TRAIL_CAP = 0.8;
+export const trailWidthFor = (id: MoveId, scale: number, rage = false) => {
+  const m = MOVES[id];
+  const arc = m.kind === 'side' ? 1.35 : 1;
+  const heavy = isOD(id) ? 1.45 : rage ? 1.25 : 1;
+  return Math.min(TRAIL_CAP, 0.3 * scale * (0.85 + 0.75 * m.power) * arc * heavy);
+};
+
+/**
  * COUNTER STRAIGHT (L). L is a punch — a lunging straight on the Overdrive's line at half its power, made to be
  * chained out of your own jab/cross/hook. On top of that, the first frames are a short read: a strike that reaches
  * the player inside this window is *caught* — no damage, the attacker is knocked out of the swing, time slows down
@@ -7308,6 +7371,24 @@ export class Game {
     const fz = f.pos.y + dir.y * 0.9;
     this.fx.spark(new THREE.Vector3(fx, 0.15, fz), 6 + Math.floor(m.power * 22), 3 + m.power * 4, 0x9a9aaa, undefined, 1.2, 0.4, 3);
     this.fx.flash(new THREE.Vector3(fx, this.aimY(f, m) * 0.7 * f.scale, fz), 0.7 + m.power * 1.6, 0xbfe6ff, 0.09); // the punch cuts the air
+    // THE SWING STREAK: the visual half of the whoosh above — a short, stretched fan of sparks laid down the line the
+    // fist is about to travel, sized by the punch's own power. It is what makes the air part BEFORE the punch lands.
+    const streak = new THREE.Vector3(dir.x, 0.06, dir.y);
+    const hx = f.pos.x + dir.x * 1.7 * f.scale;
+    const hz = f.pos.y + dir.y * 1.7 * f.scale;
+    this.fx.spark(
+      new THREE.Vector3(hx, this.aimY(f, m) * f.scale, hz),
+      4 + Math.floor(m.power * 15),
+      8 + m.power * 9,
+      isOD(m.id) ? 0xffd27a : 0xbfe6ff,
+      streak,
+      0.55,
+      0.26,
+      5,
+    );
+    // ...and the heavy swings are felt before they land: a touch of lens kick on anything with real mass behind it
+    // (a jab never moves the camera — that would turn a jab into a haymaker, and it is thrown ten times a round)
+    if (m.power >= 0.6) this.fovKick = Math.max(this.fovKick, 1.5 + 2.5 * m.power);
   }
 
   private resolveHit(a: Fighter, d: Fighter) {
@@ -8731,6 +8812,8 @@ export class Game {
     } else if (f.state === 'attack' && f.move) {
       const m = f.move;
       const s = sampleKeys(m.keys, f.moveT);
+      // SWING DYNAMICS: one clock for the whole kinetic chain (see the block above the strike data)
+      const phase = swingPhase(f.moveT, m.strikeAt, m.impact, m.dur);
       // the player's stance hand decides which fist throws it; posing the other arm mirrors the motion,
       // so the follow-through, the swing and the wind-up all come from the correct side of the body
       const arm = this.armOf(f, m);
@@ -8794,6 +8877,12 @@ export class Game {
             rl -= sgn * 0.08 * varEnv;
           }
         }
+        // THE OFF HAND ANSWERS THE PUNCH (biomechanics, on top of the style variation above): with both fists out
+        // (arm === 2, the finisher and the windmill) there is no off hand to move — they are both the punch.
+        if (arm !== 2) {
+          const off = offArmCounter(m.kind, phase);
+          offGuard = P(offGuard.sx + off.sx, offGuard.sy + off.sy, offGuard.sz + off.sz, offGuard.ex + off.ex);
+        }
         // REAL STEEL ANTI-PENETRATION & CONTACT STOPPING:
         // Calculates the distance to the opponent's outer physical body boundary (chest/jaw/guard hull).
         // The punching fist and forearm physically stop at contact instead of penetrating through the opponent!
@@ -8828,10 +8917,13 @@ export class Game {
         const extraTw = varEnv > 0.01 ? (v === 3 ? -sgn * 0.26 : v === 1 ? -sgn * 0.15 : 0) * varEnv : 0;
         tw = s.twist * (mirrored ? -1 : 1) * (f.ippoStrike ? 1.35 : 1) + extraTw;
         if (f.tellT > 0) tw += Math.sin(f.animT * 46) * 0.03; // the held wind-up trembles
+        rl += swingRoll(m.kind, phase, sgn); // ...and the body rolls into the punch as it commits
         ln += s.lean + (f.runStrike ? 0.22 : f.ippoStrike ? 0.16 : f.rage ? 0.12 : 0); // leaning into it
         lg = Math.min((s.lunge + (v === 2 ? 0.18 * varEnv : 0)) * (f.runStrike ? 1.3 : 1) * (f.aim === AIM_BODY ? 0.94 : 1), maxLungeAllowed);
         dp += s.dip + (this.aimsLow(f, m) ? 0.1 : 0); // and you sit down into a body shot
-        kk = f.rage ? 92 : 75;
+        // THE SNAP: crisp through the release, sprung-steel soft through the recoil (see swingStiff). The base the
+        // arms were tuned to is unchanged (75, 92 in Rage Mode) — only the shape of the swing moves.
+        kk = swingStiff(f.rage ? 92 : 75, phase, f.moveT > m.impact);
       }
     } else if (f.tauntT > 0) {
       // FREESTYLE: one beat of a move from the book (poses.ts). Which move it is only changes what the curves do —
@@ -9316,11 +9408,13 @@ export class Game {
       const isWindmill = !!m && m.id === 'windmill';
       const mine = !!m && (arm === 2 || arm === i || (isWindmill && f.moveT < m.strikeAt * 0.72));
       // Forward-only motion emission: stops immediately at impact / apex so the trail never folds back during recovery
-      const forwardStrike = !m ? false : isWindmill ? (f.moveT <= m.impact) : (f.moveT >= m.strikeAt - 0.02 && f.moveT <= m.impact + 0.015);
+      // the ribbon starts a hair before the punch leaves the coil, so the blur of the whole release is captured
+      const forwardStrike = !m ? false : isWindmill ? (f.moveT <= m.impact) : (f.moveT >= m.strikeAt - 0.06 && f.moveT <= m.impact + 0.015);
       const emit = dt > 0 && f.state === 'attack' && mine && forwardStrike;
       tmp.set(0, -1.0, 0.05);
       f.robot.fists[i].localToWorld(tmp);
-      f.trails[i].width = 0.28 * f.scale * (m && isOD(m.id) ? 1.45 : f.rage ? 1.25 : 1);
+      // the ribbon's weight: by the punch's own power, wider on the arcs, capped (see trailWidthFor)
+      f.trails[i].width = m ? trailWidthFor(m.id, f.scale, f.rage) : 0.28 * f.scale * (f.rage ? 1.25 : 1);
       // CHARGE: in the last instant of the wind-up (or throughout the Windmill spin!) the fist crackles with energy
       if (
         dt > 0 &&
