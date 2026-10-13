@@ -18,11 +18,13 @@
 //   §5  THE LOAD IS A COMMITMENT — it dies to a hit, a guard, a launch, the bell, a pause and a lost focus
 //   §6  THE OPPONENT CAN DO IT TOO (same rule, same 1 s) — and not too often
 //   §7  NOTHING ELSE MOVED — the punch book, the tells and the dodge table are exactly what they were
+//   §8  PANJER OTOMATIS (SHIFT) — one press and every punch is a full one, thrown at normal speed
 import { readFileSync } from 'node:fs';
 import {
   ALI_SPEED,
   PANJER_FREE,
   PANJER_LOADABLE,
+  PANJER_MODE_KEYS,
   DODGE_CFG,
   MOVES,
   PANJER_AI_CD_MAX,
@@ -98,9 +100,9 @@ console.log('\n§1  the rule — a flick is a punch, and above it the longer the
 console.log('\n§2  the button — load on the press, throw on the RELEASE');
 {
   const edge = slice('const tk = tapKind[code];', 'private heroAnimState', 3000);
-  ok('the six strike keys no longer fire on the press', !/case 'KeyH':\s*this\.tryAttack/.test(src) && !/case 'KeyX':[^\n]*\n[^\n]*this\.tryAttack/.test(src));
-  ok('...they start a LOAD instead', (edge.match(/this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/g) ?? []).length === 1 && /case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyV':\s*\n\s*case 'KeyX':/.test(edge));
-  ok('...and the RELEASE is what throws the punch', /release\(code: string\)[\s\S]{0,320}if \(this\.player && this\.player\.panjerKey === code\) this\.firePanjer\(this\.player\);/.test(src));
+  ok('the six strike keys no longer fire on the press by themselves', !/case 'KeyH':\s*this\.tryAttack/.test(src) && !/case 'KeyX':[^\n]*\n[^\n]*this\.tryAttack/.test(src));
+  ok('...they start a LOAD instead (unless PANJER OTOMATIS is on)', /this\.panjerMode\) this\.panjerMax\(p, PANJER_KEYS\[code\]\);\s*\n\s*else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(edge) && /case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyV':\s*\n\s*case 'KeyX':/.test(edge));
+  ok('...and the RELEASE is what throws the punch', /release\(code: string\)[\s\S]{0,700}if \(this\.player && this\.player\.panjerKey === code\) this\.firePanjer\(this\.player\);/.test(src));
   ok('the reactive COUNTER (L) still fires on the press — it has to answer a fist already in flight', /case 'KeyL':\s*\n\s*this\.tryAttack\(p, 'counter'\);/.test(src));
   ok('...and the throw (P) and the Overdrive (R) are untouched', PANJER_KEYS.KeyP === undefined && PANJER_KEYS.KeyL === undefined && PANJER_KEYS.KeyN === undefined && PANJER_KEYS.KeyR === undefined);
   // the four loadable keys are the four ordinary punches, and they throw the SAME move ids the old cases did
@@ -120,7 +122,7 @@ console.log('\n§3  the tell — you can SEE him wind it up (that is what pays f
   ok('...and the pose reads the CHARGE curve, so what you see is what you throw', /const ch = panjerCharge\(f\.panjerHold\)/.test(pose) && /f\.pkVis \* ch/.test(pose));
   ok('the shoulder turns away from the target while it loads', /tw \+= coil\.twist \* 0\.6/.test(pose) && /dp \+= coil\.dip \* 0\.4/.test(pose));
   ok('the body glows brighter as the load fills', /f\.panjerId \? 0\.4 \+ 0\.9 \* panjerCharge\(f\.panjerHold\) : 0/.test(src));
-  ok('a full load sparks off the knuckles', /f\.panjerReady && f\.panjerId/.test(src) && /f\.pkTick2 = 0\.07;/.test(src));
+  ok('a full load sparks off the knuckles', /const burning = \(f\.panjerReady && !!f\.panjerId\)/.test(src) && /f\.pkTick2 = f\.panjerReady && f\.panjerId \? 0\.07 : 0\.15;/.test(src));
   ok('it answers out loud when it comes full — for BOTH fighters', /'💪 PANJER SIAP!'/.test(src) && /'⚠️ PANJER MUSUH!'/.test(src) && /this\.sfx\.ready\(\)/.test(src));
   ok('the loading tick rises with the load', /this\.sfx\.tick\(0\.3 \+ 0\.45 \* panjerCharge\(f\.panjerHold\)\)/.test(src));
   ok('the HUD carries a PANJER gauge', /h\.panjer > 0/.test(hud) && /h\.panjerReady \?/.test(hud));
@@ -185,6 +187,42 @@ console.log('\n§7  nothing else moved');
   ok('the player\'s load is deterministic — no dice anywhere the player can reach', (playerLoad.match(/Math\.random/g) ?? []).length === 0);
   ok('...and the AI\'s dice live in its own branch', (slice('} else {\n      // the AI\'s own release', 'private panjerReady(', 900).match(/Math\.random/g) ?? []).length === 2);
   ok('...the only roll in the decision itself is the one that makes him load', (src.match(/Math\.random\(\) < dt \* panjerAiRate/g) ?? []).length === 1);
+}
+
+// ==================================================================== §8 PANJER OTOMATIS
+// "mending kalo saya pencet shift panjer maka pukulan automatis yg mentok maks jadi ga perlu pake manjer hjkl kalo
+//  mau pukulan maks kecepatan dan hasilnya" — one key, and the hold is not needed any more.
+console.log('\n§8  PANJER OTOMATIS (SHIFT) — full power, normal speed, no holding');
+{
+  ok('SHIFT is the button (either one)', PANJER_MODE_KEYS.join(',') === 'ShiftLeft,ShiftRight');
+  ok('...and it is read BEFORE the fight gate, like the other modes (lobby, ring walk, fight, pause)', (() => {
+    const edge = slice('private onEdge(', 'const p = this.player;', 2600);
+    return /PANJER_MODE_KEYS\.includes\(code\)[\s\S]{0,260}this\.togglePanjerMode\(\);/.test(edge);
+  })());
+  ok('with the mode on the punch leaves ON THE PRESS (no release, no wait)', /if \(this\.panjerMode\) this\.panjerMax\(p, PANJER_KEYS\[code\]\);/.test(src));
+  ok('...and it leaves at the CEILING', /private panjerMax\(f: Fighter, id: MoveId\) \{\s*\n\s*f\.panjerNext = PANJER_DMG;/.test(src));
+  ok('...at full speed: it is the ordinary press path (tryAttack), not the release one', slice('private panjerMax(', 'togglePanjerMode()').includes('this.tryAttack(f, id);'));
+  ok('...and in the automatic mode nothing is ever LOADED (no hold to wait for)', !/beginPanjer/.test(slice('private panjerMax(', 'togglePanjerMode()')) && !/panjerHold/.test(slice('private panjerMax(', 'togglePanjerMode()')));
+  ok('the multiplier it carries is the same ×2 the manual load tops out at', PANJER_DMG === 2 && /f\.panjerNext = PANJER_DMG;/.test(src) && !/PANJER_AUTO_DMG/.test(src));
+  ok('a punch pressed mid-swing still comes out full (the queue keeps the load)', /f\.panjerNext = PANJER_DMG;\s*\n\s*this\.tryAttack\(f, id\);/.test(src));
+  ok('the mode answers loudly (banner + shout + a burst on the fighter)', /showBanner\('PANJER OTOMATIS'/.test(src) && /this\.sfx\.charge\(\)/.test(slice('togglePanjerMode()', 'private panjerStep(')) && /this\.fx\.ring\(p\.pos\.x, p\.pos\.y, on \? 0xffd34a/.test(src));
+  ok('...and it is remembered between visits (localStorage)', /LS_PANJER_MODE/.test(src) && /loadPanjerMode\(\)/.test(src) && /savePanjerMode\(on\)/.test(src) && /panjerMode = loadPanjerMode\(\);/.test(src));
+  // THE TELL SURVIVES: the wind-up is gone, so the fighter himself has to show it
+  ok('the tell becomes a STATE: the fists burn while the mode is on', /this\.panjerMode && f\.isPlayer \? 1\.0 : 0/.test(src) && /const burning = \(f\.panjerReady && !!f\.panjerId\) \|\| \(this\.panjerMode && f\.isPlayer\)/.test(src));
+  ok('...and the HUD says it, not just the fists', /PANJER OTOMATIS/.test(hud) && /h\.panjerMode/.test(hud));
+  ok('...with a touch button, so a phone can switch it too', /onPanjerMode/.test(hud) && /onPanjerMode\?\.\(\)/.test(hud) && /onPanjerMode=\{\(\) => gameRef\.current\?\.togglePanjerMode\(\)\}/.test(readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8')));
+  ok('the manual load gauge stands down while it is on (no double readout)', /h\.panjer > 0 && !h\.panjerMode/.test(hud));
+  // SHIFT used to run: one key cannot do both
+  ok('SHIFT is no longer the sprint key', !/keys\.has\('ShiftLeft'\)/.test(src) && !/shiftHeld/.test(src));
+  ok('...the sprint lives on F (and the double-tap W run latch)', /const runKey = this\.keys\.has\('KeyF'\)/.test(src) && /this\.runLatch && holdW && fwd > 0/.test(src));
+  ok('...and the touch RUN button still sends that same F', /code="KeyF" label="RUN"/.test(hud));
+  ok('the guide explains both ways of loading a punch', /PANJER OTOMATIS/.test(menu) && /SPRINT sekarang di F|Sprint sekarang di F|sekarang di F/.test(menu));
+  ok('turning it off hands the game back to the hold mechanic untouched', /else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(src));
+  ok('...and switching it on spends any load that was already in the arm', /if \(on\) this\.player\?\.clearPanjer\(\);/.test(src));
+  // the editor screens use SHIFT+click: the game must not be listening at all while they are up
+  ok('the game stops reading keys while a full-screen editor/sim is open', /if \(this\.inputOff\) return;/.test(src) && /setInputOff\(true\)/.test(readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8')) && /setInputOff\(false\)/.test(readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8')));
+  // ...and the whole mode is a PLAYER switch: the AI fights the way it always did
+  ok('the automatic mode is the player\'s switch (the AI\'s own panjer is unchanged)', /this\.panjerMode \? PANJER_DMG : 1|this\.panjerMode\) this\.panjerMax\(p,/.test(src) && /\(p, PANJER_KEYS\[code\]\)/.test(src));
 }
 
 console.log(fails === 0 ? '\nPANJER: ALL PASS\n' : `\n${fails} FAILURE(S)\n`);

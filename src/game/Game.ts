@@ -363,6 +363,8 @@ export interface HudState {
   autoGuard: boolean;
   /** ALI STYLE is equipped (the HUD shows it, so the low guard is never a mystery) */
   ali: boolean;
+  /** PANJER OTOMATIS (SHIFT): every punch comes out on the press, at the ceiling. The HUD has to say so. */
+  panjerMode: boolean;
   /** PANJER: 0..1 of the load the player is building on a held strike button (0 = a flick, nothing to show) */
   panjer: number;
   /** how hard the punch would land if the button came up right now, written for the screen: "1,6" */
@@ -1066,6 +1068,32 @@ export const PANJER_FREE = 0.4; // a FLICK shorter than this is always an ordina
 export const PANJER_T = 1.0; // seconds of HOLD that make the load full
 export const PANJER_DMG = 2.0; // ×damage at a full load
 export const PANJER_KNOCK = 2.0; // ×knockback at a full load (the pushback AND the launch)
+/**
+ * PANJER OTOMATIS — the SHIFT button. Pressing it turns the whole load mechanic into a STATE: while it is on, the
+ * four punch keys fire ON THE PRESS again (full speed, nothing to hold) and every one of them comes out at the
+ * ceiling — PANJER_DMG× damage and PANJER_KNOCK× hajar. That is the "pukulan otomatis yang mentok maks" the user
+ * asked for: no more holding H/J/K/X to get the big punch.
+ * The tell does not disappear with the wind-up — it moves from the punch to the FIGHTER: while the mode is on his
+ * fists burn (glow + sparks) and the HUD says so, so the other corner can still read what he is holding.
+ * SHIFT used to be the sprint key; the sprint now lives on F (and on the double-tap W run latch), because one key
+ * cannot mean "run" and "load every punch to the ceiling" at the same time.
+ */
+export const PANJER_MODE_KEYS: readonly string[] = ['ShiftLeft', 'ShiftRight'];
+export const LS_PANJER_MODE = 'steel-titans-panjer-mode-v1';
+export const loadPanjerMode = (): boolean => {
+  try {
+    return localStorage.getItem(LS_PANJER_MODE) === 'true'; // default OFF: the hold mechanic is the default game
+  } catch {
+    return false;
+  }
+};
+export const savePanjerMode = (on: boolean) => {
+  try {
+    localStorage.setItem(LS_PANJER_MODE, String(on));
+  } catch {
+    /* ignore */
+  }
+};
 export const PANJER_KEYS: Record<string, MoveId> = {
   KeyH: 'jab',
   KeyJ: 'hook',
@@ -2130,7 +2158,6 @@ export class Game {
   private baseFov = 58; // the gameplay lens, breathing with the distance
   private handPh = 0; // phase of the handheld drift
   private runLatch = false; // double-tap W and keep holding → sprint
-  private shiftHeld = false; // mirrors KeyboardEvent.shiftKey
   private sprintLock = false; // out of breath: no sprinting until some stamina has recovered
   private lastRoar = 0;
   private runFov = 0;
@@ -2182,6 +2209,11 @@ export class Game {
   private menuCamMode: 'hero' | 'arena' | 'full' = 'hero';
   directionalHeadSnap = loadDirectionalHeadSnap();
   noSlowMoNormal = loadNoSlowMoNormal();
+  /** PANJER OTOMATIS (SHIFT): every punch comes out on the press, at the ceiling. Remembered between visits. */
+  panjerMode = loadPanjerMode();
+  /** true while a full-screen React overlay (the robot editor, the real-steel sim) owns the screen: the game must
+   *  not read keys at all then — the editor uses SHIFT+click for multi-select and it must not toggle a fight mode */
+  private inputOff = false;
 
   constructor(container: HTMLElement, onHud: (h: HudState) => void) {
     this.container = container;
@@ -3535,7 +3567,14 @@ export class Game {
     this.emitHud(true);
   }
 
+  /** the game steps out of the keyboard while another screen is in front of it (see openZeus / the real-steel sim) */
+  setInputOff(off: boolean) {
+    this.inputOff = off;
+    if (off) this.keys.clear();
+  }
+
   press(code: string) {
+    if (this.inputOff) return;
     if (this.keys.has(code)) return;
     this.keys.add(code);
     // Space dodges on the press (instant). KeyG is held to guard/block (reduces incoming attack damage by 90%).
@@ -3545,6 +3584,7 @@ export class Game {
   release(code: string) {
     if (code === 'KeyW' || code === 'ArrowUp') this.runLatch = false;
     this.keys.delete(code);
+    if (this.inputOff) return;
     // PANJER: the loaded punch is thrown the moment the button is let go — release before PANJER_T and it is the
     // ordinary punch, hold it for the full second and it lands 2× as hard and drives him 2× as far.
     if (this.player && this.player.panjerKey === code) this.firePanjer(this.player);
@@ -3552,19 +3592,16 @@ export class Game {
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-    this.shiftHeld = e.shiftKey;
     if (e.repeat) return;
     this.sfx.init();
     this.press(e.code);
   };
   private onKeyUp = (e: KeyboardEvent) => {
-    this.shiftHeld = e.shiftKey;
     this.release(e.code);
   };
   private onBlur = () => {
     this.keys.clear();
     this.runLatch = false;
-    this.shiftHeld = false;
     // a lost focus must never throw a punch: the load is dropped, not released
     this.player?.clearPanjer();
   };
@@ -3593,6 +3630,12 @@ export class Game {
       // paused. It has to be readable wherever it is pressed, so the toggle answers with a banner + a sound + a burst
       // on the fighter — not just a line of text somewhere off screen.
       this.toggleAliStyle();
+      return;
+    }
+    if (PANJER_MODE_KEYS.includes(code)) {
+      // PANJER OTOMATIS: one press of SHIFT and every punch is a full one (see the block above the strike keys).
+      // Read anywhere, like Y — this is a way of fighting, not a mid-fight trick.
+      this.togglePanjerMode();
       return;
     }
     if (this.phase !== 'fight' || this.paused) return;
@@ -3642,7 +3685,9 @@ export class Game {
       case 'KeyK':
       case 'KeyV':
       case 'KeyX':
-        this.beginPanjer(p, PANJER_KEYS[code], code);
+        // PANJER OTOMATIS: nothing to hold — the punch comes out ON THE PRESS and it comes out full.
+        if (this.panjerMode) this.panjerMax(p, PANJER_KEYS[code]);
+        else this.beginPanjer(p, PANJER_KEYS[code], code);
         break;
       // L stays INSTANT — it is the reactive counter, the one punch that has to answer a fist already in flight.
       case 'KeyL':
@@ -4797,6 +4842,49 @@ export class Game {
   }
 
   /**
+   * PANJER OTOMATIS: one press, the ceiling, no wind-up. The load is never built because the arm is ALREADY loaded —
+   * so the punch leaves on the press, exactly as fast as it did before any of this existed, and lands at
+   * PANJER_DMG× / PANJER_KNOCK×. `panjerNext` is written before the call so the queue keeps it: a punch pressed
+   * during another swing still comes out full when the window opens.
+   */
+  private panjerMax(f: Fighter, id: MoveId) {
+    f.panjerNext = PANJER_DMG;
+    this.tryAttack(f, id);
+  }
+
+  /**
+   * SHIFT — PANJER OTOMATIS on/off. It answers the way the other modes do (banner + shout + a burst on the fighter),
+   * because a switch that changes how hard EVERY punch lands has to be impossible to miss. The world effects only
+   * fire inside the ring; in the lobby it is the banner and the sound.
+   */
+  togglePanjerMode() {
+    this.setPanjerMode(!this.panjerMode);
+  }
+
+  setPanjerMode(on: boolean) {
+    if (this.panjerMode === on) return;
+    this.panjerMode = on;
+    savePanjerMode(on);
+    if (on) this.player?.clearPanjer(); // the mode replaces the mechanic: no half-loaded arm left over
+    this.sfx.init();
+    const p = this.player;
+    if (on) {
+      this.sfx.charge();
+      this.sfx.ready();
+      this.sfx.say('Panjer otomatis!');
+    } else this.sfx.click();
+    this.showBanner('PANJER OTOMATIS', on ? 'PUKULAN MENTOK MAKS ×2 DAMAGE ×2 HAJAR' : 'KEMBALI KE CARA LAMA (TAHAN TOMBOLNYA)', on ? 'fight' : 'round', 1.6);
+    if (this.phase !== 'menu' && p) {
+      this.flashAmt = Math.max(this.flashAmt, on ? 0.5 : 0.25);
+      this.trauma = Math.min(0.5, this.trauma + (on ? 0.2 : 0.08));
+      this.fx.ring(p.pos.x, p.pos.y, on ? 0xffd34a : 0x9fe3ff, on ? 7.5 : 4.5, 0.5, 0.1);
+      this.fx.spark(new THREE.Vector3(p.pos.x, 4.6 * p.scale, p.pos.y), on ? 26 : 10, on ? 8.5 : 5, on ? 0xffd34a : 0x9fe3ff, undefined, 1.3, 0.5, 9);
+      this.popup(new THREE.Vector3(p.pos.x, 7.0 * p.scale, p.pos.y), on ? '💪 PANJER OTOMATIS: MAKS!' : 'PANJER OTOMATIS MATI', on ? 'pop-crit' : 'pop-info');
+    }
+    this.emitHud(true);
+  }
+
+  /**
    * PANJER, the clock. Runs every frame of the fight for the player AND for the opponent:
    *   • the hold counts up while the button is down (the player) or while the AI's load is running;
    *   • at PANJER_T the load is full — the fist answers, and the AI lets it go;
@@ -4884,20 +4972,19 @@ export class Game {
     if (p.state === 'idle' && p.dodgeT <= 0) {
       p.blocking = wantBlockKey || p.autoGuard;
       const holdW = this.keys.has('KeyW') || this.keys.has('ArrowUp');
-      // SPRINT: hold SHIFT (or F) and walk in any direction. A double-tap on W that you keep holding also runs.
+      // SPRINT: hold F and walk in any direction. A double-tap on W that you keep holding also runs. (SHIFT used to
+      // run — it is the PANJER OTOMATIS button now, because one key cannot both run and load every punch.)
       // A run only ends when the stamina is really empty, and only restarts once ~25 has recovered.
       if (p.stam <= 0.5) this.sprintLock = true;
       else if (p.stam > 25) this.sprintLock = false;
-      // (e.shiftKey is checked on every key event as well, so a Shift that was pressed before the window had focus,
-      //  or whose key-up got lost, can no longer make the run feel randomly unresponsive)
-      const shift = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('KeyF') || this.shiftHeld;
+      const runKey = this.keys.has('KeyF');
       const moving = fwd !== 0 || lat !== 0;
       // PEEK-A-BOO (hold E): a high, tight guard and a weaving body. It closes the distance on its own, slips straight
       // punches and charges the DEMPSEY ROLL. The price: stamina barely recovers, and throws beat it.
       const ippoOn = this.keys.has('KeyE') && p.stam > 2;
       p.ippo = ippoOn;
       if (ippoOn) p.blocking = true;
-      const wantRun = !p.blocking && moving && !this.sprintLock && (shift || (this.runLatch && holdW && fwd > 0));
+      const wantRun = !p.blocking && moving && !this.sprintLock && (runKey || (this.runLatch && holdW && fwd > 0));
       const isZeusPlayer = p.robot.isZeus;
       const zeusSpeedMul = isZeusPlayer ? 0.90 : 1.0; // khusus zeus: gerakan 10% lebih pelan
       const rageSpd = (p.rage ? 1.15 : 1) * zeusSpeedMul;
@@ -9731,14 +9818,17 @@ export class Game {
       f.acc.y += (az - f.acc.y) * k;
     }
     f.prevV.set(mvx, mvz);
-    // PANJER: a full load spits sparks off the knuckles — the last, loudest part of the tell
-    if (f.panjerReady && f.panjerId) {
+    // PANJER: a full load spits sparks off the knuckles — the last, loudest part of the tell. With PANJER OTOMATIS
+    // the tell is a STATE instead of a wind-up: the fists of a fighter whose every punch is loaded keep burning, so
+    // the other corner can still see exactly what is coming.
+    const burning = (f.panjerReady && !!f.panjerId) || (this.panjerMode && f.isPlayer);
+    if (burning) {
       f.pkTick2 -= dt;
       if (f.pkTick2 <= 0) {
-        f.pkTick2 = 0.07;
-        const arm = this.armOf(f, MOVES[f.panjerId]);
+        f.pkTick2 = f.panjerReady && f.panjerId ? 0.07 : 0.15;
+        const arm = f.panjerId ? this.armOf(f, MOVES[f.panjerId]) : f.hand;
         f.robot.fists[arm === 1 ? 1 : 0].localToWorld(this.aimTmp.set(0, 0, 0));
-        this.fx.spark(this.aimTmp, 2, 3.4, 0xffd34a, undefined, 1.1, 0.28, 3);
+        this.fx.spark(this.aimTmp, f.panjerId ? 2 : 1, f.panjerId ? 3.4 : 2.6, 0xffd34a, undefined, 1.1, 0.28, 3);
       }
     }
     const pw = this.punchStepOf(f, o);
@@ -9779,6 +9869,7 @@ export class Game {
           (f.counterT > 0 ? 1.2 : 0) +
           // PANJER: the load glows on the body — brightest in the last frames before it is full
           (f.panjerId ? 0.4 + 0.9 * panjerCharge(f.panjerHold) : 0) +
+          (this.panjerMode && f.isPlayer ? 1.0 : 0) + // PANJER OTOMATIS: the fists are loaded for good
           (f.isPlayer && f.meter >= 100 ? 1.0 + Math.sin(f.animT * 10) * 0.6 : 0),
         flash: f.flash,
         tilt: f.tilt,
@@ -10561,6 +10652,7 @@ export class Game {
       autoGuard: this.player.autoGuard,
       meter: this.player.meter,
       ali: this.aliStyle,
+      panjerMode: this.panjerMode,
       panjer: this.player.panjerId ? panjerCharge(this.player.panjerHold) : 0,
       panjerMul: panjerLabel(panjerPower(this.player.panjerHold)).slice(1),
       panjerReady: this.player.panjerReady && !!this.player.panjerId,

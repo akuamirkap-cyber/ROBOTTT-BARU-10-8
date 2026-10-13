@@ -207,11 +207,13 @@ export default function App() {
 
   const openZeus = () => {
     gameRef.current?.setMuted(true);
+    gameRef.current?.setInputOff(true); // the robot editor uses SHIFT+click: the game must not read keys under it
     setShowZeus(true);
   };
 
   const closeZeus = (autoEquip = true) => {
     setShowZeus(false);
+    gameRef.current?.setInputOff(false);
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
@@ -223,11 +225,13 @@ export default function App() {
 
   const openRealSteelSim = () => {
     gameRef.current?.setMuted(true);
+    gameRef.current?.setInputOff(true);
     setShowRealSteelSim(true);
   };
 
   const closeRealSteelSim = () => {
     setShowRealSteelSim(false);
+    gameRef.current?.setInputOff(false);
     if (!muted) {
       gameRef.current?.setMuted(false);
     }
@@ -318,7 +322,7 @@ export default function App() {
     <div className={`relative h-full w-full overflow-hidden bg-black ${dive ? 'app-dive' : ''}`}>
       <div ref={mount} className="absolute inset-0" />
 
-      {hud && inMatch && <Hud h={hud} touch={touch} />}
+      {hud && inMatch && <Hud h={hud} touch={touch} onPanjerMode={() => gameRef.current?.togglePanjerMode()} />}
       {inMatch && touch && phase === 'fight' && <TouchControls game={game} />}
 
       {/* ---------- ALI STYLE: in the LOBBY it is a chip you can see AND tap (the hero dances behind it) ---------- */}

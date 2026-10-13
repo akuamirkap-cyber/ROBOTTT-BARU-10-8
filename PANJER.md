@@ -1,14 +1,40 @@
-# 💪 PANJER — tahan tombol pukulannya, lepas: makin lama makin kuat
+# 💪 PANJER — dua cara pakai: **SHIFT** (otomatis) atau **tahan tombolnya** (manual)
 
-> **PANJER**: *tombol pukulan ditahan, lalu dilepas.* Sekelibat cuma nge-tap? **Pukulan biasa.** Ditahan makin lama?
-> **Makin kuat** — dari ×1 naik terus sampai **×2 damage & ×2 hajar** di tahanan 1 detik.
+> **Males nahan tombol?** Tekan **SHIFT** sekali → **PANJER OTOMATIS**: setiap pukulan (H/J/K/X) langsung
+> **mentok maks** — **×2 damage & ×2 hajar** — dan keluar **seketika saat tombol ditekan**, kecepatan normal.
+>
+> **Mau atur sendiri?** Mode otomatisnya mati → **tahan** tombol pukulannya lalu **lepas**: sekelibat = pukulan
+> biasa, makin lama ditahan makin kuat, sampai ×2 di 1 detik.
 
 Berlaku untuk empat pukulan dasar: **H** (jab) · **J / C** (hook) · **K / V** (uppercut) · **X** (straight).
-Kerja di semua mode, dan lawan bisa melakukannya juga ke kamu.
+Kerja di semua mode, dan lawan bisa melakukannya juga ke kamu (dengan aturan yang sama).
 
 ---
 
-## 1. Aturannya — ada tiga zona
+## 0. PANJER OTOMATIS — tekan SHIFT
+
+| | **PANJER OTOMATIS (SHIFT)** | **PANJER MANUAL (tahan)** |
+|---|---|---|
+| Cara pakai | tekan **SHIFT** sekali, lalu pukul seperti biasa | tahan tombol pukulannya, lepaskan |
+| Kecepatan pukulan | **normal** — keluar saat tombol **ditekan** | sepanjang tahanan (0,4–1 detik) |
+| Kekuatan | **mentok ×2** selalu | ×1 → ×2 sesuai lama tahanan |
+| Ancang-ancang | tidak ada (pukulan langsung) | kelihatan jelas (tangan ditarik + menyala) |
+| Kelebihan | cepat + maks, tidak perlu ditahan | bisa pilih kekuatan (×1,3 · ×1,5 · ×1,7 · ×2) |
+
+- **SHIFT** bisa ditekan di mana saja: di lobby, saat jalan ke ring, di tarung, maupun saat jeda. Tekan lagi = mati.
+- Ingatannya disimpan, jadi sekali dinyalakan dia tetap nyala besok-besok (sampai kamu matikan).
+- **Kepalanmu menyala terus** selama mode ini hidup — itu pengganti ancang-ancangnya: lawan tetap bisa melihat
+  bahwa tiap pukulanmu penuh. Ada juga badge **💪 PANJER OTOMATIS · ×2 MAKS** di HUD (di HP badge itu bisa ditap
+  untuk nyala/mati).
+- Selama mode ini hidup, bar pengisian manual tidak muncul (memang tidak ada yang diisi).
+- ⚠️ **SPRINT pindah ke F** (dan tap-2× W lalu tahan). Satu tombol tidak bisa merangkap "lari" dan "semua pukulan
+  mentok maks". Tombol RUN di HP tetap sama (F).
+- ⚠️ Ini saklar **khusus pemain**: lawan tidak ikut dapat ×2 permanen — dia tetap memakai cara lamanya (sesekali
+  memuat satu pukulan). Jadi pertandingan jadi lebih ringan buat kamu; bilang saja kalau mau lawannya disamakan.
+
+---
+
+## 1. PANJER MANUAL — aturannya (kalau mode otomatis mati)
 
 | Ditahan | Yang keluar saat dilepas |
 |---|---|
@@ -64,8 +90,9 @@ fokus: **load-nya hangus**, bukan tersimpan.
 
 ## 3. Yang berubah di inputnya (jujur)
 
-Empat tombol pukulan itu sekarang **tidak memukul saat ditekan** — mereka **memuat** saat ditahan, dan pukulannya
-keluar **saat tombol dilepas**:
+**Kalau PANJER OTOMATIS hidup**, tombol pukulan berfungsi seperti dulu lagi (pukul saat ditekan), cuma hasilnya
+selalu maks. **Kalau mati**, empat tombol pukulan itu **tidak memukul saat ditekan** — mereka **memuat** saat
+ditahan, dan pukulannya keluar **saat tombol dilepas**:
 
 ```
 DULU : H ditekan ──────────────► pukulan keluar seketika
@@ -84,6 +111,7 @@ Yang **sengaja tidak ikut berubah**, karena memang harus instan:
 | **P** (GRAB/banting) | itu bantingan, bukan pukulan |
 | **N** (kombo otomatis) & **R** (Overdrive) | keduanya skrip, bukan pukulan yang kamu ayun sendiri |
 | **SPACE / G / WASD** | dodge, blok, dan jalan: tidak tersentuh |
+| **F** | sprint (dulu SHIFT — sekarang SHIFT = PANJER OTOMATIS) |
 
 Dan load **tidak bisa menumpang** ke jurus: melepas pukulan lalu Overdrive-nya keluar duluan (misalnya dari bantuan
 STAR MODE) tidak bikin Overdrive jadi 2× — load-nya yang diambil alih, bukan diwariskan.
@@ -134,4 +162,8 @@ Yang dikunci harness-nya (`panjertest.mjs`, §1–§7):
 - damage & hajar dikali angka load di **kedua** jalur (lemparan & dorongan) dengan plafonnya ikut dibuka;
 - load mati oleh pukulan/guard/jatuh/bel/pause/blur, kombo-N menghabiskan load, dan **tidak bisa menumpang** ke
   Overdrive/grab/jurus skrip apa pun;
-- auto-guard STAR MODE minggir saat ada load; dan AI memakai **kurva + angka yang sama** dengan peluang yang dibatasi.
+- auto-guard STAR MODE minggir saat ada load; dan AI memakai **kurva + angka yang sama** dengan peluang yang dibatasi;
+- **PANJER OTOMATIS**: SHIFT dibaca sebelum gerbang tarung (jadi hidup di lobby juga), saat mode nyala pukulan keluar
+  dari jalur **press** (bukan release) dengan pengali **mentok `PANJER_DMG`**, tidak ada load yang dibangun, ingatannya
+  disimpan, tell-nya jadi STATE (kepalan menyala + badge HUD + tombol tap di HP), dan **SHIFT sudah bukan sprint lagi**
+  (sprint = F, tombol RUN di HP tetap F).

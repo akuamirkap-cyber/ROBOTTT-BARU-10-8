@@ -119,7 +119,7 @@ function Hint({ k, children }: { k: string; children: string }) {
   );
 }
 
-export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
+export function Hud({ h, touch, onPanjerMode }: { h: HudState; touch: boolean; onPanjerMode?: () => void }) {
   const enemyColor = h.ultra ? ULTRA_COLOR : h.eColor;
   const meterReady = h.meter >= 100;
   const timeLow = h.phase === 'fight' && h.timeLeft <= 10;
@@ -223,8 +223,26 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
         </div>
       )}
 
+      {/* ---------- PANJER OTOMATIS (SHIFT): every punch is a loaded one, thrown on the press ---------- */}
+      {/* it is also the touch button for the mode, so a phone can switch it without a keyboard */}
+      {(h.panjerMode || touch) && h.phase === 'fight' && (
+        <button
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onPanjerMode?.();
+          }}
+          className={`pointer-events-auto absolute left-1/2 -translate-x-1/2 rounded-sm px-3 py-[3px] font-tech text-[10px] font-black tracking-[0.2em] ${
+            h.panjerMode ? 'animate-pulse bg-amber-300/95 text-black shadow-[0_0_22px_rgba(255,211,74,0.6)]' : 'bg-white/12 text-white/55'
+          }`}
+          style={{ top: h.ali ? 146 : 112 }}
+          title="PANJER OTOMATIS (SHIFT): tiap pukulan H/J/K/X langsung keluar saat tombol ditekan — mentok maks ×2 damage & ×2 hajar. Nggak perlu ditahan lagi. Tekan SHIFT lagi = kembali ke cara lama (tahan tombolnya buat ngisi kekuatan)."
+        >
+          💪 PANJER OTOMATIS {h.panjerMode ? '· ×2 MAKS' : 'OFF'}
+        </button>
+      )}
+
       {/* ---------- PANJER: the load on the held punch button (hold H/J/K/X for a full second = 2× punch) ---------- */}
-      {h.panjer > 0 && h.phase === 'fight' && (
+      {h.panjer > 0 && !h.panjerMode && h.phase === 'fight' && (
         <div className="absolute bottom-[104px] left-1/2 w-[min(360px,42%)] -translate-x-1/2 sm:bottom-[118px]">
           <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">
             <span className={h.panjerReady ? 'text-amber-200' : 'text-white/65'}>💪 PANJER</span>
