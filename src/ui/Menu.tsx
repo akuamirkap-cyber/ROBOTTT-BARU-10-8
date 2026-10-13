@@ -112,6 +112,7 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['!'], text: 'PUKULAN MELESET = badannya keburu jalan: capek & tidak bisa buru-buru mukul lagi' },
   { keys: ['!'], text: 'HINDARAN PAS (saat musuh ancang-ancang) = balik tenaga + meter, lalu balas keras' },
   { keys: ['!'], text: 'TENAGA < 25% = GASSED: tangan 8% lebih lambat, tenaga pulih separuh' },
+  { keys: ['N'], text: 'KOMBO OTOMATIS: JAB-JAB-HOOK-HOOK-UPPERCUT lalu PUKULAN MEMATIKAN — putus sendiri kalau ada yang keblokir/dihindari, dan si mematikan bayar setengah meter' },
   { keys: ['⭐'], text: 'STAR MODE — mode santai: kaki jalan sendiri ke jarak pukul, guard naik sendiri saat diam, dan kamera nempel di pundakmu' },
   { keys: ['⭐'], text: 'STAR MODE pakai tombol yang sama: SPACE tetap menghindar (arahnya dipilih otomatis), tap tertunda tetap kebaca, Overdrive lepas sendiri saat meter penuh' },
   { keys: ['ESC'], text: 'Jeda pertandingan' },

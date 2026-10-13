@@ -361,6 +361,10 @@ export interface HudState {
   star: boolean;
   /** ...and the low guard is up by itself right now */
   autoGuard: boolean;
+  /** THE N COMBO: which link of COMBO_SCRIPT is next (-1 = the script is not running). The HUD reads it as "3/6". */
+  nCombo: number;
+  /** ...and true while N is on the post-combo cooldown (so the badge can say WHY nothing happened) */
+  nComboLocked: boolean;
   meter: number;
   combo: number;
   wins: [number, number];
@@ -425,9 +429,12 @@ export interface HudState {
   } | null;
 }
 
-type MoveId = 'jab' | 'cross' | 'hook' | 'upper' | 'slam' | 'bolt' | 'windmill' | 'skyhook' | 'grab' | 'counter';
-// overdrive moves — the four R variants: the straight (bolt), the spinning smash (windmill), the slam and the launcher
-const isOD = (id: MoveId) => id === 'slam' || id === 'bolt' || id === 'windmill' || id === 'skyhook';
+type MoveId = 'jab' | 'cross' | 'hook' | 'upper' | 'slam' | 'bolt' | 'windmill' | 'skyhook' | 'grab' | 'counter' | 'finisher';
+// overdrive moves — the four R variants: the straight (bolt), the spinning smash (windmill), the slam and the launcher.
+// The FIFTH member of the family is the finisher: it is not on R, it is the tail of the N combo (see COMBO_SCRIPT),
+// and it is priced at half a meter instead of a full one. Everything the family shares — the cinematic charge, the
+// long tell, the fact that it cannot be cancelled out of, stuffed or blocked — it inherits from being in here.
+const isOD = (id: MoveId) => id === 'slam' || id === 'bolt' || id === 'windmill' || id === 'skyhook' || id === 'finisher';
 type Ease = 'in' | 'out' | 'io' | 'flow';
 interface Key {
   t: number;
@@ -610,6 +617,32 @@ const MOVES: Record<MoveId, Move> = {
       k(1.36, GUARD),
     ],
   },
+  // ================= PUKULAN MEMATIKAN / THE FINISHER (tail of the N combo — see COMBO_SCRIPT) =================
+  // The heaviest single strike in the book, and the only one that is BOTH two-handed and unblockable. It is not on a
+  // key of its own and it cannot be spammed: it fires as the last link of the N combo (H-H-J-J-K → this), and it is
+  // priced at half an Overdrive meter (FINISHER_METER) plus a real bite out of the tank, which is why nothing else in
+  // the game hands it out. The shape is a boxer's two-handed ram: BOTH fists are drawn in tight to the chest while
+  // the machine sinks onto its legs (the hunch is the tell, and it is deliberately the longest in the book), the
+  // load holds for a beat so it can be read and slipped, and then both fists leave together on ONE line while the
+  // whole body uncoils off the back foot — and it stays there, holding the extension while the opponent travels.
+  // Everything the Overdrive family gets, it gets: it shatters a wind-up, it cannot be blocked (only slipped or
+  // stepped off), and it launches.
+  finisher: {
+    id: 'finisher', arm: 2, dur: 1.5, strikeAt: 0.5, impact: 0.62, cancel: 99, dmg: 44, reach: 4.5, cost: 30, stun: 1.5, knock: 15, blockMul: 0.1, power: 1, hitY: 4.4, step: 3.4, kind: 'front',
+    keys: [
+      k(0, GUARD),
+      // THE HUNCH: both fists pulled in tight to the chest, elbows pinned to the ribs, the whole stack sinking down
+      // and hanging forward over the toes — load it where the opponent can SEE it load.
+      k(0.3, P(-0.52, 0.62, -0.34, -2.72), 0, -0.44, -0.5, 0.74, 'out'),
+      // ...plateau: the beat of stillness that makes the ram readable before it fires. This is the whole tell.
+      k(0.5, P(-0.46, 0.7, -0.4, -2.78), 0, -0.52, -0.62, 0.86, 'io'),
+      // THE RAM: both fists leave on the same line — arms near straight, the body uncoiling off the back foot into it
+      k(0.62, P(-1.62, -0.3, 0.1, -0.06), 0, 0.66, 1.62, 0.1, 'in'),
+      // ...and it STAYS: a finisher holds its extension while the opponent travels. No recoil — it is the last word.
+      k(1.0, P(-1.62, -0.3, 0.1, -0.06), 0, 0.66, 1.62, 0.1),
+      k(1.5, GUARD),
+    ],
+  },
   grab: {
     id: 'grab', arm: 2, dur: 1.25, strikeAt: 0.1, impact: 0.3, cancel: 99, dmg: 20, reach: 3.5, cost: 14, stun: 1, knock: 8, blockMul: 0.1, power: 0.85, hitY: 3.6, step: 1.4, kind: 'front',
     keys: [
@@ -661,6 +694,8 @@ const MOVE_EXTRA: Record<MoveId, { width: number; launch: boolean; unblock: bool
   skyhook: { width: 2.4, launch: true, unblock: true },
   grab: { width: 2.4, launch: true, unblock: true },
   counter: { width: 1.7, launch: false, unblock: false },
+  // the finisher is a two-fisted ram: it covers the widest colliding front of any single strike and it launches
+  finisher: { width: 3.0, launch: true, unblock: true },
 };
 
 // ------------------------------------------------------------------ MATCHMAKING FACE-OFF
@@ -942,11 +977,11 @@ export const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross
  * the start of the warning and the moment the strike lands (≈ 0.6–1.0 s in total) and the attack cannot hit you.
  * Unblockable / heavy moves (grab, Overdrive) get the longest warning.
  */
-const TELL: Record<MoveId, number> = { jab: 0.48, cross: 0.55, hook: 0.6, upper: 0.62, grab: 0.68, slam: 0.9, bolt: 0.9, windmill: 0.92, skyhook: 0.92, counter: 0.5 };
+const TELL: Record<MoveId, number> = { jab: 0.48, cross: 0.55, hook: 0.6, upper: 0.62, grab: 0.68, slam: 0.9, bolt: 0.9, windmill: 0.92, skyhook: 0.92, counter: 0.5, finisher: 0.98 };
 const TELL_CHAIN = 0.2; // follow-up hits in a combo or counter flow fast while staying readable to the human eye
-const UNBLOCKABLE: MoveId[] = ['grab', 'slam', 'bolt', 'windmill', 'skyhook']; // shown with a RED indicator, like God of War's unblockable attacks
+const UNBLOCKABLE: MoveId[] = ['grab', 'slam', 'bolt', 'windmill', 'skyhook', 'finisher']; // shown with a RED indicator, like God of War's unblockable attacks
 
-const TRACK: Record<MoveId, number> = { jab: 0.35, cross: 0.42, hook: 0.9, upper: 0.55, slam: 0.5, bolt: 0.25, windmill: 0.42, skyhook: 0.4, grab: 0.52, counter: 0.45 };
+const TRACK: Record<MoveId, number> = { jab: 0.35, cross: 0.42, hook: 0.9, upper: 0.55, slam: 0.5, bolt: 0.25, windmill: 0.42, skyhook: 0.4, grab: 0.52, counter: 0.45, finisher: 0.3 };
 
 /**
  * HOW THE AI MEETS A MOVE. Blocking is the right answer to most punches, but anything that comes down a STRAIGHT
@@ -960,6 +995,7 @@ export const defenceAgainst = (id: MoveId, dodge: number): 'block' | 'side' | 'b
   if (id === 'bolt') return Math.random() < 0.65 ? 'side' : 'back'; // a straight: sidestepping it is the answer
   if (id === 'windmill') return Math.random() < 0.65 ? 'side' : 'back';
   if (id === 'skyhook') return Math.random() < 0.6 ? 'back' : 'side'; // the launcher comes UP: give ground or clear the line
+  if (id === 'finisher') return Math.random() < 0.55 ? 'side' : 'back'; // the two-fisted ram: nothing blocks it, clear the line
   if (id === 'counter') return Math.random() < 0.7 ? 'side' : 'back'; // the counter straight is the same punch
   if (id === 'hook') return Math.random() < dodge ? 'back' : 'block'; // wide sweep: a sidestep cannot clear it
   if (id === 'upper') return Math.random() < dodge * 0.8 ? 'back' : 'block';
@@ -1066,6 +1102,40 @@ export const chassisBraces = (c: Chassis, id: MoveId, isHJ: boolean, softened: b
 };
 /** the Zeus-only spelling of the rule above (kept for readability at the Zeus call sites and in the tests) */
 export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => chassisBraces('zeus', id, isHJ, softened);
+
+/**
+ * ======================================= THE N COMBO — the finisher button =======================================
+ * ONE button (N) throws the whole sequence: JAB-JAB-HOOK-HOOK-UPPERCUT and then the PUKULAN MEMATIKAN (MOVES.finisher).
+ * It is a script the fight plays for you, not a new move: every link is the same punch the same key throws by hand, so
+ * the damage, the tells, the stamina and the over-commitment rules are all the ordinary ones.
+ *
+ * THE RULES THAT KEEP IT A PUNCH AND NOT A CHEAT:
+ *   • IT BREAKS. Blocked, slipped, stepped off or whiffed — the very next frame the script stops on the spot and the
+ *     control is yours again (plus a short cooldown, so N cannot be mashed). A clean five is the whole requirement.
+ *   • THE FINISHER IS PAID FOR. It costs half an Overdrive meter (FINISHER_METER) and a real bite of the tank, and a
+ *     landed jab chain is what charges that meter — so a CLEAN combo pays for its own ending, and the one you did not
+ *     land does not happen. If the meter is not there, the combo simply stops after the uppercut.
+ *   • IT CAN BE READ. The finisher's tell is the longest in the book (TELL.finisher), so an alert opponent can still
+ *     slip the last punch — and then the meter is gone.
+ */
+export const FINISHER_METER = 50; // the finisher is priced at half an Overdrive meter, so R is never wasted on it
+export const COMBO_MIN_STAM = 15; // ...and it needs this much left in the tank to even come out
+export const COMBO_SCRIPT: MoveId[] = ['jab', 'jab', 'hook', 'hook', 'upper', 'finisher'];
+export const COMBO_STEP_WIN = 1.1; // s — how long each link has to get itself thrown before the script gives up
+export const COMBO_BREAK_CD = 1.4; // s — after a broken/finished combo, N is dead for this long (no mashing)
+/**
+ * CAN THIS STRIKE BE CAUGHT ON A GUARD? Everything can, except the two moves that are answered by NOT BEING THERE:
+ * the throw (blocking a throw is not a thing) and the PUKULAN MEMATIKAN, whose entire counterplay is its long tell —
+ * you slip it or you step off the line, and if you are still standing in front of it when it arrives, it lands.
+ * Pure and exported so `combotest.mjs` can hold that line instead of trusting the reader (and so a future move can
+ * never quietly become unblockable by accident).
+ */
+export const blockable = (id: MoveId) => id !== 'grab' && id !== 'finisher';
+
+/** the keys that hand the fight back to the player mid-combo (footwork is deliberately NOT in here — see onEdge) */
+const N_COMBO_TAKEOVER: string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX', 'KeyP', 'KeyL', 'KeyR', 'KeyE', 'KeyU', 'KeyG'];
+/** can the finisher be paid for out of this fighter's meter and tank? (the runtime asks exactly this — see tryFinisher) */
+export const comboCanFinish = (meter: number, stam: number) => meter >= FINISHER_METER && stam >= COMBO_MIN_STAM;
 
 /**
  * ============================== STAR MODE — "Boxing Star" comfort, same buttons ==============================
@@ -1810,6 +1880,14 @@ export class Game {
   private hype = 0;
   private combo = 0;
   private comboT = 0;
+  // THE N COMBO (see COMBO_SCRIPT): -1 = not running, otherwise the index of the NEXT link to throw. `nComboT` is the
+  // whole script's clock, `nComboWait` the window the current link has to get itself thrown, `nComboCd` the
+  // post-combo cooldown that stops N from being mashed.
+  private nComboIdx = -1;
+  private nComboT = 0;
+  private nComboWait = 0;
+  private nComboCd = 0;
+  private nComboSeq = -1; // moveSeq of the link we last threw — how the script knows its own punch from yours
   private stats: MatchStats = freshStats();
   private walk: WalkTrack[] = [];
   private walkPyroT = 0;
@@ -3303,6 +3381,10 @@ export class Game {
       return;
     }
     if (this.phase !== 'fight' || this.paused) return;
+    // THE PLAYER ALWAYS OUTRANKS THE SCRIPT: throwing a punch (or slipping) by hand while the N combo is running hands
+    // the fight back to you on the spot — the script stops where it is, and the punch you just pressed is the punch
+    // that comes out. The direction keys are NOT in this list: holding W/A/S/D mid-combo is footwork, not a takeover.
+    if (this.nComboIdx >= 0 && (code === 'Space' || N_COMBO_TAKEOVER.includes(code))) this.breakNCombo('KOMBO DILEPAS');
     const p = this.player;
     const tapKind: Record<string, ['fwd' | 'back' | 'side', number]> = {
       KeyW: ['fwd', 0],
@@ -3359,10 +3441,12 @@ export class Game {
         // (KeyE is the Peek-a-Boo stance now, it is read in playerInput)
         this.tryOverdrive(p);
         break;
+      case 'KeyN': // THE COMBO BUTTON: JAB-JAB-HOOK-HOOK-UPPERCUT → PUKULAN MEMATIKAN (see COMBO_SCRIPT)
+        this.startNCombo();
+        break;
       // ---------------- FREESTYLE ----------------
       // The show-off book (poses.ts) sits on its own keys: M N B Y O Z 1 2 3 4 5 6.
       case 'KeyM':
-      case 'KeyN':
       case 'KeyB':
       case 'KeyY':
       case 'KeyO':
@@ -3432,6 +3516,10 @@ export class Game {
     this.roundTime = ROUND_TIME;
     this.timeUp = false;
     this.combo = 0;
+    this.nComboIdx = -1;
+    this.nComboT = 0;
+    this.nComboCd = 0;
+    this.nComboSeq = -1;
     this.stats = freshStats();
     this.decap.clear(); // any head torn off last round is bolted back on
     this.ripVictim = null;
@@ -4391,6 +4479,7 @@ export class Game {
         this.comboT -= dt;
         if (this.comboT <= 0) this.combo = 0;
         this.playerInput();
+        this.updateNCombo(dt);
         this.updateEnemyAI(dt);
         if (this.teamMode && this.ally && this.enemy2) {
           if (this.ally.state !== 'ko') this.squadBrain(this.ally, this.foeOf(this.ally), this.squadA, dt);
@@ -5089,6 +5178,17 @@ export class Game {
    */
   private markWhiff(a: Fighter, m: Move) {
     if (a.state !== 'attack') return 0;
+    // a link that sails through empty air (slipped, stepped off, or simply short) ends the N combo right there: this
+    // is the single hook that catches every way a punch can MISS, so the script can never carry on through a miss.
+    if (a.isPlayer) {
+      if (m.id === 'finisher') {
+        // the finisher is fired LAST, so by the time it can miss the script has already closed — the player still
+        // needs to be told the meter went with it, and that the tail of the swing is about to leave them open.
+        this.popup(new THREE.Vector3(a.pos.x, 6.6, a.pos.y), 'MEMATIKAN MELESET!', 'pop-block');
+      } else {
+        this.breakNCombo('KOMBO MELESET!');
+      }
+    }
     const tail = whiffRecovery(m.impact, m.dur);
     a.whiffT = Math.max(a.whiffT, Math.min(WHIFF_TAIL, tail));
     return a.whiffT;
@@ -5331,6 +5431,148 @@ export class Game {
     }
   }
 
+  /**
+   * N — THE COMBO BUTTON. Press once and the script (COMBO_SCRIPT: jab-jab-hook-hook-upper → the finisher) throws
+   * itself, link by link, as fast as the swings can cancel into each other. It is deliberately NOT a free win: the
+   * script only ever presses the same buttons H/J/K press by hand, the punches pay their own stamina, and the whole
+   * thing dies the instant a link is blocked, slipped, stepped off or whiffed (see breakNCombo). A clean five is the
+   * price of the finisher, and the finisher then pays half a meter for itself.
+   */
+  private startNCombo() {
+    const p = this.player;
+    if (p.state === 'legend' || p.state === 'legendHit' || p.state === 'ko' || p.state === 'air' || p.state === 'down') return;
+    if (this.nComboIdx >= 0) return; // already running: N is not a speed-up
+    if (this.nComboCd > 0) {
+      this.popup(new THREE.Vector3(p.pos.x, 5.8, p.pos.y), 'KOMBO BELUM SIAP', 'pop-info');
+      return;
+    }
+    if (p.state === 'attack' && !this.canCancel(p)) return; // mid-swing: let the swing finish, then press again
+    this.nComboIdx = 0;
+    this.nComboT = 0;
+    this.nComboWait = COMBO_STEP_WIN;
+    this.nComboSeq = -1;
+    this.popup(new THREE.Vector3(p.pos.x, 6.9, p.pos.y), '⭐ KOMBO! H-H-J-J-K', 'pop-crit');
+    this.sfx.tick(0.85);
+  }
+
+  /** stop the script where it is. `msg` is only shown for a break the player should know about (see the hooks). */
+  private breakNCombo(msg = '') {
+    if (this.nComboIdx < 0) return;
+    const p = this.player;
+    this.nComboIdx = -1;
+    this.nComboCd = COMBO_BREAK_CD;
+    this.nComboSeq = -1;
+    if (msg) {
+      this.popup(new THREE.Vector3(p.pos.x, 6.5, p.pos.y), msg, 'pop-block');
+      this.sfx.warn(false);
+    }
+  }
+
+  /**
+   * One link of the N combo. It throws the link if the beat is free (or if the current swing can already be cancelled
+   * into it, which is what makes the five read as one combination instead of five separate punches), and otherwise
+   * waits for the next frame. Returns true only if THIS link actually went out.
+   */
+  private nComboStep(p: Fighter, id: MoveId): boolean {
+    if (id === 'finisher') {
+      // THE FINISHER IS PAID FOR BEFORE IT IS THROWN (and it is NOT thrown if the combo cannot pay): the five links
+      // have just banked the meter for it, so this is the check that makes "land the combo, earn the finisher" true.
+      if (!comboCanFinish(p.meter, p.stam)) {
+        this.breakNCombo(p.meter < FINISHER_METER ? `METER ${Math.round(p.meter)}/${FINISHER_METER} — TANPA MEMATIKAN` : 'TENAGA HABIS — TANPA MEMATIKAN');
+        return false;
+      }
+      return this.tryFinisher(p);
+    }
+    if (p.state !== 'idle' && !(p.state === 'attack' && this.canCancel(p))) return false;
+    if (p.state === 'idle' && p.dodgeT > 0) return false;
+    if (whiffGates(p.whiffT)) return false; // over-committed: the tail has to play out before the next link
+    if (p.stam < Math.min(MOVES[id].cost * STAM_SCALE, 4)) {
+      this.breakNCombo('TENAGA HABIS — KOMBO PUTUS');
+      return false;
+    }
+    if (p.state === 'attack') {
+      // cancel the live swing straight into the next link (the same cancel window the game gives a hand-thrown combo)
+      p.state = 'idle';
+      p.move = null;
+      p.runStrike = false;
+      p.ippoStrike = false;
+      p.queued = null;
+    }
+    const seq = p.moveSeq; // startMove bumps this — the one reading TS cannot narrow away for us after the call
+    this.startMove(p, id);
+    return p.moveSeq !== seq;
+  }
+
+  /** the script's own clock. Runs every frame of the fight, before the AI moves. */
+  private updateNCombo(dt: number) {
+    if (this.nComboCd > 0) this.nComboCd = Math.max(0, this.nComboCd - dt);
+    if (this.nComboIdx < 0) return;
+    const p = this.player;
+    if (this.phase !== 'fight' || this.paused) {
+      this.nComboIdx = -1;
+      return;
+    }
+    // HIT: the script dies with the fighter — being staggered, launched or put down ends the combination outright
+    if (p.state === 'ko' || p.state === 'air' || p.state === 'down' || p.state === 'stagger') {
+      this.breakNCombo('KOMBO PUTUS!');
+      return;
+    }
+    this.nComboT += dt;
+    this.nComboWait -= dt;
+    if (this.nComboWait <= 0 || this.nComboT > COMBO_SCRIPT.length * COMBO_STEP_WIN + 2) {
+      this.breakNCombo('KOMBO PUTUS');
+      return;
+    }
+    const id = COMBO_SCRIPT[this.nComboIdx];
+    // THE LINK WE JUST THREW IS STILL COMMITTED: wait for its cancel window (that window is what makes the five read
+    // as ONE combination — and because the script tracks the swing by its sequence number, a JAB-JAB pair cancels
+    // into itself exactly like two jabs thrown by hand, instead of waiting the first one out).
+    if (this.nComboSeq >= 0 && p.moveSeq === this.nComboSeq && p.state === 'attack' && !this.canCancel(p)) return;
+    if (!this.nComboStep(p, id)) return;
+    this.nComboSeq = p.moveSeq;
+    this.nComboIdx++;
+    this.nComboWait = COMBO_STEP_WIN;
+    if (this.nComboIdx >= COMBO_SCRIPT.length) {
+      this.nComboIdx = -1; // the finisher is away: the script is done, and the meter is already paid
+      this.nComboCd = COMBO_BREAK_CD;
+    }
+  }
+
+  /**
+   * PUKULAN MEMATIKAN — the finisher itself (see MOVES.finisher). The price is half an Overdrive meter plus a real
+   * bite of the tank, and it is only ever reachable through a clean N combo. It cannot be blocked or stuffed (the
+   * Overdrive family's startup invincibility), but it telegraphs for the longest beat in the book — so the answer to
+   * it is to not be there, and the player who throws it into a slip has burned the meter for nothing.
+   */
+  private tryFinisher(f: Fighter): boolean {
+    if (f.state === 'legend' || f.state === 'legendHit') return false;
+    if (f.state === 'ko' || f.state === 'air' || f.state === 'down' || f.state === 'stagger') return false;
+    if (f.dodgeT > 0) return false;
+    if (f.state === 'attack') {
+      if (!this.canCancel(f)) return false;
+      f.state = 'idle';
+      f.move = null;
+      f.queued = null;
+    }
+    if (!comboCanFinish(f.meter, f.stam)) {
+      if (f.isPlayer) {
+        this.popup(
+          new THREE.Vector3(f.pos.x, 5.9, f.pos.y),
+          f.meter < FINISHER_METER ? `METER ${Math.round(f.meter)}/${FINISHER_METER} — BELUM CUKUP` : 'TENAGA HABIS',
+          'pop-info',
+        );
+      }
+      return false;
+    }
+    const seq = f.moveSeq;
+    f.meter = Math.max(0, f.meter - FINISHER_METER);
+    this.meterReadyShown = false;
+    this.startMove(f, 'finisher');
+    f.invuln = Math.max(f.invuln, 0.6); // the family's startup: a finisher cannot be stuffed out of its own wind-up
+    f.winStrike = false; // it is already the heaviest thing in the book — no dodge bonus on top of it
+    return f.moveSeq !== seq;
+  }
+
   private tryAttack(f: Fighter, id: MoveId) {
     if (f.state === 'legend' || f.state === 'legendHit') return;
     const m = MOVES[id];
@@ -5532,8 +5774,20 @@ export class Game {
     if (isOD(id)) {
       this.sfx.charge();
       f.glowBoost = 3;
-      this.sfx.say('Overdrive');
+      this.sfx.say(id === 'finisher' ? 'Finisher' : 'Overdrive');
       this.fovKick = 3;
+      if (id === 'finisher') {
+        // the last word of the N combo: a two-tone charge (the two fists loading together) and the loudest call-out
+        this.sfx.whoosh(1);
+        this.sfx.crackle(0.5);
+        if (this.phase === 'fight') {
+          this.popup(
+            new THREE.Vector3(f.pos.x, 7.0 * f.scale, f.pos.y),
+            f.isPlayer ? '☠️ PUKULAN MEMATIKAN!' : '☠️ MEMATIKAN MUSUH!',
+            'pop-crit',
+          );
+        }
+      }
       if (id === 'windmill') {
         this.sfx.whoosh(0.8);
         if (this.phase === 'fight') {
@@ -7108,6 +7362,17 @@ export class Game {
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0x9fe6ff, 5.5, 0.42);
       this.fx.spark(fxp, 12, 10, 0x9fe6ff, new THREE.Vector3(-toA.x, 0.05, -toA.y), 0.5, 0.5, 3);
     }
+    if (m.id === 'finisher') {
+      // PUKULAN MEMATIKAN: a two-fisted cannonade — a white-gold core ring inside a wide gold shockwave, both fists'
+      // worth of spark fanning out down the line of the ram, and a low band of dust kicked up off the canvas.
+      const fxp = new THREE.Vector3(a.pos.x - toA.x * 2.6, 3.6 * a.scale, a.pos.y - toA.y * 2.6);
+      const line = new THREE.Vector3(-toA.x, 0.06, -toA.y);
+      this.fx.ring(a.pos.x - toA.x * 2.0, a.pos.y - toA.y * 2.0, 0xffd27a, 15.5, 0.72);
+      this.fx.ring(a.pos.x - toA.x * 1.6, a.pos.y - toA.y * 1.6, 0xfff6dc, 9.5, 0.5, 0.06);
+      this.fx.spark(fxp, 30, 17, 0xffd268, line, 0.85, 0.85, 12);
+      this.fx.spark(fxp, 18, 14, 0xffffff, line, 0.7, 0.6, 8);
+      this.fx.ring(a.pos.x - toA.x * 1.0, a.pos.y - toA.y * 1.0, 0xffb040, 10.5, 0.55, 2.2 * a.scale);
+    }
     if (m.id === 'slam') {
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffb040, 14, 0.7);
       this.fx.ring(a.pos.x - toA.x * 1.8, a.pos.y - toA.y * 1.8, 0xffffff, 8, 0.45);
@@ -7224,6 +7489,9 @@ export class Game {
     // the target you picked decides what the punch does to him
     dmg *= AIM_DMG[aim];
     if (!label && aim === AIM_BODY) label = m.id === 'upper' ? 'LIVER SHOT!' : 'BODY BLOW!';
+    // the last punch has a name and it says it (set AFTER the crit/comeback book-keeping, so the finisher does not
+    // quietly inherit the counter-hit bonus just by being called something)
+    if (m.id === 'finisher') label = '☠️ PUKULAN MEMATIKAN!';
 
     // PEEK-A-BOO: the weaving head slips jabs and crosses completely (but not hooks, uppercuts, throws or Overdrive)
     if (d.ippo && d.state === 'idle' && d.slipCd <= 0 && (m.id === 'jab' || m.id === 'cross')) {
@@ -7231,19 +7499,23 @@ export class Game {
       d.rollCharge = Math.min(1, d.rollCharge + 0.28);
       d.meter = Math.min(100, d.meter + 6);
       this.popup(new THREE.Vector3(d.pos.x, 6.2 * d.scale, d.pos.y), 'SLIP!', 'pop-dodge');
+      if (a.isPlayer) this.breakNCombo('KOMBO DIPUTAR!'); // slipped under the pea-a-boo: the link missed
       this.sfx.dodge();
       this.fx.spark(hitPos, 10, 5, 0x9fe6ff, dirAD, 1, 0.35);
       return;
     }
 
     // ---------- blocked (90% attack strength reduction -> only 10% damage gets through, with MASSIVE sparks & heavy punch impact feel!) ----------
-    if (m.id !== 'grab' && d.blocking && (d.state === 'idle' || d.state === 'stagger')) {
+    // (the finisher is deliberately NOT blockable — see `blockable`: like the throw, it is answered by not being
+    // there. Only a slip or a step off the line beats it, which is exactly what its very long tell is for.)
+    if (blockable(m.id) && d.blocking && (d.state === 'idle' || d.state === 'stagger')) {
       a.hitConfirmed = true;
       if (!d.isPlayer) this.aiDefended('block', a.moveSeq);
       const big = m.power;
       // A HELD guard (G) is a wall: only 10% of the damage gets through. The STAR MODE AUTO-GUARD is the light
       // barrier that comes up on its own — it still saves you, but 22% gets through and it drains under pressure,
       // which is what keeps "just stand there" from being the best strategy even in the comfort mode.
+      if (a.isPlayer) this.breakNCombo('KOMBO DIBLOK!'); // the script does not punch through a guard
       const guardMul = d.autoGuard ? 0.22 : 0.10;
       const chip = dmg * guardMul;
       d.hp = Math.max(1, d.hp - chip);
@@ -9776,6 +10048,8 @@ export class Game {
       star: this.starMode,
       autoGuard: this.player.autoGuard,
       meter: this.player.meter,
+      nCombo: this.nComboIdx,
+      nComboLocked: this.nComboCd > 0,
       combo: this.combo,
       stats: this.stats,
       wins: [...this.wins] as [number, number],

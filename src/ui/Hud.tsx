@@ -211,6 +211,33 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
         </div>
       )}
 
+      {/* ---------- THE N COMBO: which link of H-H-J-J-K is next, and whether the finisher is paid for ---------- */}
+      {(h.nCombo >= 0 || h.nComboLocked) && (
+        <div className="absolute bottom-[64px] left-1/2 flex -translate-x-1/2 items-center gap-2 sm:bottom-[76px]">
+          {h.nCombo >= 0 ? (
+            <>
+              <span className="rounded-sm bg-amber-400/90 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-black shadow-[0_0_18px_rgba(255,200,60,0.45)]">
+                KOMBO {Math.min(h.nCombo + 1, 6)}/6 · H-H-J-J-K
+              </span>
+              {h.nCombo >= 5 && (
+                <span
+                  className={`rounded-sm px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] ${
+                    h.meter >= 50 ? 'bg-rose-500/90 text-white' : 'bg-white/10 text-white/60'
+                  }`}
+                  title="Pukulan mematikan butuh setengah meter. Meter diisi oleh pukulan yang masuk — kombo bersih membayar dirinya sendiri."
+                >
+                  {h.meter >= 50 ? '☠️ MEMATIKAN SIAP' : `METER ${Math.round(h.meter)}/50`}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="rounded-sm bg-white/10 px-2 py-[2px] font-tech text-[9px] font-black tracking-[0.2em] text-white/45">
+              N · KOMBO — TUNGGU
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ---------- overdrive meter ---------- */}
       <div className="absolute bottom-4 left-1/2 w-[min(520px,52%)] -translate-x-1/2 sm:bottom-6">
         <div className="mb-1 flex items-end justify-between font-tech text-[10px] font-bold tracking-[0.3em]">

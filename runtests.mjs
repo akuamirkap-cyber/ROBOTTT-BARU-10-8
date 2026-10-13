@@ -6,7 +6,7 @@
 //     node runtests.mjs balance  → only the harnesses whose script name matches
 import { spawnSync } from 'node:child_process';
 
-const SUITE = ['test:feet', 'test:pose', 'test:strike', 'test:clash', 'test:cam', 'test:crowd', 'test:zeus', 'test:balance', 'test:star'];
+const SUITE = ['test:feet', 'test:pose', 'test:strike', 'test:clash', 'test:cam', 'test:crowd', 'test:zeus', 'test:balance', 'test:star', 'test:combo'];
 const filter = process.argv.slice(2);
 const names = filter.length ? SUITE.filter((n) => filter.some((f) => n.includes(f))) : SUITE;
 
