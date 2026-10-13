@@ -101,7 +101,7 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['X'], text: 'STRAIGHT kuat' },
   { keys: ['P'], text: 'GRAB banting (tembus blok)' },
   { keys: ['L'], text: 'COUNTER tangkis & balas' },
-  { keys: ['SPACE'], text: 'DODGE menghindar' },
+  { keys: ['SPACE'], text: 'DODGE menghindar (muat tenaga — hindaran telat bakal kena hajar)' },
   { keys: ['G'], text: 'BLOK tahan untuk bertahan' },
   { keys: ['E'], text: 'PEEK-A-BOO (tahan), + serang = Dempsey' },
   { keys: ['U'], text: 'RAGE mode agresif' },
@@ -109,6 +109,9 @@ const MOVES: { keys: string[]; text: string }[] = [
   { keys: ['Q', '/', 'T'], text: 'Sasaran: kepala / dada / remix' },
   { keys: ['A', '/', 'D'], text: 'Tap = ganti tangan kiri/kanan' },
   { keys: ['Z'], text: 'Pose sombong (isi meter)' },
+  { keys: ['!'], text: 'PUKULAN MELESET = badannya keburu jalan: capek & tidak bisa buru-buru mukul lagi' },
+  { keys: ['!'], text: 'HINDARAN PAS (saat musuh ancang-ancang) = balik tenaga + meter, lalu balas keras' },
+  { keys: ['!'], text: 'TENAGA < 25% = GASSED: tangan 8% lebih lambat, tenaga pulih separuh' },
   { keys: ['ESC'], text: 'Jeda pertandingan' },
 ];
 

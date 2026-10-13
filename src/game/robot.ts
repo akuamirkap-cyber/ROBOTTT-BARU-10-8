@@ -24,6 +24,9 @@ export interface RobotStyle {
   gloveSkin?: number;
   armorSkin?: number;
   isZeus100?: boolean;
+  /** the champion's own ATLAS chassis (the machine the player drives): a heavyweight that resists knockback — see
+   *  chassisKnock/chassisLaunch in Game.ts. Zeus declares isZeus100 instead; a standard Titan declares neither. */
+  atlasChassis?: boolean;
 }
 
 export interface AnimState {
@@ -265,6 +268,12 @@ export class Robot {
 
   get isAtlas() {
     return !this.isZeus;
+  }
+
+  /** the champion ATLAS chassis (heavy, knockback-resistant) — NOT the same thing as `isAtlas`, which is simply
+   *  "not wearing the Zeus mount" and is true for the whole roster. */
+  get isAtlasChassis() {
+    return !this.isZeus && !!this.ctx?.style?.atlasChassis;
   }
 
   get isAtom() {

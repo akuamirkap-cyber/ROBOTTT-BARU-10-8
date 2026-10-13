@@ -40,6 +40,7 @@ function FighterPlate({
   max,
   wins,
   stam,
+  gassed,
 }: {
   right?: boolean;
   name: string;
@@ -50,6 +51,7 @@ function FighterPlate({
   max: number;
   wins: number;
   stam?: number;
+  gassed?: boolean;
 }) {
   const low = hp > 0 && hp / max < 0.25;
   return (
@@ -68,9 +70,20 @@ function FighterPlate({
       <HpBar value={hp} max={max} from={from} to={to} right={right} low={low} />
       <div className={`mt-1.5 flex items-center gap-2 ${right ? 'flex-row-reverse' : ''}`}>
         {stam !== undefined && (
-          <div className="stam-track w-3/5">
-            <div className="h-full transition-[width] duration-100" style={{ width: `${stam}%`, background: stam < 20 ? '#ff4a4a' : 'linear-gradient(90deg,#3dff8a,#b6ff6a)' }} />
+          <div className="stam-track w-3/5" title="Tenaga: dipakai untuk memukul DAN menghindar">
+            <div
+              className="h-full transition-[width] duration-100"
+              style={{
+                width: `${stam}%`,
+                background: gassed ? '#ff8a2a' : stam < 20 ? '#ff4a4a' : 'linear-gradient(90deg,#3dff8a,#b6ff6a)',
+              }}
+            />
           </div>
+        )}
+        {gassed && (
+          <span className="rounded-sm bg-orange-500/80 px-1 font-tech text-[7.5px] font-black tracking-[0.14em] text-black" title="Tenaga habis: pukulan 8% lebih lambat & pemulihan tenaga separuh">
+            GASSED
+          </span>
         )}
         <span className="font-tech text-[10px] tracking-widest text-white/60">{Math.ceil(hp)}</span>
       </div>
@@ -128,7 +141,7 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
       {/* ---------- top plates + timer ---------- */}
       <div className="absolute inset-x-0 top-0 flex items-start justify-center gap-2 px-3 pt-3 sm:gap-4 sm:px-8 sm:pt-5">
         <div className="min-w-0 flex-1">
-          <FighterPlate name={PLAYER_NAME} nameColor="#9fe3ff" from="#1b8fe0" to="#35d6ff" hp={h.pHp} max={h.pMax} wins={h.wins[0]} stam={h.stam} />
+          <FighterPlate name={PLAYER_NAME} nameColor="#9fe3ff" from="#1b8fe0" to="#35d6ff" hp={h.pHp} max={h.pMax} wins={h.wins[0]} stam={h.stam} gassed={h.gassed} />
           {h.team && <PartnerPlate name={h.team.ally.name} color={h.team.ally.color} hp={h.team.ally.hp} max={h.team.ally.max} ko={h.team.ally.ko} />}
         </div>
         <div className="flex w-24 shrink-0 flex-col items-center sm:w-32">
@@ -152,7 +165,15 @@ export function Hud({ h, touch }: { h: HudState; touch: boolean }) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <FighterPlate right name={h.eName} nameColor={enemyColor} from={h.ultra ? '#7a0c1f' : '#a31818'} to={enemyColor === '#ff3b3b' ? '#ff4a4a' : enemyColor} hp={h.eHp} max={h.eMax} wins={h.wins[1]} />
+          <FighterPlate right name={h.eName} nameColor={enemyColor} from={h.ultra ? '#7a0c1f' : '#a31818'} to={enemyColor === '#ff3b3b' ? '#ff4a4a' : enemyColor} hp={h.eHp} max={h.eMax} wins={h.wins[1]} gassed={h.eGassed} />
+          {/* THE PUNISH WINDOW: he swung and missed — the tail has him. This is the moment the balance pass is FOR. */}
+          {h.eWhiff > 0 && h.phase === 'fight' && (
+            <div className="mt-1 flex justify-end">
+              <span className="animate-pulse rounded-sm bg-amber-400/85 px-1.5 py-[1px] font-tech text-[8px] font-black tracking-[0.16em] text-black">
+                ⚡ TERBUKA — BALAS!
+              </span>
+            </div>
+          )}
           {h.team && <PartnerPlate right name={h.team.enemy2.name} color={h.team.enemy2.color} hp={h.team.enemy2.hp} max={h.team.enemy2.max} ko={h.team.enemy2.ko} />}
         </div>
       </div>

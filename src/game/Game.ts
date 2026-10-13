@@ -203,7 +203,8 @@ export const smartDef = (d: OpponentDef, iq: number): OpponentDef => {
 export const ULTRA_COLOR = '#ff2a4a';
 
 export const PLAYER_NAME = 'ATLAS';
-export const PLAYER_STYLE: RobotStyle = { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0x1f66ff, glow: 0x3fd8ff };
+// the player's machine IS the ATLAS chassis — the heavyweight that resists knockback (see chassisKnock)
+export const PLAYER_STYLE: RobotStyle = { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0x1f66ff, glow: 0x3fd8ff, atlasChassis: true };
 
 const LS_HELMET = 'steel-titans-helmet-v1';
 const LS_GLOVE = 'steel-titans-glove-v1';
@@ -253,7 +254,7 @@ export const OPPONENTS: OpponentDef[] = [
   // played straight from the roster and the LAWAN ATLAS mode locks onto him. Silver plating with champion gold
   // trim: the same build as the player's robot, tuned like a boss (the fastest, hardest-hitting machine in the
   // WRC, and it carries the twin advantages of the ATLAS chassis — 19% faster hands, see startMove/atkSpd).
-  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a } },
+  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a, atlasChassis: true } },
 ];
 /** where ATLAS PRIME sits in the roster — the LAWAN ATLAS mode locks the bout onto him */
 export const ATLAS_IDX = OPPONENTS.findIndex((o) => o.name === 'ATLAS PRIME');
@@ -350,6 +351,12 @@ export interface HudState {
   eHp: number;
   eMax: number;
   stam: number;
+  /** THE DODGE ECONOMY, on screen: true while the player is below the gas line (slower hands, half recovery) */
+  gassed: boolean;
+  /** ...and the same for the opponent, so you can see the moment to press your advantage */
+  eGassed: boolean;
+  /** > 0 while the OPPONENT is over-committed after a missed swing — the window to punish him */
+  eWhiff: number;
   meter: number;
   combo: number;
   wins: [number, number];
@@ -923,7 +930,7 @@ const GRAVITY = 34;
 const POISE_MAX = 125; // ~6–7 clean hits in a row before a knockdown (it used to be ~5)
 const POISE_REGEN = 38; // per second
 const POISE_DELAY = 1.0; // seconds of no damage before it starts refilling
-const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20, hook ≈ 22 → ~5 clean hits in a row
+export const poiseCost = (power: number) => 8 + power * 22; // jab ≈ 15, cross ≈ 20, hook ≈ 22 → ~5 clean hits in a row
 
 /**
  * ENEMY ATTACK WARNING ("tell"). The moment the enemy commits to a move it freezes in its wind-up pose for this long
@@ -1004,28 +1011,57 @@ const AIM_DRAIN = [0.0, 1.2]; // stamina torn off on a clean hit (body only, wea
 const AIM_KNOCK = [1.06, 0.78]; // body shots push less: they sit you down by draining you, not by shoving you
 
 /**
- * ZEUS HOLDS HIS GROUND — the 100% Zeus chassis is the heaviest machine in the WRC (two tons on a low, wide
- * stance), so the shove that sends ATLAS skidding across the canvas barely rocks him. Every knockback that acts on
- * a DEFENDER runs through these numbers: the boot-skid under a raised guard, the push of a landed hit, the juggle
- * pop in mid-air, and the throw of a launch. They apply to whoever is wearing the ZEUS chassis — you or the AI.
+ * THE HEAVY CHASSIS — knockback. Zeus holds his ground like a two-ton anvil: the shove that sends a standard Titan
+ * skidding across the canvas barely rocks him. The champion's own ATLAS — the machine the player drives, and the
+ * ATLAS PRIME he meets in the LAWAN ATLAS duel — is a heavyweight in the same class, just not a wall.
+ * Every knockback that acts on a DEFENDER runs through these numbers: the boot-skid under a raised guard, the push
+ * of a landed hit, the juggle pop in mid-air, and the throw of a launch.
  */
-export const ZEUS_KNOCK_RESIST = 0.4; // a landed hit or a blocked guard drives him back 4/10 as far (was 0.833)
+export type Chassis = 'standard' | 'atlas' | 'zeus';
+export const ZEUS_KNOCK_RESIST = 0.4; // a landed hit or a blocked guard drives Zeus back 4/10 as far
 export const ZEUS_LAUNCH_RESIST = 0.45; // when he IS swept off his feet he is thrown 45% of the usual distance...
 export const ZEUS_LAUNCH_LIFT = 0.62; // ...and lifts off at 62% of the height — he comes straight back down on his boots
 export const ZEUS_POISE_COST = 0.55; // his stability bank eats 55% of the punishment (≈ twice as many clean hits)
-export const ZEUS_POISE_COST_HJ = 0.12; // and a jab / hook barely dents it at all (was 0.25)
-/** the only strikes that still sweep a BRACED Zeus off his feet: the Overdrive specials, the throw and the skyhook
- *  (everything else just rocks him — see the brace rule in resolveHit) */
-const ZEUS_LAUNCHERS: MoveId[] = ['slam', 'bolt', 'windmill', 'skyhook', 'grab'];
+export const ZEUS_POISE_COST_HJ = 0.12; // and a jab / hook barely dents it at all
+export const ATLAS_KNOCK_RESIST = 0.62; // ATLAS: 62% of the shove gets through — heavy, but still movable
+export const ATLAS_LAUNCH_RESIST = 0.7; // thrown 70% of the distance...
+export const ATLAS_LAUNCH_LIFT = 0.85; // ...and lifts 85% of the height
+export const ATLAS_POISE_COST = 0.8; // his stability bank is 20% tougher than a standard Titan's
+export const ATLAS_POISE_COST_HJ = 0.6; // a jab / hook dents it, but only just
+/** the only strikes that still sweep a BRACED heavyweight off his feet: the Overdrive specials, the throw and the
+ *  skyhook (everything else just rocks him — see the brace rule in resolveHit) */
+const HEAVY_LAUNCHERS: MoveId[] = ['slam', 'bolt', 'windmill', 'skyhook', 'grab'];
+
+/** which chassis a robot is wearing (see RobotStyle.atlasChassis / isZeus100) */
+export const chassisOf = (isZeus: boolean, hasAtlasChassis = false): Chassis => (isZeus ? 'zeus' : hasAtlasChassis ? 'atlas' : 'standard');
+/** how far a landed hit / a blocked guard shoves that chassis */
+export const chassisKnock = (c: Chassis) => (c === 'zeus' ? ZEUS_KNOCK_RESIST : c === 'atlas' ? ATLAS_KNOCK_RESIST : 1);
+/** how far a launch throws it */
+export const chassisLaunch = (c: Chassis) => (c === 'zeus' ? ZEUS_LAUNCH_RESIST : c === 'atlas' ? ATLAS_LAUNCH_RESIST : 1);
+/** how high a launch / juggle lifts it */
+export const chassisLift = (c: Chassis) => (c === 'zeus' ? ZEUS_LAUNCH_LIFT : c === 'atlas' ? ATLAS_LAUNCH_LIFT : 1);
+/** what share of a clean hit's poise cost that chassis eats (a jab / hook is charged the softer rate) */
+export const chassisPoise = (c: Chassis, isHJ: boolean) =>
+  c === 'zeus' ? (isHJ ? ZEUS_POISE_COST_HJ : ZEUS_POISE_COST) : c === 'atlas' ? (isHJ ? ATLAS_POISE_COST_HJ : ATLAS_POISE_COST) : 1;
 
 /**
- * DOES ZEUS BRACE? True = the strike rocks him but cannot take him off his feet (he eats it standing, "KEBAL TITAN!").
- * A jab or a hook never moves him; an ordinary punch only gets through once he is SOFTENED — his stability bar nearly
- * empty, already rocked by the previous shot, or nearly out of HP. The designated launchers (the Overdrive specials,
- * the throw, the skyhook) always go through, and then throw him short and low (ZEUS_LAUNCH_*).
- * Pure and exported so `zeustest.mjs` asserts the rule instead of trusting the reader.
+ * DOES IT BRACE? True = the strike rocks him but cannot take him off his feet (he eats it standing, "KEBAL TITAN!").
+ * Zeus is the wall: a jab or a hook never moves him, and an ordinary punch only gets through once he is SOFTENED —
+ * his stability bar nearly empty, already rocked by the previous shot, or nearly out of HP. The ATLAS chassis is one
+ * notch lighter: any punch can sit it down once it is softened, but never while it is still fresh. A standard Titan
+ * braces at nothing. The designated launchers always go through, and then throw a heavyweight short and low.
+ * Pure and exported so `zeustest.mjs` / `balancetest.mjs` assert the rule instead of trusting the reader.
  */
-export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => !ZEUS_LAUNCHERS.includes(id) && (isHJ || !softened);
+export const chassisBraces = (c: Chassis, id: MoveId, isHJ: boolean, softened: boolean) => {
+  if (HEAVY_LAUNCHERS.includes(id)) return false; // the Overdrive specials, the throw and the skyhook always land
+  // both heavy chassis share the rule's SHAPE — a jab / hook never sits them down, and an ordinary punch only does
+  // once they are softened. What differs is everything around it: ATLAS softens 25% faster (its poise bank is 80%,
+  // not 55%), is shoved 62% of the way instead of 40%, and flies at 70%/85% when it finally leaves the canvas.
+  if (c === 'zeus' || c === 'atlas') return isHJ || !softened;
+  return false;
+};
+/** the Zeus-only spelling of the rule above (kept for readability at the Zeus call sites and in the tests) */
+export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => chassisBraces('zeus', id, isHJ, softened);
 
 /**
  * DODGE ADVANTAGE — the "whoever dodges first gets the hit" rule. A dodge (SPACE) can be cancelled straight into a
@@ -1033,9 +1069,77 @@ export const zeusBraces = (id: MoveId, isHJ: boolean, softened: boolean) => !ZEU
  * reads the exchange first owns the opening, while a dodge that leads nowhere just costs stamina.
  */
 const DODGE_WIN = 0.5; // how long after a dodge the advantage stays alive
-const DODGE_WIN_SPD = 1.18; // the next strike plays faster out of a dodge while staying readable
-const DODGE_WIN_DMG = 1.22; // ...and lands this much harder
+export const DODGE_WIN_SPD = 1.20; // the next strike plays faster out of a dodge while staying readable
+export const DODGE_WIN_DMG = 1.26; // ...and lands this much harder (the reward for READING the punch, not for hopping)
 const DODGE_CANCEL_AT = 0.6; // you may cancel out of a dodge once this much of it has played (its i-frames are spent)
+
+/**
+ * THE DODGE ECONOMY (balance pass). A dodge is a DECISION, not a habit: it is the one move that both negates the
+ * opponent's committed punch and hands you the tempo, so it has to cost something the attacker can punish you for
+ * wasting. The old numbers were free — 3.6–4.8 stamina out of 100 against 30/s of recovery, i.e. dodge-spam was
+ * sustainable forever, and the game came down to whoever hopped first.
+ *   - the step itself costs ~2.5× what it did (a dodge is a real slice of the tank now)
+ *   - the recovery cooldown roughly doubles, so you cannot chain hops back to back
+ *   - ONLY a read is cheap: a TIMED dodge (an attack already in flight) still refunds stamina and pays the meter
+ *     (see perfectDodge), and it stays available on an empty tank — the "DESPERATE" dodge below — because being
+ *     locked out of slipping a lethal blow is not a fight, it is a cutscene. It just leaves you GASSED.
+ */
+export interface DodgeCfg {
+  dur: number; // the step itself
+  speed: number; // m/s of the step
+  inv: boolean; // i-frames over the step
+  cost: number; // stamina, BEFORE STAM_SCALE
+  cd: number; // recovery before another dodge
+}
+export const DODGE_CFG: Record<'evade' | 'fwd' | 'back' | 'side', DodgeCfg> = {
+  evade: { dur: 0.28, speed: 5.6, inv: true, cost: 13, cd: 0.34 },
+  fwd: { dur: 0.25, speed: 6.0, inv: false, cost: 10, cd: 0.30 },
+  back: { dur: 0.28, speed: 5.2, inv: true, cost: 12, cd: 0.34 },
+  side: { dur: 0.28, speed: 5.5, inv: true, cost: 11, cd: 0.32 },
+};
+/**
+ * Can this dodge be paid for? A DESPERATE dodge — thrown while an attack is already in flight at you — is always
+ * allowed (fairness: you may always try to slip a lethal blow), even on an empty tank. Everything else needs the
+ * stamina. Exported so the balance harness asserts the rule instead of trusting the reader.
+ */
+export const dodgeAffordable = (stam: number, cost: number, desperate: boolean) => stam >= cost || desperate;
+/** what the bank looks like after the step: a desperate dodge can empty it, it never goes into debt */
+export const dodgeStaminaAfter = (stam: number, cost: number) => Math.max(0, stam - cost);
+
+/**
+ * GASSED (the other half of the economy). Below this line a fighter is out of gas: recovery crawls, so a dodge or a
+ * flurry you could not afford is not a free reset — it is a debt you pay for the next several seconds, at 8% slower
+ * hands, while the opponent reads you. Both corners run the same numbers.
+ */
+export const GAS_FLOOR = 25;
+export const GAS_REGEN_MUL = 0.5;
+export const GAS_ATK_MUL = 0.92;
+export const isGassed = (stam: number) => stam < GAS_FLOOR;
+export const gasAtkMul = (stam: number) => (isGassed(stam) ? GAS_ATK_MUL : 1);
+export const gasRegenMul = (stam: number) => (isGassed(stam) ? GAS_REGEN_MUL : 1);
+
+/**
+ * OVER-COMMITMENT (the punch side of the balance). A punch that lands is safe — it opens its cancel window and hands
+ * you the tempo. A punch that MISSES is not: the body has already thrown its weight down the line, so the tail of
+ * the swing plays at a fraction of its speed and no new punch can come out of it until it is over. On top of the
+ * recovery, the fighter cannot dodge-cancel out of the whiff, which is exactly the opening the AI has always been
+ * coded to punish (see the WHIFF DETECTION block) — and now it is a real one on both sides.
+ * The Overdrive is deliberately exempt from the gate: spending a full meter to cover a mistake is a legitimate
+ * escape, and it is priced like one.
+ */
+export const WHIFF_TAIL = 0.42; // seconds of over-commitment after the miss
+export const WHIFF_SLOW = 0.6; // the rest of the swing plays at 60% speed
+/** the tail stretches the leftover animation of a whiffed move; the blow whiffed at `impact`, of `dur` total */
+export const whiffRecovery = (impact: number, dur: number, atkSpd = 1) => Math.max(0, dur - impact) / Math.max(0.2, atkSpd * WHIFF_SLOW);
+/** a new ordinary punch may not start inside the tail (the Overdrive is exempt — see above) */
+export const whiffGates = (whiffT: number) => whiffT > 0;
+/**
+ * Can a fighter still DODGE-CANCEL out of his own swing? Normally yes (you may always bail out of a punch you
+ * regret), but NOT inside a whiff tail — that is the whole punishment. The one exception is the fairness floor
+ * above: if a strike is already in flight at him, he may always try to slip it (it just costs stamina and leaves
+ * him gassed). Exported so `balancetest.mjs` audits the rule.
+ */
+export const canBailOut = (whiffT: number, incomingDeadly: boolean) => !whiffGates(whiffT) || incomingDeadly;
 
 /**
  * CINEMATIC CAMERAS. The fight camera is a broadcast operator; these beats are the director stepping in to make
@@ -1050,7 +1154,7 @@ type CineKind = 'od' | 'hit' | 'rip';
 const CINE_DUR: Record<CineKind, number> = { od: 0.35, hit: 0.28, rip: RIP_DUR };
 
 /** STAMINA: a fight is about reading, not about running dry — strikes cost 40% less and everything recovers faster */
-const STAM_SCALE = 0.6;
+export const STAM_SCALE = 0.6;
 const REGEN_IDLE = 30; // per second, standing
 const REGEN_BLOCK = 9; // per second, behind the guard
 const REGEN_AI = 32; // per second, for the opponent (supports relentless offense + active slip defense)
@@ -1188,6 +1292,7 @@ class Fighter {
   mixN = 0; // REMIX: punches thrown so far in the current combination (drives the head/body pattern)
   aimT = 0; // how long the "target switched" flash stays up (HUD)
   dodgeWinT = 0; // DODGE ADVANTAGE: time left in which the next strike is faster & heavier (after a dodge)
+  whiffT = 0; // OVER-COMMITMENT: seconds left of the recovery tail after a punch that missed (see WHIFF_TAIL)
   atkSpd = 1; // duration multiplier of the move being played (> 1 = thrown faster, out of a dodge)
   winStrike = false; // the move currently playing is a dodge-advantage strike
   rage = false; // RAGE MODE (G): hyper-aggressive fighting speed, movement, and heavy knockback
@@ -1361,6 +1466,7 @@ class Fighter {
     this.mixN = 0;
     this.aimT = 0;
     this.dodgeWinT = 0;
+    this.whiffT = 0;
     this.atkSpd = 1;
     this.winStrike = false;
     this.rage = false;
@@ -4353,7 +4459,9 @@ export class Game {
     const e = this.enemy;
     const incomingDeadly = e.state === 'attack' && !!e.move && !e.impacted;
     // dodge-cancel: you may always bail out of any non-Overdrive swing (or any swing when an enemy attack is incoming!) to dodge
-    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly)) {
+    // ...and a whiffed swing cannot be dodge-cancelled: the tail has to play out — UNLESS a punch is already in
+    // flight at him (see canBailOut: the same fairness floor the empty-tank dodge gets)
+    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly) && canBailOut(p.whiffT, incomingDeadly)) {
       p.state = 'idle';
       p.move = null;
       p.runStrike = false;
@@ -4854,6 +4962,20 @@ export class Game {
   }
 
   /**
+   * THE MISS. Every way a punch can fail to connect — the opponent slipped it, stepped off its line, or the lunge
+   * simply came up short — calls this. It marks the attacker as OVER-COMMITTED for the rest of the swing
+   * (`whiffT`, a beat long) with the tail playing at WHIFF_SLOW, and it doubles as the AI's whiff feed: the enemy
+   * has always kept a dossier on how often the player swings at air; now the cost of that whiff is symmetric.
+   * Returns the tail it set, so the caller can hand it straight to `whiffT` and a test can read it.
+   */
+  private markWhiff(a: Fighter, m: Move) {
+    if (a.state !== 'attack') return 0;
+    const tail = whiffRecovery(m.impact, m.dur);
+    a.whiffT = Math.max(a.whiffT, Math.min(WHIFF_TAIL, tail));
+    return a.whiffT;
+  }
+
+  /**
    * THE POINT OF IMPACT, taken straight off the model: a HEAD target lands between the EYES (their live world
    * position, so it follows the opponent's head wherever he moves it) and a BODY target lands on the chest plate,
    * just above the ribs. Nothing is guessed and nothing has to be marked on screen.
@@ -4980,7 +5102,9 @@ export class Game {
     // the dash's first frame and read as a dragged or twisted leg. Forward/back dodge cancels remain unchanged.
     if (kind === 'side' && p.dodgeT > 0) return;
     const incomingDeadly = e.state === 'attack' && !!e.move && !e.impacted;
-    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly)) {
+    // ...and a whiffed swing cannot be dodge-cancelled: the tail has to play out — UNLESS a punch is already in
+    // flight at him (see canBailOut: the same fairness floor the empty-tank dodge gets)
+    if (p.state === 'attack' && p.move && (p.impacted || !isOD(p.move.id) || incomingDeadly) && canBailOut(p.whiffT, incomingDeadly)) {
       p.state = 'idle';
       p.move = null;
       p.runStrike = false;
@@ -5011,15 +5135,17 @@ export class Game {
   private startDodge(f: Fighter, dir: THREE.Vector2, kind: 'evade' | 'fwd' | 'back' | 'side' = 'evade') {
     if (f.state === 'legend' || f.state === 'legendHit') return false;
     // Authentic Muhammad Ali & pro boxing footwork: explosive step-slide (1.1m - 1.35m boxing repositioning) instead of anime teleport
-    const cfg = {
-      evade: { dur: 0.28, speed: 5.6, inv: true, cost: 8, cd: 0.18 },
-      fwd: { dur: 0.25, speed: 6.0, inv: false, cost: 6, cd: 0.16 },
-      back: { dur: 0.28, speed: 5.2, inv: true, cost: 7, cd: 0.18 },
-      side: { dur: 0.28, speed: 5.5, inv: true, cost: 6, cd: 0.16 },
-    }[kind];
-    // the enemy's dodge gets cheaper as its IQ grows (a clever fighter wastes less energy), the player's cost never changes
-    const cost = (f.isPlayer ? cfg.cost : cfg.cost / Math.pow(this.iq, 0.25)) * STAM_SCALE;
-    if (f.dodgeCd > 0 || f.stam < cost || f.state !== 'idle') return false;
+    // THE DODGE ECONOMY: the cost + cooldown table now lives at the top of the file (DODGE_CFG) so the balance
+    // harness audits the same numbers the game runs.
+    const cfg = DODGE_CFG[kind];
+    // the enemy's dodge gets cheaper as its IQ grows (a clever fighter wastes less energy), the player's cost never
+    // changes. The discount is deliberately MILD now: the old 1/iq^0.25 made a 12× brain dodge ~1.9× cheaper than
+    // you could, which at the new cost table would have handed the AI back the dodge-spam the balance pass removes.
+    const cost = (f.isPlayer ? cfg.cost : cfg.cost / Math.pow(this.iq, 0.15)) * STAM_SCALE;
+    // A DESPERATE DODGE (a punch already in flight at him) is always allowed — you may always try to slip a lethal
+    // blow, even on an empty tank. It just leaves you GASSED. An ordinary step needs the stamina.
+    const desperate = this.foeOf(f).state === 'attack' && !!(this.foeOf(f).move);
+    if (f.dodgeCd > 0 || f.state !== 'idle' || !dodgeAffordable(f.stam, cost, desperate)) return false;
     f.dodgeT = cfg.dur;
     f.dodgeDur = cfg.dur;
     f.dodgeTail = 0.14;
@@ -5033,8 +5159,9 @@ export class Game {
     f.dodgeDir.copy(dir);
     f.aliSign = (f.aliSign > 0 ? -1 : 1); // alternate weave rhythm for Muhammad Ali pendulum flow
     // enemy dodge cooldown: 2× the player's (the old value) was far too long to ever see it dodge twice in a row
-    f.dodgeCd = cfg.cd * (f.isPlayer ? (f.rage ? 0.78 : 1) : Math.max(0.6, 1.6 / Math.sqrt(this.iq)));
-    f.stam -= cost;
+    // ...and its recovery is floored at 70% of yours, not 60%: two dodges back to back have to cost the AI too
+    f.dodgeCd = cfg.cd * (f.isPlayer ? (f.rage ? 0.78 : 1) : Math.max(0.7, 1.6 / Math.sqrt(this.iq)));
+    f.stam = dodgeStaminaAfter(f.stam, cost); // never into debt — the desperate dodge simply empties the tank
     f.blocking = false;
     this.sfx.dodge();
     // Authentic boxing canvas squeak & friction dust (subtle canvas dust, zero anime shockwave rings / neon flashes)
@@ -5153,6 +5280,9 @@ export class Game {
       }
       return;
     }
+    // OVER-COMMITMENT GATE: a punch thrown into empty air cannot be followed by another until the swing has played
+    // out (the Overdrive is exempt — spending a full meter to cover a mistake is a legitimate escape).
+    if (whiffGates(f.whiffT) && !isOD(id)) return;
     if (f.stam < Math.min(m.cost * STAM_SCALE, 4)) {
       if (f.isPlayer) this.popup(new THREE.Vector3(f.pos.x, 5.8, f.pos.y), 'TENAGA HABIS', 'pop-info');
       return;
@@ -5242,7 +5372,9 @@ export class Game {
     // copy-pasted would read as sloppy on the one punch you are supposed to be able to repeat on beat
     const spamRhythm = id === 'jab' ? 1 : f.spamCount >= 2 ? 1 + ((f.strikeVar % 3) - 1) * 0.05 : 1;
     const atlasSpd = f.robot.isAtlas ? 1.19 : 1.0; // GERAKAN PUKULAN ATLAS LEBIH CEPAT 19 PERSEN
-    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd * atlasSpd;
+    // GASSED: hands slow down 8% below the gas line — the price of a flurry (or a dodge) you could not afford
+    const gasMul = gasAtkMul(f.stam);
+    f.atkSpd = dodgeSpd * rageSpd * spamRhythm * jabSpd * atlasSpd * gasMul;
     if (f.isPlayer) {
       const tgtYaw = Math.atan2(this.enemy.pos.x - f.pos.x, this.enemy.pos.y - f.pos.y);
       f.yaw += wrapAngle(tgtYaw - f.yaw) * (id === 'counter' || f.winStrike ? 0.9 : 0.6);
@@ -5704,6 +5836,12 @@ export class Game {
     }
 
     // ---- HIT-CONFIRMED & PRESSURE COMBO CHAINING ----
+    // OVER-COMMITMENT (AI side): a swing that came up empty is not a free combo starter — the tail has to play out,
+    // exactly like the player's. This is what makes baiting a big punch and slipping it pay off on both sides.
+    if (e.state === 'attack' && e.move && e.impacted && !e.hitConfirmed && e.whiffT > 0) {
+      ai.combo = 0;
+      return;
+    }
     if (e.state === 'attack' && e.move && ai.combo > 0 && e.impacted && this.canCancel(e) && !pDown && p.state !== 'air') {
       const zChainP = ai.zeusComboOD ? 1.0 : e.robot.isZeus ? 0.95 : (ai.pressure ? 0.8 : 0.65);
       if (e.hitConfirmed || (dist <= 4.5 * e.scale && Math.random() < zChainP)) {
@@ -6110,6 +6248,7 @@ export class Game {
     f.flash = Math.max(0, f.flash - dt * 7);
     f.dash.multiplyScalar(Math.exp(-7.5 * dt));
     f.dodgeCd -= dt;
+    f.whiffT = Math.max(0, f.whiffT - dt);
     f.counterT -= dt;
     f.handT = Math.max(0, f.handT - dt);
     f.aimT = Math.max(0, f.aimT - dt);
@@ -6189,9 +6328,12 @@ export class Game {
       f.comboTaken = 0;
       f.juggle = 0;
     }
+    // GASSED (below the gas line) recovery crawls at half speed — both corners — so an over-committed exchange has
+    // consequences a few seconds long instead of being erased by the next tick of the regen.
+    const gasReg = gasRegenMul(f.stam);
     if (f.sprinting) f.stam = Math.max(0, f.stam - SPRINT_DRAIN * dt); // running costs stamina and stops it from regenerating
-    else if (f.state === 'idle' && !f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_IDLE : REGEN_AI) * dt);
-    else if (f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_BLOCK : REGEN_BLOCK * 0.7) * dt);
+    else if (f.state === 'idle' && !f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_IDLE : REGEN_AI) * gasReg * dt);
+    else if (f.blocking) f.stam = Math.min(100, f.stam + (f.isPlayer ? REGEN_BLOCK : REGEN_BLOCK * 0.7) * gasReg * dt);
 
     const fighting = this.phase === 'fight';
     if (f.state === 'attack' && f.move) {
@@ -6205,7 +6347,10 @@ export class Game {
         f.glowBoost = Math.max(f.glowBoost, 1.8);
         f.flash = Math.max(f.flash, 0.16 + 0.16 * Math.sin(f.animT * 32));
       } else {
-        f.moveT += (dt * f.atkSpd) / (f.tscale * PACE); // atkSpd > 1 = a dodge-advantage strike, thrown faster
+        // OVER-COMMITMENT: the rest of a MISSED swing plays at a fraction of its speed (whiffRecovery), so the
+        // attacker is genuinely stuck for a beat — that is the window the opponent gets to punish.
+        const tail = f.whiffT > 0 ? WHIFF_SLOW : 1;
+        f.moveT += (dt * f.atkSpd * tail) / (f.tscale * PACE); // atkSpd > 1 = a dodge-advantage strike, thrown faster
       }
       if (!f.whooshed && f.moveT >= m.strikeAt) {
         f.whooshed = true;
@@ -6795,6 +6940,10 @@ export class Game {
     const dist = a.pos.distanceTo(d.pos);
     const toA = new THREE.Vector2().subVectors(a.pos, d.pos).normalize();
     const away = new THREE.Vector2(-toA.x, -toA.y);
+    // WHICH CHASSIS IS TAKING THE HIT: Zeus (a wall), the champion's ATLAS (heavy), or a standard Titan. Every
+    // knockback / brace / poise decision below runs through it, including the blocked-guard branch.
+    const chassis = chassisOf(d.robot.isZeus, d.robot.isAtlasChassis);
+    const isHJ = m.id === 'jab' || m.id === 'hook';
     // the impact point is exactly where the target is: between the eyes for a head shot, the chest plate for a body
     // shot — taken from the live model, so it sits on the optics no matter what the opponent is doing
     const aimP = this.aimPoint(d, aim, this.aimTmp);
@@ -6843,13 +6992,17 @@ export class Game {
     // TIMED DODGE: the defender (player OR enemy) dodged while THIS very attack was winding up → it whiffs cleanly!
     if (d.dodgeFor === a.moveSeq) {
       d.dodgeFor = -1;
+      a.whiffT = this.markWhiff(a, m); // ...and the attacker is left swimming through the empty air he punched
       this.perfectDodge(d, m);
       if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
       return;
     }
 
     const trueCounter = m.id === 'counter' || a.winStrike || a.counterT > 0;
-    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale) return; // out of range (a running punch / true counter reaches further)
+    if (dist > (m.reach + (a.runStrike ? 1.0 : 0) + (trueCounter ? 0.65 : 0)) * a.scale) {
+      a.whiffT = this.markWhiff(a, m); // thrown from too far out: the lunge came up short
+      return; // out of range (a running punch / true counter reaches further)
+    }
 
     // COUNTER STANCE (L / Enemy Counter Parry): a strike that arrives inside the parry window (or locked by parryFor) is caught, not eaten.
     // Works for both Player and Enemy!
@@ -6864,6 +7017,7 @@ export class Game {
     const avg = (a.scale + d.scale) * 0.5;
     const hitWidth = X.width * (trueCounter ? 1.45 : 1) * avg;
     if (lateral > hitWidth) {
+      a.whiffT = this.markWhiff(a, m); // stepped off the line: the swing is committed and the attacker is open
       if (d.dodgeT > 0 || d.invuln > 0) {
         this.perfectDodge(d, m);
         if (!d.isPlayer) this.aiDefended('dodge', a.moveSeq);
@@ -6968,7 +7122,7 @@ export class Game {
       d.stam = Math.max(0, d.stam - dmg * 0.10 * AIM_STAM[aim] * (d.ippo ? 0.55 : 1));
 
       // Physical boot-skid pushback so the 2-ton punch force visibly shoves the defender's planted guard across the mat
-      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * (d.robot.isZeus ? ZEUS_KNOCK_RESIST : 1);
+      const blockPush = m.knock * (0.42 + big * 0.36) * (a.rage ? 1.25 : 1) * chassisKnock(chassis);
       d.kb.addScaledVector(away, blockPush);
       if (dist > 2.85 * avg) a.kb.addScaledVector(away, blockPush * 0.45);
 
@@ -7144,12 +7298,11 @@ export class Game {
     // the target is what the punch does to him: the body tears down stamina and stability
     if (AIM_DRAIN[aim] > 0) d.stam = Math.max(0, d.stam - dmg * AIM_DRAIN[aim]);
     const isZeusDef = d.robot.isZeus;
-    const isHJ = m.id === 'jab' || m.id === 'hook';
     // drain stability; it only breaks after a sustained flurry of clean hits
     if (!wasAir && !armored) {
       const pCost = poiseCost(big) * AIM_POISE[aim] * (crit ? 1.6 : 1) * (epicComeback ? 1.45 : 1); // a counter-hit or comeback rocks much harder
-      // Zeus kokoh: bank stabilitasnya cuma kemakan 55% per pukulan bersih, dan jab/hook hampir tidak menggerusnya
-      d.poise -= pCost * (isZeusDef ? (isHJ ? ZEUS_POISE_COST_HJ : ZEUS_POISE_COST) : 1);
+      // chassis-aware: Zeus 55% (jab/hook 12%), ATLAS 80% (jab/hook 60%), a standard Titan the full price
+      d.poise -= pCost * chassisPoise(chassis, isHJ);
       d.poiseT = POISE_DELAY;
     }
     // ---- WHEN DOES HE GO DOWN? Only when it is earned. A robot that falls over from every uppercut or every running
@@ -7185,8 +7338,8 @@ export class Game {
         } else {
           // Uppercut di udara juga tidak melempar terlalu tinggi (pop rendah agar tidak terbang jauh)
           const pop = (m.id === 'jab' ? 7.5 : m.id === 'cross' ? 8.5 : m.id === 'hook' ? 9 : m.id === 'upper' ? 4.5 : 10) * (d.juggle >= 3 ? 0.75 : 1);
-          d.vy = pop * (isZeusDef ? ZEUS_LAUNCH_LIFT : 1);
-          d.kb.addScaledVector(away, (2.5 + big * 2) * (isZeusDef ? ZEUS_KNOCK_RESIST : 1));
+          d.vy = pop * chassisLift(chassis);
+          d.kb.addScaledVector(away, (2.5 + big * 2) * chassisKnock(chassis));
           label = label || `JUGGLE x${d.juggle}`;
         }
       }
@@ -7199,8 +7352,8 @@ export class Game {
       // he is genuinely SOFTENED — stability nearly gone, already rocked by the shot before, or nearly out of HP.
       // Only the designated launchers go through on a fresh Zeus: the Overdrive specials, the throw, the skyhook.
       // Everything that DOES take him off his feet throws him far less far and less high (see ZEUS_LAUNCH_*).
-      const zeusBraced = isZeusDef && zeusBraces(m.id, isHJ, softened);
-      if (zeusBraced) {
+      const heavyBraced = chassisBraces(chassis, m.id, isHJ, softened);
+      if (heavyBraced) {
         // Berdiri tegak tak tergoyahkan: tidak pernah mental terbang (state: air) ataupun tersungkur jatuh (state: down)
         d.state = 'stagger';
         d.move = null;
@@ -7231,11 +7384,11 @@ export class Game {
         const dir = new THREE.Vector2().addScaledVector(pd, 0.62).addScaledVector(away, 0.38).normalize();
         const force = m.knock * (0.72 + big * 0.5) * (a.runStrike ? 1.35 : 1) * (a.rage ? 1.2 : 1) * (crit ? 1.15 : 1);
         // Zeus is thrown like a bag of anvils: much shorter across the canvas and a lower arc (ZEUS_LAUNCH_*)
-        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5) * (isZeusDef ? ZEUS_LAUNCH_RESIST : 1);
+        const horiz = THREE.MathUtils.clamp(force * 0.95, 4.5, 13.5) * chassisLaunch(chassis);
         // the Overdrive uppercut is THE launcher: it throws him highest of anything in the book (a heavy uppercut that
         // was already a launcher, now with a meter behind it) — everything else keeps the standard profile
         // Uppercut biasa yang menembus pertahanan saat broken/KO tidak melempar ke angkasa (vertikal rendah & realistis)
-        const vert = (m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5) * (isZeusDef ? ZEUS_LAUNCH_LIFT : 1);
+        const vert = (m.id === 'skyhook' ? 16.5 + big * 5 : m.id === 'upper' ? 3.5 + big * 1.5 : m.kind === 'up' ? 12 + big * 4.5 : m.kind === 'side' ? 7.5 + big * 3 : 8 + big * 3.5) * chassisLift(chassis);
         d.vy = vert;
         d.kb.copy(dir).multiplyScalar(m.id === 'upper' ? Math.min(horiz, 6.5) : horiz);
         // a hook turns him round in the air (the head is thrown off the axis, the body follows); a straight barely does
@@ -7249,7 +7402,7 @@ export class Game {
       // BOXING HIT PUSHBACK & RING DOMINANCE:
       // Each landed strike noticeably drives the defender backward across the canvas while the attacker steps in to press the advantage!
       const heavyNoDrop = (m.id === 'upper' || (a.runStrike && m.id === 'cross') || brokenRaw) ? 1.35 : 1; // kept on his feet, but driven back hard — often into the ropes
-      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * (isZeusDef ? ZEUS_KNOCK_RESIST : 1);
+      const pushMul = (1.85 + Math.min(4, d.comboTaken) * 0.3) * AIM_KNOCK[aim] * (a.runStrike ? 1.45 : 1) * (a.rage ? 1.35 : 1) * heavyNoDrop * chassisKnock(chassis);
       d.kb.addScaledVector(away, m.knock * pushMul);
       if (dist > 2.85 * avg) {
         a.kb.addScaledVector(away, m.knock * 0.62 * (a.rage ? 1.25 : 1));
@@ -9485,6 +9638,9 @@ export class Game {
       eHp: this.enemy.hp,
       eMax: this.enemy.maxHp,
       stam: this.player.stam,
+      gassed: isGassed(this.player.stam),
+      eGassed: isGassed(this.enemy.stam),
+      eWhiff: this.enemy.whiffT,
       meter: this.player.meter,
       combo: this.combo,
       stats: this.stats,
