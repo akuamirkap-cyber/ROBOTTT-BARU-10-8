@@ -107,13 +107,13 @@ console.log('\n§2  the button — load on the press, throw on the RELEASE');
 {
   const edge = slice('const tk = tapKind[code];', 'private heroAnimState', 3000);
   ok('the six strike keys no longer fire on the press by themselves', !/case 'KeyH':\s*this\.tryAttack/.test(src) && !/case 'KeyX':[^\n]*\n[^\n]*this\.tryAttack/.test(src));
-  ok('...they start a LOAD instead (unless PANJER OTOMATIS is on)', /if \(this\.panjerMode\) \{[\s\S]{0,200}this\.panjerMax\(p, PANJER_KEYS\[code\]\);\s*\n\s*\} else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(edge) && /case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyV':\s*\n\s*case 'KeyX':/.test(edge));
+  ok('...they start a LOAD instead (unless PANJER OTOMATIS is on)', /if \(this\.panjerMode\) \{[\s\S]{0,200}this\.panjerMax\(p, PANJER_KEYS\[code\]\);\s*\n\s*\} else this\.beginPanjer\(p, PANJER_KEYS\[code\], code\);/.test(edge) && /case 'KeyV':\s*\n\s*this\.startPhantom\(p\);\s*\n\s*break;\s*\n\s*case 'KeyH':\s*\n\s*case 'KeyJ':\s*\n\s*case 'KeyC':\s*\n\s*case 'KeyK':\s*\n\s*case 'KeyX':/.test(edge));
   ok('...and the RELEASE is what throws the punch', /release\(code: string\)[\s\S]{0,700}if \(this\.player && this\.player\.panjerKey === code\) this\.firePanjer\(this\.player\);/.test(src));
   ok('the reactive COUNTER (L) still fires on the press — it has to answer a fist already in flight', /case 'KeyL':\s*\n\s*this\.tryAttack\(p, 'counter'\);/.test(src));
   ok('...and the throw (P) and the Overdrive (R) are untouched', PANJER_KEYS.KeyP === undefined && PANJER_KEYS.KeyL === undefined && PANJER_KEYS.KeyN === undefined && PANJER_KEYS.KeyR === undefined);
   // the four loadable keys are the four ordinary punches, and they throw the SAME move ids the old cases did
   const map = PANJER_KEYS;
-  ok('the six keys load the four ordinary punches', map.KeyH === 'jab' && map.KeyJ === 'hook' && map.KeyC === 'hook' && map.KeyK === 'upper' && map.KeyV === 'upper' && map.KeyX === 'cross');
+  ok('the six keys load the four ordinary punches', map.KeyH === 'jab' && map.KeyJ === 'hook' && map.KeyC === 'hook' && map.KeyK === 'upper' && map.KeyV === undefined && map.KeyX === 'cross');
   ok('every loadable punch really exists in the book', Object.values(map).every((id) => !!MOVES[id] && MOVES[id].dmg > 0), Object.values(map).join(' · '));
   ok('the load dies with the key itself if the window loses focus', /onBlur = \(\) => \{[\s\S]{0,220}this\.player\?\.clearPanjer\(\);/.test(src));
 }
@@ -243,7 +243,7 @@ console.log('\n§9  SPAM — a held button keeps punching (PANJER OTOMATIS only)
   ok('...it runs every frame of the fight', /this\.panjerStep\(this\.enemy, dt, false\);\s*\n\s*this\.updateAutoFire\(\);/.test(src));
   ok('...only in PANJER OTOMATIS (the manual hold mechanic is untouched)', /if \(!this\.panjerMode \|\| this\.phase !== 'fight' \|\| this\.paused\) return;/.test(spamFn));
   ok('...and it stops when the button comes up', /if \(this\.player && this\.player\.autoFireKey === code\) this\.player\.autoFireKey = null;/.test(src));
-  ok('the last button PRESSED wins, with a fixed tie-break while two are held', /let code = p\.autoFireKey && this\.keys\.has\(p\.autoFireKey\) \? p\.autoFireKey : null;/.test(spamFn) && /for \(const c of PANJER_AUTO_ORDER\)/.test(spamFn) && PANJER_AUTO_ORDER.join(',') === 'KeyH,KeyJ,KeyC,KeyK,KeyV,KeyX');
+  ok('the last button PRESSED wins, with a fixed tie-break while two are held', /let code = p\.autoFireKey && this\.keys\.has\(p\.autoFireKey\) \? p\.autoFireKey : null;/.test(spamFn) && /for \(const c of PANJER_AUTO_ORDER\)/.test(spamFn) && PANJER_AUTO_ORDER.join(',') === 'KeyH,KeyJ,KeyC,KeyK,KeyX');
   ok('the held button is remembered on the press', /p\.autoFireKey = code;/.test(slice("case 'KeyX':", 'break;', 400)));
   ok('nothing is thrown while he is on the floor, in the air or out of the round', /p\.state === 'ko' \|\| p\.state === 'down' \|\| p\.state === 'air'/.test(spamFn));
   // THE WHIFF LOCKOUT — the balance rule the user asked to be able to ignore

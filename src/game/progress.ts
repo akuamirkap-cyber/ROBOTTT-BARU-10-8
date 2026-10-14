@@ -304,8 +304,9 @@ export const makeSeries = (mode: ModeId, rosterSize: number, rp: number, selecte
     return { mode, queue: [selected], step: 0, wins: 0, losses: 0, done: false, won: false };
   }
   if (mode === 'atlas') {
-    // LAWAN ATLAS: one bout, locked onto ATLAS PRIME — the last Titan in the roster (Game.ts OPPONENTS/ATLAS_IDX).
-    return { mode, queue: [Math.max(0, rosterSize - 1)], step: 0, wins: 0, losses: 0, done: false, won: false };
+    // LAWAN ATLAS: one bout, locked onto ATLAS PRIME. Sejak musuh default diganti (permintaan user),
+    // ATLAS PRIME MEMBUKA roster di Game.ts OPPONENTS — jadi index 0, bukan ujung roster lagi.
+    return { mode, queue: [0], step: 0, wins: 0, losses: 0, done: false, won: false };
   }
   if (mode === 'rank') {
     return { mode, queue: [rankOpponent(rp, rosterSize)], step: 0, wins: 0, losses: 0, done: false, won: false };

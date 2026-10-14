@@ -50,7 +50,7 @@ console.log('\n§1  Zeus is hard to knock away (2-ton chassis)');
 console.log('\n§2  ATLAS PRIME — the champion’s own chassis, as a real opponent');
 {
   const prime = OPPONENTS[ATLAS_IDX];
-  ok('he is the last Titan in the roster', ATLAS_IDX === OPPONENTS.length - 1, `index ${ATLAS_IDX} of ${OPPONENTS.length}`);
+  ok('he OPENS the roster now (musuh default = ATLAS PRIME, permintaan user)', ATLAS_IDX === 0, `index ${ATLAS_IDX} of ${OPPONENTS.length}`);
   ok('his name does not collide with the player', prime.name === 'ATLAS PRIME' && PLAYER_NAME === 'ATLAS', `player ${PLAYER_NAME} vs ${prime.name}`);
   ok('he wears the player’s build (atom chassis, silver plating)', prime.style.variant === PLAYER_STYLE.variant && prime.style.main === PLAYER_STYLE.main && prime.style.secondary === PLAYER_STYLE.secondary);
   ok('...with champion gold trim, so the mirror duel is readable', prime.style.accent !== PLAYER_STYLE.accent && prime.style.glow !== PLAYER_STYLE.glow, `accent ${prime.style.accent.toString(16)} · glow ${prime.style.glow.toString(16)}`);
@@ -63,13 +63,15 @@ console.log('\n§2  ATLAS PRIME — the champion’s own chassis, as a real oppo
   const primeRig = new Robot(prime.style, prime.scale);
   ok('a real rig built from his style is an ATLAS, not a Zeus', primeRig.isZeus === false && primeRig.isAtlas === true, `isZeus ${primeRig.isZeus} · isAtlas ${primeRig.isAtlas}`);
   // (the Zeus entry needs a 2D canvas for its materials — off limits in node — so read its flags instead)
-  ok('the Zeus entry still declares the real Zeus chassis', OPPONENTS[0].style.isZeus100 === true && OPPONENTS[0].name.includes('ZEUS'));
+  const zeusEntry = OPPONENTS.find((o) => o.name === 'ZEUS');
+  ok('the Zeus entry still declares the real Zeus chassis — and closes the roster as final boss', !!zeusEntry && zeusEntry.style.isZeus100 === true && OPPONENTS.indexOf(zeusEntry) === OPPONENTS.length - 1);
   ok('no HEAVY name-match accident: only Zeus gets the IQ doubling', !prime.name.includes('ZEUS') && !prime.title.includes('ZEUS'));
 
   // the champion's plating: makeDef is called exactly like the game calls it (ultra off, the default 12× IQ)
   const tune = (iq, idx) => Game.prototype.makeDef.call({ ultra: false, iq }, idx);
   const primeDef = tune(12, ATLAS_IDX);
-  const zeusDef = tune(12, 0);
+  const zeusIdx = OPPONENTS.findIndex((o) => o.name === 'ZEUS');
+  const zeusDef = tune(12, zeusIdx); // ZEUS pindah ke ujung roster (bos terakhir): cari berbasis nama
   const fangDef = tune(12, 1);
   ok('he is plated 60% thicker by makeDef — the same as Zeus', primeDef.hp === hpThick(Math.round(prime.hp * 1.6)), `${prime.hp} → ${primeDef.hp} HP`);
   ok('a standard Titan keeps its own (unboosted) plating', fangDef.hp === hpThick(OPPONENTS[1].hp), `${OPPONENTS[1].hp} → ${fangDef.hp} HP`);

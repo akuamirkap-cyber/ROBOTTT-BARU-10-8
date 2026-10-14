@@ -626,3 +626,38 @@ flare/pulse/beam/light ×2) supaya array yang dibaca `robot.ts`/`Game.ts` terisi
 
 `test:strike` (2) & `test:clash` (4) tetap merah seperti sebelum seluruh pekerjaan ini —
 assertion mereka tentang geometri kontak pukulan sudah gagal di baseline.
+
+---
+
+## 12. Musuh default ATLAS + tombol V = PHANTOM PUNCH (permintaan lanjutan)
+
+### 12.1 Musuh default = ATLAS PRIME (bukan ZEUS)
+
+Roster `OPPONENTS` (Game.ts) disusun ulang: **ATLAS PRIME membuka roster (index 0)** — jadi dia musuh
+default untuk pertandingan biasa, layar VS, dan pembuka turnamen — dan **ZEUS menutup roster** sebagai
+bos terakhir. Semua pemeriksaan yang dulu berbasis index (`idx === 0` = Zeus) diganti berbasis nama
+(mount Zeus, glow Ultra Hard, potret VS), supaya tidak ada Zeus yang menempel di badan ATLAS:
+`prepareEnemy`, `setVsMode`, potret lobby, dan `progress.ts` (mode LAWAN ATLAS mengunci `queue: [0]`).
+Harness diperbarui seperlunya: `zeustest` (posisi roster & lookup Zeus berbasis nama) — sisanya hijau.
+
+### 12.2 Tombol V = animasi PHANTOM PUNCH dari mode Real Steel
+
+`src/sim/anim.ts` menyimpan serangan legend **"Phantom Punch" (comboAli)** — urutan Muhammad Ali:
+tangan turun → Ali Shuffle → jab kilat → pull-back → PHANTOM PUNCH. Steel Titans sekarang memainkannya
+langsung di badan robot (chassis Real Steel dari §11):
+
+- `PANJER_KEYS` kehilangan `KeyV` (upper tetap di **K**); switch `onEdge` memberi `KeyV` jalur sendiri:
+  `startPhantom()` → state `'legend'` (state sinematik yang sudah ada pintu gerbangnya di seluruh
+  sistem: input lepas, urutan memiliki badan).
+- Setiap frame `updatePhantom()` memanggil `sampleTrack(ATTACKS.comboAli.attacker, t)` — interpolator
+  Hermite yang sama dengan engine mode Real Steel — lalu menulis 20 joint + offset/rotasi root
+  (meter rig × `RS_K`) ke robot game. Joint `spine` sim dilipat ke `chest` game.
+- Jendela playback **0 → 3.25 s anim** (sampai follow-through phantom); slow-mo 0.18× sim sengaja
+  tidak dipakai supaya terasa pukulan, bukan film. Track penuh memang 12.75 s (termasuk cerita kepala
+  lepas & reboot — itu milik track korban, bukan tombol pukulan).
+- Di **t = 2.30** (hit R, big 1.55): popup `🦋 PHANTOM PUNCH!`, ring FX + flash di kepalan, trauma kamera.
+- Selesai jendela: state kembali `idle`, offset body dinolkan — animasi game mengambil alih lagi.
+
+Catatan jujur: phantom saat ini **sinematik murni** — `resolveHit` memang menolak state `legend`
+(both attacker & victim), jadi tidak ada damage yang lewat jalur ini. Memasukkan damage berarti
+membuka gerbang legend di pipeline hit: follow-up terpisah kalau diinginkan.

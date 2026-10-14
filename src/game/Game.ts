@@ -1,4 +1,11 @@
 import { CHASSIS, RS_SKEL } from './bodySpec';
+import { ATTACKS, sampleTrack, CHANNELS, jointChannel } from '../sim/anim';
+import type { JointName } from '../sim/rig';
+/** 🦋 PHANTOM PUNCH (tombol V): jendela animasi legend comboAli yang dipakai di Steel Titans.
+ *  0 → 3.25 s anim = tangan turun → Ali Shuffle → jab kilat → pull-back → PHANTOM PUNCH (hit R di 2.30)
+ *  → follow-through. Slow-mo sim (0.18x) sengaja tidak dipakai supaya terasa pukulan, bukan film. */
+const PHANTOM_END = 3.25;
+const PHANTOM_HIT = 2.3;
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -247,7 +254,7 @@ export const loadSkinSet = (): 0 | 1 => {
 };
 
 export const OPPONENTS: OpponentDef[] = [
-  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.0, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
+  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a, atlasChassis: true } },
   { name: 'CRIMSON FANG', title: 'Predator Ring Bawah Tanah', hp: 115, speed: 3.55, dmg: 0.98, react: 0.78, dodge: 0.62, punish: 0.82, adapt: 1.25, aggro: 0.82, rest: 0.54, tscale: 1.1, scale: 1.1, combo: 4, slam: true, color: '#ff3b3b', style: { main: 0x9c1c22, secondary: 0x2a2d36, accent: 0xe8e8e8, glow: 0xff2a2a } },
   { name: 'VOLT TITAN', title: 'Raksasa Bertenaga Petir', hp: 135, speed: 3.75, dmg: 1.04, react: 0.84, dodge: 0.66, punish: 0.86, adapt: 1.45, aggro: 0.86, rest: 0.48, tscale: 1.05, scale: 1.2, combo: 4, slam: true, color: '#d6ff2a', style: { main: 0xc2a826, secondary: 0x23262d, accent: 0x111111, glow: 0xd6ff2a } },
   { name: 'OMEGA ZEUS', title: 'Juara Dunia Tak Terkalahkan', hp: 150, speed: 3.95, dmg: 1.0, react: 0.9, dodge: 0.72, punish: 0.92, adapt: 1.7, aggro: 0.9, rest: 0.42, tscale: 1.0, scale: 1.22, combo: 5, slam: true, color: '#c070ff', style: { main: 0x3b2370, secondary: 0x15121f, accent: 0xffc83a, glow: 0xb050ff } },
@@ -255,9 +262,9 @@ export const OPPONENTS: OpponentDef[] = [
   // played straight from the roster and the LAWAN ATLAS mode locks onto him. Silver plating with champion gold
   // trim: the same build as the player's robot, tuned like a boss (the fastest, hardest-hitting machine in the
   // WRC, and it carries the twin advantages of the ATLAS chassis — 19% faster hands, see startMove/atkSpd).
-  { name: 'ATLAS PRIME', title: 'Sang Juara Bertahan WRC · Chassis Atlas Titanium', hp: 150, speed: 4.1, dmg: 1.02, react: 0.96, dodge: 0.82, punish: 0.96, adapt: 2.4, aggro: 0.97, rest: 0.18, tscale: 0.95, scale: 1.0, combo: 5, slam: true, color: '#ffc63a', style: { variant: 'atom', main: 0xc3c9d4, secondary: 0x262a33, accent: 0xffb000, glow: 0xffc63a, atlasChassis: true } },
+  { name: 'ZEUS', title: 'Raja Ring Real Steel (100% Asli)', hp: 160, speed: 4.05, dmg: 1.0, react: 0.98, dodge: 0.88, punish: 0.98, adapt: 2.8, aggro: 0.98, rest: 0.16, tscale: 0.94, scale: 1.0, combo: 5, slam: true, color: '#22ff44', style: { main: 0x050507, secondary: 0x0f1015, accent: 0x22ff44, glow: 0x22ff44, helmetSkin: 1, gloveSkin: 1, armorSkin: 1, isZeus100: true } },
 ];
-/** where ATLAS PRIME sits in the roster — the LAWAN ATLAS mode locks the bout onto him */
+/** where ATLAS PRIME sits in the roster — sekarang index 0: DIA musuh default; LAWAN ATLAS mode locks onto him */
 export const ATLAS_IDX = OPPONENTS.findIndex((o) => o.name === 'ATLAS PRIME');
 // NYAWA LEBIH TEBAL 1.8×. The chassis of every fighter in the WRC is built on this one scale: the player's 100
 // baseline, the roster numbers above, and the Ultra Hard ×1.4 upgrade all end up 1.8× thicker, so the MATCH-UP
@@ -1105,13 +1112,12 @@ export const PANJER_KEYS: Record<string, MoveId> = {
   KeyJ: 'hook',
   KeyC: 'hook',
   KeyK: 'upper',
-  KeyV: 'upper',
   KeyX: 'cross',
 };
 /** the one rule, in one place: a hold counts as loaded once it has been held for PANJER_T */
 /** PANJER OTOMATIS SPAM: the order the held buttons are read in — the last one you PRESSED wins, this is only the
  *  tie-break when you are holding two of them at once */
-export const PANJER_AUTO_ORDER: readonly string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX'];
+export const PANJER_AUTO_ORDER: readonly string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyX'];
 /** ...and how often the empty-tank shout may repeat while a button is held down (it used to fire every attempt) */
 export const TANK_POP_CD = 0.7;
 /** the four punches a load can ride on — and the ONLY moves it can ride on */
@@ -1345,7 +1351,7 @@ export const COMBO_BREAK_CD = 1.4; // s — after a broken/finished combo, N is 
 export const blockable = (id: MoveId) => id !== 'grab' && id !== 'finisher';
 
 /** the keys that hand the fight back to the player mid-combo (footwork is deliberately NOT in here — see onEdge) */
-const N_COMBO_TAKEOVER: string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyV', 'KeyX', 'KeyP', 'KeyL', 'KeyR', 'KeyE', 'KeyU', 'KeyG'];
+const N_COMBO_TAKEOVER: string[] = ['KeyH', 'KeyJ', 'KeyC', 'KeyK', 'KeyX', 'KeyP', 'KeyL', 'KeyR', 'KeyE', 'KeyU', 'KeyG'];
 /** can the finisher be paid for out of this fighter's meter and tank? (the runtime asks exactly this — see tryFinisher) */
 export const comboCanFinish = (meter: number, stam: number) => meter >= FINISHER_METER && stam >= COMBO_MIN_STAM;
 
@@ -1589,6 +1595,7 @@ class Fighter {
   tilt = 0;
   tiltZ = 0; // sideways lay-over in the air (+ = over his left shoulder)
   tiltLand = 0; // the lean he hit the canvas with (traded for the staged lie as the collapse plays)
+  phantomT = 0; phantomDur = 0; phantomHit = false; // playback tombol V: animasi legend Real Steel
   tiltZLand = 0;
   dodgeDur = 0.34;
   dodgeSpeed = 11;
@@ -2646,11 +2653,11 @@ export class Game {
     if (z0) mount100PercentZeus(z0.robot, '#22ff44');
     const z3 = this.enemyCache.get(3);
     if (z3) mount100PercentZeus(z3.robot, '#c070ff');
-    if (this.enemy && (this.enemy.robot.ctx.style.isZeus100 || this.oppIndex === 0 || this.oppIndex === 3)) {
-      mount100PercentZeus(this.enemy.robot, this.oppIndex === 3 ? '#c070ff' : '#22ff44');
+    if (this.enemy && (this.enemy.robot.ctx.style.isZeus100 || this.def.name.includes('ZEUS'))) {
+      mount100PercentZeus(this.enemy.robot, this.def.name === 'OMEGA ZEUS' ? '#c070ff' : '#22ff44');
     }
-    if (this.vsFoe && (this.vsFoe.robot.ctx.style.isZeus100 || this.vs?.idx === 0 || this.vs?.idx === 3)) {
-      mount100PercentZeus(this.vsFoe.robot, this.vs?.idx === 3 ? '#c070ff' : '#22ff44');
+    if (this.vsFoe && (this.vsFoe.robot.ctx.style.isZeus100 || OPPONENTS[this.vs?.idx ?? -1]?.name.includes('ZEUS'))) {
+      mount100PercentZeus(this.vsFoe.robot, OPPONENTS[this.vs?.idx ?? -1]?.name === 'OMEGA ZEUS' ? '#c070ff' : '#22ff44');
     }
     if (this.vsFoe2 && (this.vsFoe2.robot.ctx.style.isZeus100 || this.vs?.idx2 === 0 || this.vs?.idx2 === 3)) {
       mount100PercentZeus(this.vsFoe2.robot, this.vs?.idx2 === 3 ? '#c070ff' : '#22ff44');
@@ -3070,7 +3077,7 @@ export class Game {
     if (!inScene) this.scene.add(robot.root);
     if (idx === 0) mount100PercentZeus(robot, '#22ff44');
     else if (idx === 3 || OPPONENTS[idx].name === 'OMEGA ZEUS') mount100PercentZeus(robot, '#c070ff');
-    robot.setStyleGlow(this.ultra && idx !== 0 ? 0xff1a3a : OPPONENTS[idx].style.glow);
+    robot.setStyleGlow(this.ultra && !OPPONENTS[idx].name.includes('ZEUS') ? 0xff1a3a : OPPONENTS[idx].style.glow);
     robot.head.visible = true;
     // settle the guard ON THE CANVAS (the floor solve probes world space — a parked robot would be lifted 200 m):
     // the rig is spring-driven, so pump the pose for a couple of simulated seconds
@@ -3397,9 +3404,9 @@ export class Game {
       if (f.robot.root.parent !== this.scene) {
         this.scene.add(f.robot.root);
       }
-      if (i === 0) mount100PercentZeus(f.robot, '#22ff44');
-      else if (i === 3 || OPPONENTS[i].name === 'OMEGA ZEUS') mount100PercentZeus(f.robot, '#c070ff');
-      f.robot.setStyleGlow(this.ultra && i !== 0 ? 0xff1a3a : OPPONENTS[i].style.glow);
+      if (OPPONENTS[i].name === 'ZEUS') mount100PercentZeus(f.robot, '#22ff44');
+      else if (OPPONENTS[i].name === 'OMEGA ZEUS') mount100PercentZeus(f.robot, '#c070ff');
+      f.robot.setStyleGlow(this.ultra && !OPPONENTS[i].name.includes('ZEUS') ? 0xff1a3a : OPPONENTS[i].style.glow);
       f.robot.head.visible = true;
       f.robot.root.visible = true;
       f.robot.floorY = 0; // the hangar floor
@@ -3695,11 +3702,15 @@ export class Game {
       // punch is about to be thrown out of); the punch itself comes out on RELEASE, in `release()`. Held for a full
       // second it is a PANJER — 2× damage, 2× knockback. Everything that can take the arm away from the load is
       // checked every frame in updatePanjer.
+      // V BUKAN pukulan biasa: tombol ini memainkan PHANTOM PUNCH — animasi legend Muhammad Ali
+      // dari mode Real Steel (src/sim/anim.ts comboAli) langsung di badan Steel Titans.
+      case 'KeyV':
+        this.startPhantom(p);
+        break;
       case 'KeyH':
       case 'KeyJ':
       case 'KeyC':
       case 'KeyK':
-      case 'KeyV':
       case 'KeyX':
         // PANJER OTOMATIS: nothing to HOLD FOR — the punch comes out on the press, full, and keeping the button
         // down keeps it coming (see updateAutoFire). Without the mode the key loads instead.
@@ -7853,6 +7864,70 @@ export class Game {
     if (m.power >= 0.6) this.fovKick = Math.max(this.fovKick, 1.5 + 2.5 * m.power);
   }
 
+  // ---------- 🦋 PHANTOM PUNCH (tombol V) ----------
+  /** mulai playback animasi legend comboAli (mode Real Steel) di badan fighter ini.
+   *  State 'legend' = urutan sinematik: input & pukulan biasa dilepas, badan dimiliki track sim. */
+  private startPhantom(f: Fighter) {
+    if (this.phase !== 'fight' || this.paused) return;
+    if (f.state !== 'idle' || f.move) return;
+    f.state = 'legend';
+    f.phantomT = 0;
+    f.phantomDur = PHANTOM_END; // jendela track: sampai follow-through phantom, bukan seluruh cerita 12.75 s
+    f.phantomHit = false;
+    this.sfx.whoosh(1);
+  }
+
+  private phantomBuf: number[] = new Array(CHANNELS).fill(0);
+  /** setiap frame: sample track sim lalu tulis rotasi joint + offset root ke robot game */
+  private updatePhantom(f: Fighter, dt: number) {
+    const rb = f.robot;
+    if (f.state !== 'legend' || f.phantomDur <= 0) {
+      if (rb.body.position.lengthSq() > 0 || rb.body.rotation.x !== 0 || rb.body.rotation.y !== 0 || rb.body.rotation.z !== 0) {
+        rb.body.position.set(0, 0, 0);
+        rb.body.rotation.set(0, 0, 0);
+      }
+      return;
+    }
+    f.phantomT += dt;
+    const t = Math.min(f.phantomT, f.phantomDur);
+    const out = sampleTrack(ATTACKS.comboAli.attacker, t, this.phantomBuf);
+    const K = RS_SKEL.K;
+    rb.body.position.set(out[0] * K, out[1] * K, out[2] * K); // root sim (meter) -> satuan lokal robot
+    rb.body.rotation.set(out[3], out[4], out[5]);
+    const setJ = (g: THREE.Object3D, n: JointName) => {
+      const i = jointChannel(n);
+      g.rotation.set(out[i], out[i + 1], out[i + 2]);
+    };
+    setJ(rb.pelvis, 'pelvis');
+    setJ(rb.waist, 'waist');
+    const ci = jointChannel('chest');
+    const si = jointChannel('spine'); // game tidak punya joint spine: lipat ke dada
+    rb.chest.rotation.set(out[ci] + out[si], out[ci + 1] + out[si + 1], out[ci + 2] + out[si + 2]);
+    setJ(rb.neck, 'neck');
+    setJ(rb.head, 'head');
+    setJ(rb.clavs[0], 'clavL'); setJ(rb.clavs[1], 'clavR');
+    setJ(rb.shoulders[0], 'shoulderL'); setJ(rb.shoulders[1], 'shoulderR');
+    setJ(rb.elbows[0], 'elbowL'); setJ(rb.elbows[1], 'elbowR');
+    setJ(rb.wrists[0], 'wristL'); setJ(rb.wrists[1], 'wristR');
+    setJ(rb.hipJ[0], 'hipL'); setJ(rb.hipJ[1], 'hipR');
+    setJ(rb.kneeJ[0], 'kneeL'); setJ(rb.kneeJ[1], 'kneeR');
+    setJ(rb.footJ[0], 'ankleL'); setJ(rb.footJ[1], 'ankleR');
+    if (!f.phantomHit && t >= PHANTOM_HIT) {
+      f.phantomHit = true;
+      rb.fists[1].getWorldPosition(this.aimTmp);
+      this.popup(new THREE.Vector3(f.pos.x, 7.0 * f.scale, f.pos.y), '🦋 PHANTOM PUNCH!', 'pop-crit');
+      this.fx.ring(this.aimTmp.x, this.aimTmp.y, 0x7fe0ff, 9, 0.5, 0.1);
+      this.fx.flash(this.aimTmp, 1.6, 0xbfe6ff, 0.12);
+      this.trauma = Math.min(0.8, this.trauma + 0.3);
+      this.sfx.whoosh(1);
+    }
+    if (f.phantomT >= f.phantomDur) {
+      f.state = 'idle';
+      f.phantomDur = 0;
+      f.phantomT = 0;
+    }
+  }
+
   private resolveHit(a: Fighter, d: Fighter) {
     const m = a.move!;
     const X = MOVE_EXTRA[m.id];
@@ -9955,6 +10030,8 @@ export class Game {
       },
       dt,
     );
+    // 🦋 PHANTOM PUNCH: track sim memiliki badan selama state 'legend'
+    this.updatePhantom(f, dt);
 
     // fist trails
     f.robot.root.updateMatrixWorld(true);
