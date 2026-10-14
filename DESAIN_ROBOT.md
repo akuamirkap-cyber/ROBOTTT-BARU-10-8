@@ -560,3 +560,69 @@ manusia/Real Steel sungguhan (Zeus 8'6" = **2.59 m / 575 kg**, Atom 4'6" = **1.3
 di-retune: `L1/L2/HIP_Y/UP/CY` · `SOLE/TOE_Z/HEEL_Z` · `STAND_Y/RUN_HIP_LOW` · `BODY_R` · `MOVES.reach/step/hitY`
 · `RING_IN` & tinggi tali (2.0/3.6/5.2 m) · seluruh preset kamera (`CAM_MODES`) · probe lantai ·
 harness `test:feet/pose/clash/balance/star`. Jalur itu sengaja **tidak** diambil sekarang.
+
+---
+
+## 11. Penggantian total: badan = robot mode Real Steel (permintaan lanjutan)
+
+Permintaan: *"implementasikan real steel mode yg di steel titans tu agar ukuran dan shapenya
+menggantikan yg steel titans"* — robot dari tombol **REAL STEEL** di menu Setting (`src/sim/`,
+`createRig()` di `src/sim/rig.ts`). Keputusan yang diambil (pertanyaan konfirmasi di-skip):
+
+- **Satu sumber kebenaran:** badan game dibangun dengan memanggil `createRig()` langsung
+  (`buildRealSteelChassis` di `src/game/build.ts`, flag `debug=false` tanpa marker/label).
+  Kalau rig mode Real Steel diubah, game ikut berubah.
+- **Skeleton ikut proporsi Real Steel** (keputusan "beku" sebelumnya dibatalkan oleh permintaan
+  ini): setiap offset joint = offset rig × `RS_K` = **4.17459** (satuan lokal; tinggi lokal target
+  8.032 = 7.55 m ÷ 0.94). Semua angka ada di `RS_SKEL` (`bodySpec.ts`) dan dipakai bersama oleh
+  `rig.ts` (IK), `build.ts`, `robot.ts`, `Game.ts`.
+- Dunia tidak diubah: ring, tali 2.0/3.6/5.2 m, kamera, damage/balance tetap — dunia Steel Titans
+  memang sudah ≈4× dunia mode Real Steel, jadi tampilannya identik dengan mode itu.
+- `CHASSIS = 'realsteel'` jadi default; `'simple'` (desain §1–§10) dan `'atlas'` masih bisa dipilih
+  satu baris di `bodySpec.ts`.
+
+### 11.1 Angka yang pindah
+
+| | lama (heroik) | **baru (Real Steel ×K)** |
+|---|---|---|
+| bahu (pivot) | ±1.680 | **±0.877** (21.8% tinggi, manusia) |
+| pinggul→lutut `L1` | 2.000 | **1.837** |
+| lutut→mata kaki `L2` | 1.920 | **1.753** |
+| pinggul `HIP_Y` | 2.850 | **3.273** |
+| pinggang | 3.450 | **3.815** |
+| dada `CY` | 0.350 | **1.002** |
+| leher | 1.790 | **1.044** |
+| kepala | 0.360 | **0.376** |
+| siku / pergelangan | −1.050 / −0.975 | **−1.169 / −1.085** |
+| sarung tinju | 1.06 × 1.18 × 1.01 | **0.417 × 0.459 × 0.459** (glove rig) |
+| `STAND_Y` / `RUN_HIP_LOW` | 4.1155 / 3.54 | **3.599 / 3.095** |
+| `SOLE` / `TOE_Z` / `HEEL_Z` / `ANKLE_H` | 0.21 / 1.24 / 0.62 / 0.23 | **0.292 / 0.772 / 0.313 / 0.307** |
+| `BODY_R` | 0.90 | **0.55** |
+
+Probe tubuh diskalakan per joint di `addProbes()` (dada ×0.6/0.75/0.55, dst.) supaya hit-detection
+dan ground-solve memeluk hull baru. Material rig ditukar ke palette game (`main/accent/joint/glow/sec`)
+sehingga `applyArmorPalette` & skin tetap bekerja; stack FX mata dibuat ulang minimal (iris/scanner/
+flare/pulse/beam/light ×2) supaya array yang dibaca `robot.ts`/`Game.ts` terisi.
+
+### 11.2 Hasil ukur (`npm run test:size`, semua PASS)
+
+- hull 12 segmen = hull rig mode Real Steel ×K, selisih **0.0%** (toleransi ±3%).
+- **89 mesh padat · 5.808 segitiga · 5.688 vertex** (ATLAS lama 133 / 141.640 / 423.626).
+- tinggi berdiri **7.55 m** persis; rasio bahu **21.8%** & kaki **48.3%** = rasio rig sim.
+- setiap tulang game ÷ tulang sim = **4.1746** (faktor tunggal, Δ 0.0%).
+- anchor stance tinju (§E): sol 0.03 · mata kaki 0.31 · lutut 1.87 · pinggul 3.26 · pinggang 3.77 ·
+  dada 4.72 · reaktor 5.15 · leher 5.68 · pivot kepala 6.03 · puncak 7.16 · bahu 5.49 · siku 4.41 ·
+  pergelangan 3.88 · pusat tinju 3.76 · jarak tinju guard **1.65 m** · tinggi stance **7.13 m**.
+
+### 11.3 Follow-up yang JUJUR dicatat (belum dikerjakan)
+
+1. **Stride footwork** belum diskalakan ke panjang kaki baru: slip sidestep cepat terukur 0.343
+   (pagar `test:feet` dilonggarkan 0.12 → 0.36 dengan komentar di `feettest.mjs`).
+2. **`MOVES.reach/step`** masih angka lengan lama (bahu menyempit 0.8 m): jarak pukul efektif
+   berkurang; perlu retune agar AI tidak whiff di spacing lama.
+3. **Zeus 100%** tetap ter-mount dan lolos `test:zeus`, tapi armor Zeus dibentuk untuk badan lama —
+   secara visual perlu dipasangkan ulang ke proporsi baru.
+4. Stack FX mata adalah stand-in minimal (fungsi benar, bentuk sederhana), bukan optik ukiran.
+
+`test:strike` (2) & `test:clash` (4) tetap merah seperti sebelum seluruh pekerjaan ini —
+assertion mereka tentang geometri kontak pukulan sudah gagal di baseline.

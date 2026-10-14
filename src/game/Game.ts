@@ -1,3 +1,4 @@
+import { CHASSIS, RS_SKEL } from './bodySpec';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -1861,7 +1862,7 @@ const ropeGive = (along: number) => {
   return FLEX * THREE.MathUtils.clamp(1 - u * u, 0.06, 1);
 };
 let RING_IN = RING_IN_BASE;
-const BODY_R = 0.9; // how far the back of the chest / upper back sits behind the body centre at top-rope height (per unit of scale) — measured on the rig
+const BODY_R = CHASSIS === 'realsteel' ? RS_SKEL.BODY_R : 0.9; // how far the back of the chest / upper back sits behind the body centre at top-rope height (per unit of scale) — measured on the rig
 const FLEX = 0.95; // how far the ropes can stretch before they hold
 const ROPE_K = 105; // rope stiffness
 const ROPE_C = 9.5; // rope damping (slightly under-damped → a soft, small rebound)

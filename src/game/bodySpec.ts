@@ -27,7 +27,32 @@
 /** Badan mana yang dibangun. `simple` = desain Real Steel ini (bawaan).
  *  `atlas` = badan lama yang detail (masih utuh di build.ts, tinggal dipakai
  *  lagi untuk membandingkan — tidak ada kode yang dibuang). */
-export const CHASSIS: 'simple' | 'atlas' = 'simple';
+export const CHASSIS: 'realsteel' | 'simple' | 'atlas' = 'realsteel';
+
+/**
+ * REAL STEEL SKELETON — offset joint mode Real Steel (`src/sim/rig.ts`) dikonversi ke satuan lokal robot
+ * (xK, K = tinggi lokal target / tinggi rig 1.924 m). Inilah yang membuat proporsi game = proporsi
+ * Real Steel 100%: bahu +-0.87666 (24% tinggi, manusia) bukan +-1.68 (44%, mech), kaki 45% tinggi.
+ * Dipakai bersama oleh rig.ts (IK), build.ts (chassis), robot.ts (STAND_Y/probe) — satu sumber angka.
+ */
+export const RS_K = 4.174591940549387;
+export const RS_SKEL = {
+  K: RS_K,
+  // kaki: pinggul (ruang pelvis; pelvis game = pivot rendah di y=UP) - lutut - mata kaki
+  HIP_X: 0.37571, HIP_Y: 3.27256, L1: 1.83682, L2: 1.75333,
+  // telapak: bawah mata kaki - ujung jari - tumit (kotak kaki rig 0.115x0.06x0.26 di z 0.055)
+  SOLE: 0.29222, TOE_Z: 0.7723, HEEL_Z: 0.31309,
+  // torso (ruang parent masing-masing): pinggang (pelvis) - dada (pinggang) - leher (dada) - kepala (leher)
+  WAIST_Y: 3.81526, CY: 1.0019, NECK_Y: 1.04365, HEAD_Y: 0.37571,
+  // lengan: selangka (dada) - bahu (selangka) - siku - pergelangan - tinju (pergelangan)
+  CLAV_X: 0.25048, CLAV_Y: 0.83492, SH_X: 0.62619, ELBOW_Y: 1.16889, WRIST_Y: 1.08539,
+  FIST_Y: 0.27135, FIST_Z: 0.01252, KNEECAP_Z: 0.25048,
+  // tinggi pinggul dunia & pinggul lari (world units, sudah x0.94) - pengganti STAND_Y / RUN_HIP_LOW lama
+  STAND_Y: 3.59881, RUN_HIP_LOW: 3.09497,
+  // radius tubuh untuk kontak (world units) & posisi mata di kepala (satuan lokal)
+  BODY_R: 0.55,
+  EYE: [0.17533, 0.55522, 0.42998] as [number, number, number],
+};
 
 // ============================================================================
 // 1. REFERENSI — ukuran terukur rig Real Steel Simulator (src/sim/rig.ts)

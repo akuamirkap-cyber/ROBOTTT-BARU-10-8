@@ -40,7 +40,7 @@ const segs=[
  ['hip',()=>segBox(r.hipJ[0],[r.kneeJ[0],thighG])],['thigh',()=>segBox(thighG,[])],
  ['knee',()=>segBox(r.kneeJ[0],[r.footJ[0],r.kneeCaps[0],shinG])],['kneecap',()=>segBox(r.kneeCaps[0],[])],
  ['shin',()=>segBox(shinG,[])],['boot',()=>segBox(r.footJ[0],[])]];
-const out={}; for(const [k,fn] of segs){ const m=fn(); out[k]=[+m.w.toFixed(2),+m.h.toFixed(2),+m.d.toFixed(2)]; 
+const out={}; for(const [k,fn] of segs){ const m=fn(); if(!m){ console.log(k.padEnd(9),'(kosong)'); out[k]=null; continue; } out[k]=[+m.w.toFixed(2),+m.h.toFixed(2),+m.d.toFixed(2)]; 
   console.log(k.padEnd(9), out[k].join(' × '), ' y:',m.min.y.toFixed(2),'…',m.max.y.toFixed(2), ' z:',m.min.z.toFixed(2),'…',m.max.z.toFixed(2)); }
 console.log('\nHULL =', JSON.stringify(out));
 // jangkauan depan tempurung lutut (relatif lutut)

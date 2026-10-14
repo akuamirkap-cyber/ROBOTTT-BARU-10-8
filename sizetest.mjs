@@ -1,27 +1,24 @@
 // ============================================================================
-//  test:size — PENGUKUR BENTUK & UKURAN BADAN ROBOT
+//  test:size — PENGUKUR BENTUK & UKURAN BADAN ROBOT (chassis REAL STEEL)
 // ============================================================================
 //     npm run test:size
 //
-//  Harness ini mengukur BADAN NYATA yang dibangun src/game/build.ts (bukan angka
-//  di atas kertas) dan menegakkan tiga aturan desain DESAIN_ROBOT.md:
+//  Badan game sekarang ADALAH robot mode Real Steel: geometri & joint diambil dari
+//  createRig() di src/sim/rig.ts (lihat buildRealSteelChassis di src/game/build.ts).
+//  Harness ini mengukur badan NYATA dan menegakkan aturan desain DESAIN_ROBOT.md §11:
 //
-//   §A  hull (kotak pembungkus) tiap segmen tidak boleh menyimpang lebih dari
-//       HULL_TOL dari badan ATLAS yang dibekukan → probe lantai, jatuh-bangkit,
-//       IK kaki, test:feet / test:pose dan framing kamera tidak bergeser.
-//   §B  badan simple harus LEBIH SEDERHANA dari badan ATLAS: jumlah mesh &
-//       segitiga tidak boleh naik (angka legacy dikunci di bawah).
-//   §C  angka beku yang dipakai sistem lain harus tetap persis: sol boot 0.21 di
-//       bawah mata kaki, ujung jari +1.24, tumit −0.62, pivot tulang (rig.ts),
-//       dan posisi optik mata (±0.155, −0.02, 0.43).
-//
-//  Bagian D mencetak tabel pembanding: ukuran rig Real Steel Simulator
-//  (src/sim/rig.ts), faktor mapping K_SEG, dan hasil di badan Steel Titans —
-//  tabel yang sama dengan DESAIN_ROBOT.md §3.
+//   §A  hull tiap segmen harus sama dengan hull rig mode Real Steel (skala lokal sama)
+//       — bentuk & ukuran yang terlihat di game = yang terlihat di mode sim.
+//   §B  badan tetap sederhana: mesh = mesh rig + stack FX mata, segitiga < 25.000
+//       (ATLAS lama 141.640).
+//   §C  skeleton Real Steel DIBEKUKAN: offset joint persis RS_SKEL, tinggi 7.55 m +-0.2,
+//       rasio proporsi manusia (bahu 21.8%, kaki 48.3% tinggi) = rasio rig sim.
+//   §D  setiap tulang game = tulang sim x K (faktor tunggal +-0.1%).
+//   §E  titik anchor animasi (stance tinju) — dicetak, bukan diasumsikan.
 import * as THREE from 'three';
 import { Robot } from './.__robot.mjs';
 import { createRig } from './.__simrig.mjs';
-import { HULL_ATLAS, HULL_TOL, HULL_EXEMPT, KNEECAP_REACH, RS_REF, K_SEG, SIMPLE_MESH_COUNT, ATLAS_MESHES, ATLAS_TRIS, ATLAS_VERTS } from './.__bodyspec.mjs';
+import { RS_REF, RS_SKEL, RS_K } from './.__bodyspec.mjs';
 
 // three's CSS2DObject touches the DOM; stub just enough of it for the offline rig
 const elStub = () => ({
@@ -37,6 +34,7 @@ const ok = (label, cond, info = '') => {
 };
 const f = (v, n = 2) => v.toFixed(n);
 const pct = (a, b) => `${f(((a / b - 1) * 100), 1)}%`;
+const V = new THREE.Vector3();
 
 /** FX aditif (flare/streak mata) bukan badan padat — jangan ikut menghitung hull */
 const isFx = (o) => {
@@ -62,9 +60,8 @@ function segBox(node, skip = []) {
   };
   walk(node, false);
   if (b.isEmpty()) return null;
-  const s = b.getSize(new THREE.Vector3());
-  const c = b.getCenter(new THREE.Vector3());
-  return { w: s.x, h: s.y, d: s.z, min: b.min, max: b.max, c };
+  const sz = b.getSize(new THREE.Vector3());
+  return { w: sz.x, h: sz.y, d: sz.z, min: b.min, max: b.max };
 }
 
 const STYLE = { variant: 'atom', main: 0x8a8f98, secondary: 0x3a3f47, accent: 0x1e9bff, glow: 0x63e0ff };
@@ -75,172 +72,115 @@ const mkRobot = () => {
   return r;
 };
 const r = mkRobot();
-const thighG = (i) => r.hipJ[i].children.find((ch) => ch !== r.kneeJ[i] && ch.isGroup);
-const shinG = (i) => r.kneeJ[i].children.find((ch) => ch !== r.footJ[i] && ch !== r.kneeCaps[i] && ch.isGroup);
+const K = RS_K;
+
+// rig mode Real Steel mentah (tanpa marker/label) sebagai referensi bentuk
+const sim = createRig({ armor: 0x8a8f98, accent: 0x1e9bff, frame: 0x1e2026, glow: 0x63e0ff, glove: 0x3a3f47, joint: 0xff00ff }, 'ref', false);
+const SJ = sim.joints;
 
 console.log('\n═══════════════════════════════════════════════════════════════════════════');
-console.log(' §A  HULL TIAP SEGMEN vs BADAN ATLAS YANG DIBEKUKAN');
+console.log(' §A  HULL TIAP SEGMEN vs RIG MODE REAL STEEL (ruang lokal joint)');
 console.log('═══════════════════════════════════════════════════════════════════════════');
-console.log('   segmen             terukur (l × t × d)      ATLAS (l × t × d)        selisih');
-const SEGMENTS = [
-  ['pelvis', 'pinggul', () => segBox(r.pelvis, [r.waist, ...r.hipJ])],
-  ['waist', 'pinggang', () => segBox(r.waist, [r.chest])],
-  ['chest', 'dada', () => segBox(r.chest, [r.neck, ...r.clavs])],
-  ['neck', 'leher', () => segBox(r.neck, [r.head])],
-  ['head', 'kepala', () => segBox(r.head, [])],
-  ['clav', 'selangka', () => segBox(r.clavs[0], [r.caps[0], r.shoulders[0]])],
-  ['cap', 'pauldron', () => segBox(r.caps[0], [])],
-  ['arm', 'lengan atas', () => segBox(r.shoulders[0], [r.elbows[0]])],
-  ['fore', 'lengan bawah', () => segBox(r.elbows[0], [r.wrists[0]])],
-  ['fist', 'sarung tinju', () => segBox(r.fists[0], [])],
-  ['hip', 'sendi pinggul', () => segBox(r.hipJ[0], [r.kneeJ[0], thighG(0)])],
-  ['thigh', 'paha', () => segBox(thighG(0), [])],
-  ['knee', 'lutut', () => segBox(r.kneeJ[0], [r.footJ[0], r.kneeCaps[0], shinG(0)])],
-  ['kneecap', 'tempurung', () => segBox(r.kneeCaps[0], [])],
-  ['shin', 'betis', () => segBox(shinG(0), [])],
-  ['boot', 'boot', () => segBox(r.footJ[0], [])],
+console.log('   segmen             game (l x t x d)       sim x K (l x t x d)      selisih');
+const ROWS = [
+  ['pinggul', () => segBox(r.pelvis, [r.waist, ...r.hipJ]), () => segBox(SJ.pelvis, [SJ.waist, SJ.hipL, SJ.hipR])],
+  ['pinggang', () => segBox(r.waist, [r.chest]), () => segBox(SJ.waist, [SJ.spine])],
+  ['dada', () => segBox(r.chest, [r.neck, ...r.clavs]), () => segBox(SJ.spine, [SJ.neck, SJ.clavL, SJ.clavR])],
+  ['leher', () => segBox(r.neck, [r.head]), () => segBox(SJ.neck, [SJ.head])],
+  ['kepala', () => segBox(r.head, []), () => segBox(SJ.head, [])],
+  ['selangka', () => segBox(r.clavs[0], [r.caps[0], r.shoulders[0]]), () => segBox(SJ.clavL, [SJ.shoulderL])],
+  ['lengan atas', () => segBox(r.shoulders[0], [r.elbows[0]]), () => segBox(SJ.shoulderL, [SJ.elbowL])],
+  ['lengan bawah', () => segBox(r.elbows[0], [r.wrists[0]]), () => segBox(SJ.elbowL, [SJ.wristL])],
+  ['paha+sendi', () => segBox(r.hipJ[0], [r.kneeJ[0]]), () => segBox(SJ.hipL, [SJ.kneeL])],
+  ['lutut+betis', () => segBox(r.kneeJ[0], [r.footJ[0], r.kneeCaps[0]]), () => segBox(SJ.kneeL, [SJ.ankleL])],
+  ['boot', () => segBox(r.footJ[0], []), () => segBox(SJ.ankleL, [])],
+  ['sarung tinju', () => segBox(r.fists[0], []), () => { const g = SJ.wristL.children.find((o) => o.isMesh && Math.abs(o.position.y + 0.065) < 1e-6); return segBox(g, []); }],
 ];
-for (const [key, label, measure] of SEGMENTS) {
-  const m = measure();
-  const a = HULL_ATLAS[key];
-  if (!m || !a) { ok(`${label} terukur`, false, 'tidak ada geometri'); continue; }
-  console.log(`   ${label.padEnd(18)} ${`${f(m.w)} × ${f(m.h)} × ${f(m.d)}`.padEnd(24)} ${`${f(a[0])} × ${f(a[1])} × ${f(a[2])}`.padEnd(22)} ${pct(m.w, a[0])} / ${pct(m.h, a[1])} / ${pct(m.d, a[2])}`);
-  const within = (v, ref, tol) => v >= ref * (1 - tol) - 1e-6 && v <= ref * (1 + tol) + 1e-6;
-  const ex = HULL_EXEMPT[key] ?? [];
-  ok(
-    `hull ${label} dalam toleransi${ex.length ? ` (kecuali ${ex.join('/')})` : ''}`,
-    (ex.includes('w') || within(m.w, a[0], HULL_TOL.w)) &&
-    (ex.includes('h') || within(m.h, a[1], HULL_TOL.h)) &&
-    (ex.includes('d') || within(m.d, a[2], HULL_TOL.d)),
-    `toleransi ±${HULL_TOL.w * 100}% l / ±${HULL_TOL.h * 100}% t / ±${HULL_TOL.d * 100}% d`,
-  );
+for (const [label, gm, sm] of ROWS) {
+  const g = gm(), sref = sm();
+  if (!g || !sref) { ok(`hull ${label} terukur`, false, 'tidak ada geometri'); continue; }
+  const mul = label === 'sarung tinju' ? 1 : K; // glove diukur di ruang mesh (tanpa skala joint)
+  const rw = sref.w * mul, rh = sref.h * mul, rd = sref.d * mul;
+  console.log(`   ${label.padEnd(18)} ${`${f(g.w)} x ${f(g.h)} x ${f(g.d)}`.padEnd(24)} ${`${f(rw)} x ${f(rh)} x ${f(rd)}`.padEnd(24)} ${pct(g.w, rw)} / ${pct(g.h, rh)} / ${pct(g.d, rd)}`);
+  const within = (v, ref) => Math.abs(v / ref - 1) <= 0.03 + 1e-6;
+  ok(`hull ${label} = Real Steel x K`, within(g.w, rw) && within(g.h, rh) && within(g.d, rd), 'toleransi +-3%');
 }
 
 console.log('\n═══════════════════════════════════════════════════════════════════════════');
-console.log(' §B  LEBIH SEDERHANA DARI BADAN ATLAS (mesh & segitiga)');
+console.log(' §B  KESEDERHANAAN (badan = 89 mesh rig + stack FX mata)');
 console.log('═══════════════════════════════════════════════════════════════════════════');
-let meshes = 0, tris = 0, verts = 0;
-r.root.traverse((o) => {
-  if (!o.isMesh || isFx(o)) return;
-  meshes++;
-  const g = o.geometry;
-  if (!g) return;
-  const idx = g.index;
-  const vn = g.attributes.position?.count ?? 0;
-  const t = idx ? idx.count / 3 : vn / 3;
-  if (o.visible) { tris += t; verts += vn; }
-});
-console.log(`   mesh (gabungan)     ${meshes}   (ATLAS ${ATLAS_MESHES})`);
-console.log(`   segitiga            ${Math.round(tris)}   (ATLAS ${ATLAS_TRIS})`);
-console.log(`   vertex              ${verts}   (ATLAS ${ATLAS_VERTS})`);
-console.log(`   bagian di spec      ${SIMPLE_MESH_COUNT}   (rig Real Steel ${RS_REF.mesh})`);
-console.log(`   pengurangan         mesh ${pct(meshes, ATLAS_MESHES)} · segitiga ${pct(tris, ATLAS_TRIS)} · vertex ${pct(verts, ATLAS_VERTS)}`);
-ok('mesh tidak lebih banyak dari badan ATLAS', meshes <= ATLAS_MESHES, `${meshes} vs ${ATLAS_MESHES}`);
-ok('segitiga tidak lebih banyak dari badan ATLAS', tris <= ATLAS_TRIS, `${Math.round(tris)} vs ${ATLAS_TRIS}`);
-ok('jumlah bagian badan setara rig Real Steel (≤ 2×)', SIMPLE_MESH_COUNT <= RS_REF.mesh * 2, `${SIMPLE_MESH_COUNT} vs ${RS_REF.mesh}`);
-
-console.log('\n═══════════════════════════════════════════════════════════════════════════');
-console.log(' §C  ANGKA BEKU YANG DIPAKAI SISTEM LAIN');
-console.log('═══════════════════════════════════════════════════════════════════════════');
-const V = new THREE.Vector3();
-const local = (node, pt) => { node.updateWorldMatrix(true, false); return new THREE.Vector3(...pt).applyMatrix4(node.matrixWorld); };
-const rel = (child, parent, pt) => {
-  child.updateWorldMatrix(true, false); parent.updateWorldMatrix(true, false);
-  const inv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
-  return new THREE.Vector3(...pt).applyMatrix4(child.matrixWorld).applyMatrix4(inv);
-};
-// boot: sol / jari / tumit di ruang mata kaki
-let soleY = Infinity, toeZ = -Infinity, heelZ = Infinity;
-for (const foot of r.footJ) {
-  foot.updateWorldMatrix(true, true);
-  foot.traverse((o) => {
-    if (!o.isMesh || isFx(o)) return;
-    const pos = o.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      V.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-      const l = V.clone().applyMatrix4(new THREE.Matrix4().copy(foot.matrixWorld).invert());
-      soleY = Math.min(soleY, l.y); toeZ = Math.max(toeZ, l.z); heelZ = Math.min(heelZ, l.z);
-    }
-  });
-}
-console.log(`   sol boot            ${f(soleY, 3)}   (harus −0.210)`);
-console.log(`   ujung jari          ${f(toeZ, 3)}   (harus ≈ +1.240)`);
-console.log(`   tumit               ${f(heelZ, 3)}   (harus ≈ −0.620)`);
-ok('sol boot tepat 0.21 di bawah mata kaki (SOLE)', Math.abs(soleY + 0.21) < 0.005, f(soleY, 3));
-ok('ujung jari boot tetap di +1.24 (TOE_Z)', Math.abs(toeZ - 1.24) < 0.06, f(toeZ, 3));
-ok('tumit boot tetap di −0.62 (HEEL_Z)', Math.abs(heelZ + 0.62) < 0.06, f(heelZ, 3));
-
-// pivot tulang (rig.ts) — tidak boleh bergeser satu milimeter pun
-const piv = [
-  ['pinggul  (hipJ)', rel(r.hipJ[0], r.pelvis, [0, 0, 0]), [0.74, 2.85, 0]],
-  ['lutut    (kneeJ)', rel(r.kneeJ[0], r.hipJ[0], [0, 0, 0]), [0, -2.0, 0]],
-  ['mata kaki (footJ)', rel(r.footJ[0], r.kneeJ[0], [0, 0, 0]), [0, -1.92, 0]],
-  ['pinggang (waist)', rel(r.waist, r.pelvis, [0, 0, 0]), [0, 3.45, 0]],
-  ['dada     (chest)', rel(r.chest, r.waist, [0, 0, 0]), [0, 0.35, 0]],
-  ['leher    (neck)', rel(r.neck, r.chest, [0, 0, 0]), [0, 1.79, 0.08]],
-  ['kepala   (head)', rel(r.head, r.neck, [0, 0, 0]), [0, 0.36, 0.06]],
-  ['selangka (clav)', rel(r.clavs[0], r.chest, [0, 0, 0]), [0.88, 1.55, 0]],
-  ['bahu     (shoulder)', rel(r.shoulders[0], r.clavs[0], [0, 0, 0]), [0.8, -0.32, 0]],
-  ['siku     (elbow)', rel(r.elbows[0], r.shoulders[0], [0, 0, 0]), [0, -1.05, 0]],
-  ['pergelangan (wrist)', rel(r.wrists[0], r.elbows[0], [0, 0, 0]), [0, -0.975, 0]],
-  ['tempurung (kneeCap)', rel(r.kneeCaps[0], r.kneeJ[0], [0, 0, 0]), [0, 0, 0.2296]],
-];
-for (const [label, got, want] of piv) {
-  const d = Math.max(Math.abs(got.x - want[0]), Math.abs(got.y - want[1]), Math.abs(got.z - want[2]));
-  console.log(`   ${label.padEnd(22)} (${f(got.x, 3)}, ${f(got.y, 3)}, ${f(got.z, 3)})`);
-  ok(`pivot ${label.trim()} tidak bergeser`, d < 1e-4, `Δ ${f(d, 5)}`);
-}
-// jangkauan depan tempurung lutut (probe lutut duduk di z +0.62)
 {
-  r.kneeJ[0].updateWorldMatrix(true, true);
-  r.kneeCaps[0].updateWorldMatrix(true, true);
-  const inv = new THREE.Matrix4().copy(r.kneeJ[0].matrixWorld).invert();
-  const bb = new THREE.Box3();
-  r.kneeCaps[0].traverse((o) => { if (o.isMesh && !isFx(o)) { const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox(); bb.union(g.boundingBox.clone().applyMatrix4(o.matrixWorld).applyMatrix4(inv)); } });
-  console.log(`   tempurung depan      ${f(bb.max.z, 3)}   (ATLAS ${f(KNEECAP_REACH, 3)})`);
-  ok('jangkauan depan tempurung lutut tetap (probe z +0.62)', Math.abs(bb.max.z - KNEECAP_REACH) < 0.03, f(bb.max.z, 3));
+  let mesh = 0, tris = 0, verts = 0;
+  r.root.traverse((o) => {
+    if (!o.isMesh || isFx(o) || !o.geometry?.attributes?.position) return;
+    mesh++;
+    const g = o.geometry;
+    verts += g.attributes.position.count;
+    tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+  });
+  console.log(`   mesh padat   ${mesh}   (rig sim ${sim.meshes.length}; FX mata aditif di luar hitungan)`);
+  console.log(`   segitiga     ${tris}   (ATLAS lama 141640)`);
+  console.log(`   vertex       ${verts}   (ATLAS lama 423626)`);
+  ok('mesh padat = mesh rig Real Steel', mesh === sim.meshes.length, `${mesh} mesh (FX mata aditif tidak dihitung)`);
+  ok('segitiga jauh di bawah ATLAS (< 25.000)', tris < 25000, `${tris} tris`);
+  ok('stack FX mata lengkap untuk Game.ts', r.eyeOptics.length === 2 && r.eyeLights.length === 2 && r.eyeIris.length === 2 && r.eyePupils.length === 2 && r.eyeScanners.length === 2 && r.eyeFlares.length === 2 && r.eyePulses.length === 2 && r.eyeBeams.length === 2, '');
+  ok('tinju & tempurung tetap ada untuk animasi/probe', r.fists.length === 2 && r.kneeCaps.length === 2 && r.caps.length === 2, '');
 }
-
-// optik mata
-const eye = r.eyeOptics[0];
-const ep = rel(eye, r.head, [0, 0, 0]);
-console.log(`   optik mata           (${f(ep.x, 3)}, ${f(ep.y, 3)}, ${f(ep.z, 3)})   (harus 0.155 / −0.020 / 0.430)`);
-ok('optik mata tetap di koordinat lama', Math.abs(ep.x - 0.155) < 1e-4 && Math.abs(ep.y + 0.02) < 1e-4 && Math.abs(ep.z - 0.43) < 1e-4, '');
-ok('semua FX mata masih terpasang', r.eyeOptics.length === 2 && r.eyeIris.length === 2 && r.eyePupils.length === 2 && r.eyeScanners.length === 2 && r.eyeFlares.length === 2 && r.eyePulses.length === 2 && r.eyeBeams.length === 2 && r.eyeLights.length === 2, `${r.eyeOptics.length} optik`);
-ok('tempurung lutut & pergelangan tetap ada untuk animasi', r.kneeCaps.length === 2 && r.fists.length === 2 && r.caps.length === 2, '');
-
-// tinggi berdiri
-const headBox = segBox(r.head, []);
-const footBox = segBox(r.footJ[0], []);
-const top = local(r.head, [0, headBox.max.y, 0]).y;
-const bottom = local(r.footJ[0], [0, footBox.min.y, 0]).y;
-console.log(`   tinggi berdiri       ${f(top - bottom)} m   (root scale ${f(r.root.scale.x, 3)})`);
-ok('tinggi berdiri tidak berubah (7.55 m ± 2%)', Math.abs(top - bottom - 7.55) < 0.16, f(top - bottom) + ' m');
 
 console.log('\n═══════════════════════════════════════════════════════════════════════════');
-console.log(' §D  TABEL MAPPING — Real Steel Simulator → Steel Titans');
+console.log(' §C  SKELETON REAL STEEL YANG DIBEKUKAN (offset joint persis RS_SKEL)');
 console.log('═══════════════════════════════════════════════════════════════════════════');
-const rig = createRig({ armor: 0x8a8f98, accent: 0x1e9bff, frame: 0x2c3038, glow: 0x63e0ff, glove: 0xc1121f, joint: 0xffcc00 }, 'sim');
-rig.root.updateMatrixWorld(true);
-const J = rig.joints;
-const MAP = [
-  ['dada', () => segBox(r.chest, [r.neck, ...r.clavs]), () => segBox(J.chest, [J.neck, J.clavL, J.clavR]), K_SEG.torso],
-  ['kepala', () => segBox(r.head, []), () => segBox(J.head, []), K_SEG.head],
-  ['lengan atas', () => segBox(r.shoulders[0], [r.elbows[0]]), () => segBox(J.shoulderL, [J.elbowL]), K_SEG.arm],
-  ['lengan bawah', () => segBox(r.elbows[0], [r.wrists[0]]), () => segBox(J.elbowL, [J.wristL]), K_SEG.arm],
-  ['paha', () => segBox(thighG(0), []), () => segBox(J.hipL, [J.kneeL]), K_SEG.thigh],
-  ['betis', () => segBox(shinG(0), []), () => segBox(J.kneeL, [J.ankleL]), K_SEG.shin],
-  ['tinju', () => segBox(r.fists[0], []), () => segBox(J.wristL, []), K_SEG.arm],
-];
-console.log('   segmen          Real Steel (m)      K_SEG   → hasil ×K       Steel Titans      rasio tercapai');
-for (const [label, gm, sm, K] of MAP) {
-  const G = gm(), S = sm();
-  if (!G || !S) continue;
-  const wantW = S.w * K;
-  console.log(`   ${label.padEnd(15)} ${`${f(S.w, 3)} × ${f(S.h, 3)} × ${f(S.d, 3)}`.padEnd(20)} ${f(K).padEnd(7)} lebar ${f(wantW).padEnd(10)} ${`${f(G.w)} × ${f(G.h)} × ${f(G.d)}`.padEnd(18)} ${pct(G.w, wantW)}`);
-}
-console.log(`   tinggi berdiri  ${f(RS_REF.tinggiBerdiri, 3)} m           ${f(7.55 / RS_REF.tinggiBerdiri).padEnd(7)}            ${f(top - bottom)} m`);
+{
+  const S = RS_SKEL;
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  const J = (label, cond) => ok(label, cond, cond ? '' : 'offset bergeser!');
+  J('pinggul  (+-HIP_X, HIP_Y, 0)', near(r.hipJ[0].position.x, S.HIP_X) && near(r.hipJ[0].position.y, S.HIP_Y) && near(r.hipJ[1].position.x, -S.HIP_X));
+  J('lutut    (0, -L1, 0)', near(r.kneeJ[0].position.y, -S.L1) && near(r.kneeJ[1].position.y, -S.L1));
+  J('mata kaki(0, -L2, 0)', near(r.footJ[0].position.y, -S.L2) && near(r.footJ[1].position.y, -S.L2));
+  J('pinggang (0, WAIST_Y, 0)', near(r.waist.position.y, S.WAIST_Y));
+  J('dada     (0, CY, 0)', near(r.chest.position.y, S.CY));
+  J('leher    (0, NECK_Y, 0)', near(r.neck.position.y, S.NECK_Y));
+  J('kepala   (0, HEAD_Y, 0)', near(r.head.position.y, S.HEAD_Y));
+  J('selangka (+-CLAV_X, CLAV_Y, 0)', near(r.clavs[0].position.x, S.CLAV_X) && near(r.clavs[0].position.y, S.CLAV_Y) && near(r.clavs[1].position.x, -S.CLAV_X));
+  J('bahu     (+-SH_X, 0, 0)', near(r.shoulders[0].position.x, S.SH_X) && near(r.shoulders[1].position.x, -S.SH_X));
+  J('siku     (0, -ELBOW_Y, 0)', near(r.elbows[0].position.y, -S.ELBOW_Y));
+  J('pergelang(0, -WRIST_Y, 0)', near(r.wrists[0].position.y, -S.WRIST_Y));
+  J('tempurung(0, 0, KNEECAP_Z)', near(r.kneeCaps[0].position.z, S.KNEECAP_Z));
 
+  const headBox = segBox(r.head, []);
+  const footBox = segBox(r.footJ[0], []);
+  const top = r.head.localToWorld(new THREE.Vector3(0, headBox.max.y, 0)).y;
+  const bottom = r.footJ[0].localToWorld(new THREE.Vector3(0, footBox.min.y, 0)).y;
+  const tinggiLokal = (top - bottom) / r.root.scale.x;
+  console.log(`   tinggi berdiri       ${f(top - bottom)} m   (target 7.55 m, root scale ${f(r.root.scale.x, 3)})`);
+  ok('tinggi berdiri 7.55 m +-0.2', Math.abs(top - bottom - 7.55) < 0.2, f(top - bottom) + ' m');
+  const bahuGame = (2 * (S.CLAV_X + S.SH_X)) / tinggiLokal;
+  const bahuSim = 0.42 / RS_REF.tinggiBerdiri;
+  const kakiGame = (S.L1 + S.L2 + S.SOLE) / tinggiLokal;
+  const kakiSim = (0.44 + 0.42 + 0.07) / RS_REF.tinggiBerdiri;
+  ok('rasio rentang bahu = Real Steel', Math.abs(bahuGame - bahuSim) < 0.005, `${f(bahuGame * 100, 1)}% vs ${f(bahuSim * 100, 1)}%`);
+  ok('rasio kaki = Real Steel', Math.abs(kakiGame - kakiSim) < 0.005, `${f(kakiGame * 100, 1)}% vs ${f(kakiSim * 100, 1)}%`);
+}
+
+console.log('\n═══════════════════════════════════════════════════════════════════════════');
+console.log(' §D  SETIAP TULANG GAME = TULANG SIM x K (faktor tunggal)');
+console.log('═══════════════════════════════════════════════════════════════════════════');
+{
+  const S = RS_SKEL, T = RS_REF.tulang;
+  const rows = [
+    ['pinggul -> leher', S.WAIST_Y + S.CY + S.NECK_Y - S.HIP_Y, T.panggulLeher + 0.05],
+    ['bahu -> siku', S.ELBOW_Y, T.bahuSiku],
+    ['siku -> pergelangan', S.WRIST_Y, T.sikuPergelangan],
+    ['pinggul -> lutut', S.L1, T.pinggulLutut],
+    ['lutut -> mata kaki', S.L2, T.lututMataKaki],
+    ['leher -> kepala', S.HEAD_Y, T.leherKepala],
+  ];
+  console.log('   tulang                 faktor game/sim   vs K = ' + f(K, 4));
+  for (const [label, g, sv] of rows) {
+    console.log(`   ${label.padEnd(22)} ${f(g / sv, 4).padStart(9)}   ${pct(g / sv, K)}`);
+    ok(`tulang ${label} = sim x K`, Math.abs(g / sv / K - 1) < 0.001, '');
+  }
+}
 
 console.log('\n═══════════════════════════════════════════════════════════════════════════');
 console.log(' §E  TITIK ANCHOR ANIMASI (stance tinju, terukur — bukan angka kertas)');
@@ -290,7 +230,7 @@ console.log('══════════════════════�
     ['panggul (pelvis)', wy(bot.pelvis)],
     ['pinggang', wy(bot.waist)],
     ['dada', wy(bot.chest)],
-    ['reaktor arc', wy(bot.chest) + 1.06 * S],
+    ['reaktor arc', wy(bot.chest) + 0.11 * RS_SKEL.K * S],
     ['leher', wy(bot.neck)],
     ['kepala (pivot)', wy(bot.head)],
     ['puncak kepala', headBoxW.max.y],

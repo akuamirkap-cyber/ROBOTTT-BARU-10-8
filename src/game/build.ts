@@ -3,6 +3,8 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Robot, RobotStyle } from './robot';
 import { L1, L2, HIP_Y, CY, UP } from './rig';
+import { RS_SKEL } from './bodySpec';
+import { createRig } from '../sim/rig';
 import {
   ARM_PARTS, BOOT_PARTS, CAP_PARTS, CHEST_PARTS, CHASSIS, CLAV_PARTS, FORE_PARTS, HEAD_PARTS, HIP_PARTS,
   KNEE_PARTS, KNEECAP_PARTS, NECK_PARTS, PELVIS_PARTS, SHIN_PARTS, THIGH_PARTS, WAIST_PARTS,
@@ -355,6 +357,181 @@ function buildSimpleChassis(r: Robot, b: Batch, c: Ctx, o: Opt) {
 }
 
 // ---------------------------------------------------------------- public entry
+// ---------------------------------------------------------------- REAL STEEL MODE CHASSIS
+/**
+ * BADAN = ROBOT MODE REAL STEEL ITU SENDIRI. Geometri & proporsi diambil langsung dari
+ * `createRig()` di src/sim/rig.ts (satu sumber kebenaran — kalau rig mode Real Steel berubah,
+ * game ikut berubah), lalu:
+ *   • joint game (yang digerakkan animate/IK) diposisikan pada offset rig x RS_SKEL.K, jadi
+ *     skeleton game = skeleton Real Steel 100% (bahu +-0.877 = 24% tinggi, kaki 45% tinggi);
+ *   • 89 mesh rig dipindah ke joint game pasangannya (posisi xK, skala K, rotasi daun utuh),
+ *     jadi bentuk & ukuran tiap bagian persis seperti yang dilihat di mode Real Steel;
+ *   • material rig ditukar ke material palette game (main/accent/joint/glow/sec) supaya
+ *     applyArmorPalette & skin tetap bekerja;
+ *   • marker bola & label CSS2D (alat debug mode sim) dibuang; stack FX mata dibuat ulang
+ *     supaya array eyeOptics/eyeLights dst. yang dipakai Game.ts tetap terisi.
+ */
+function buildRealSteelChassis(r: Robot, c: Ctx) {
+  const S = RS_SKEL;
+  const K = S.K;
+
+  // ---------- joint game pada offset Real Steel ----------
+  const W = r.waist; W.position.set(0, S.WAIST_Y, 0); r.pelvis.add(W);
+  const C = r.chest; C.position.set(0, S.CY, 0); r.waist.add(C);
+  const N = r.neck; N.position.set(0, S.NECK_Y, 0); r.chest.add(N);
+  const H = r.head; H.position.set(0, S.HEAD_Y, 0); N.add(H);
+
+  const arms: { clav: THREE.Group; sh: THREE.Group; el: THREE.Group; wr: THREE.Group }[] = [];
+  const legs: { hip: THREE.Group; knee: THREE.Group; ankle: THREE.Group }[] = [];
+  for (let i = 0; i < 2; i++) {
+    const sg = i === 0 ? 1 : -1;
+    const clav = new THREE.Group(); clav.position.set(sg * S.CLAV_X, S.CLAV_Y, 0); C.add(clav); r.clavs.push(clav);
+    const sh = new THREE.Group(); sh.position.set(sg * S.SH_X, 0, 0); sh.rotation.order = 'YXZ'; clav.add(sh); r.shoulders.push(sh);
+    const cap = new THREE.Group(); cap.position.copy(sh.position); clav.add(cap); r.caps.push(cap);
+    const el = new THREE.Group(); el.position.y = -S.ELBOW_Y; sh.add(el); r.elbows.push(el);
+    const wr = new THREE.Group(); wr.position.y = -S.WRIST_Y; el.add(wr); r.wrists.push(wr);
+    arms.push({ clav, sh, el, wr });
+    const hip = new THREE.Group(); hip.position.set(sg * S.HIP_X, S.HIP_Y, 0); r.pelvis.add(hip); r.hipJ.push(hip);
+    const knee = new THREE.Group(); knee.position.y = -S.L1; hip.add(knee); r.kneeJ.push(knee);
+    const kc = new THREE.Group(); kc.position.set(0, 0, S.KNEECAP_Z); knee.add(kc); r.kneeCaps.push(kc);
+    const ankle = new THREE.Group(); ankle.position.y = -S.L2; knee.add(ankle); r.footJ.push(ankle);
+    legs.push({ hip, knee, ankle });
+  }
+
+  // ---------- rig mode Real Steel ----------
+  const rig = createRig(
+    { armor: c.style.main, accent: c.style.accent, frame: 0x1e2026, glow: c.style.glow, glove: c.style.secondary, joint: 0xff00ff },
+    'rs',
+    false, // tanpa marker/label debug
+  );
+
+  // material rig -> material palette game
+  const swap = new Map<THREE.Material, THREE.Material>();
+  const seen = new Set<THREE.Material>();
+  rig.meshes.forEach((m) => seen.add(m.material as THREE.Material));
+  for (const m of seen) {
+    if (m === rig.armorMat) swap.set(m, c.main);
+    else if (m === rig.glowMat || m === rig.knuckleMat) swap.set(m, c.glow);
+    else if (m === rig.gloveMat) swap.set(m, c.sec);
+    else swap.set(m, (m as THREE.MeshStandardMaterial).metalness > 0.8 ? c.joint : c.accent);
+  }
+
+  // akumulasi offset (meter rig) per joint — untuk delta lipatan spine & pivot pelvis game
+  type V3 = [number, number, number];
+  const cum = (x: number, y: number, z: number): V3 => [x, y, z];
+  const RIG_CUM: Record<string, V3[]> = {
+    pelvis: [cum(0, 0, 0), cum(0, 0, 0)],
+    waist: [cum(0, 0.08, 0), cum(0, 0.08, 0)],
+    spine: [cum(0, 0.2, 0), cum(0, 0.2, 0)],
+    chest: [cum(0, 0.32, 0), cum(0, 0.32, 0)],
+    neck: [cum(0, 0.57, 0), cum(0, 0.57, 0)],
+    head: [cum(0, 0.66, 0), cum(0, 0.66, 0)],
+    clavL: [cum(0.06, 0.52, 0), cum(-0.06, 0.52, 0)],
+    shoulderL: [cum(0.21, 0.52, 0), cum(-0.21, 0.52, 0)],
+    elbowL: [cum(0.21, 0.24, 0), cum(-0.21, 0.24, 0)],
+    wristL: [cum(0.21, -0.02, 0), cum(-0.21, -0.02, 0)],
+    hipL: [cum(0.09, -0.05, 0), cum(-0.09, -0.05, 0)],
+    kneeL: [cum(0.09, -0.49, 0), cum(-0.09, -0.49, 0)],
+    ankleL: [cum(0.09, -0.91, 0), cum(-0.09, -0.91, 0)],
+  };
+  const GAME_CUM: Record<string, V3[]> = {
+    pelvis: [cum(0, UP, 0), cum(0, UP, 0)],
+    waist: [cum(0, UP + S.WAIST_Y, 0), cum(0, UP + S.WAIST_Y, 0)],
+    spine: [cum(0, UP + S.WAIST_Y + S.CY, 0), cum(0, UP + S.WAIST_Y + S.CY, 0)], // dilipat ke dada
+    chest: [cum(0, UP + S.WAIST_Y + S.CY, 0), cum(0, UP + S.WAIST_Y + S.CY, 0)],
+    neck: [cum(0, UP + S.WAIST_Y + S.CY + S.NECK_Y, 0), cum(0, UP + S.WAIST_Y + S.CY + S.NECK_Y, 0)],
+    head: [cum(0, UP + S.WAIST_Y + S.CY + S.NECK_Y + S.HEAD_Y, 0), cum(0, UP + S.WAIST_Y + S.CY + S.NECK_Y + S.HEAD_Y, 0)],
+    clavL: [cum(S.CLAV_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y, 0), cum(-S.CLAV_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y, 0)],
+    shoulderL: [cum(S.CLAV_X + S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y, 0), cum(-S.CLAV_X - S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y, 0)],
+    elbowL: [cum(S.CLAV_X + S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y - S.ELBOW_Y, 0), cum(-S.CLAV_X - S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y - S.ELBOW_Y, 0)],
+    wristL: [cum(S.CLAV_X + S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y - S.ELBOW_Y - S.WRIST_Y, 0), cum(-S.CLAV_X - S.SH_X, UP + S.WAIST_Y + S.CY + S.CLAV_Y - S.ELBOW_Y - S.WRIST_Y, 0)],
+    hipL: [cum(S.HIP_X, UP + S.HIP_Y, 0), cum(-S.HIP_X, UP + S.HIP_Y, 0)],
+    kneeL: [cum(S.HIP_X, UP + S.HIP_Y - S.L1, 0), cum(-S.HIP_X, UP + S.HIP_Y - S.L1, 0)],
+    ankleL: [cum(S.HIP_X, UP + S.HIP_Y - S.L1 - S.L2, 0), cum(-S.HIP_X, UP + S.HIP_Y - S.L1 - S.L2, 0)],
+  };
+  const J = rig.joints;
+  const target: Record<string, THREE.Object3D[]> = {
+    pelvis: [r.pelvis, r.pelvis],
+    waist: [W, W],
+    spine: [C, C],
+    chest: [C, C],
+    neck: [N, N],
+    head: [H, H],
+    clavL: [r.clavs[0], r.clavs[1]],
+    shoulderL: [r.shoulders[0], r.shoulders[1]],
+    elbowL: [r.elbows[0], r.elbows[1]],
+    wristL: [r.wrists[0], r.wrists[1]],
+    hipL: [r.hipJ[0], r.hipJ[1]],
+    kneeL: [r.kneeJ[0], r.kneeJ[1]],
+    ankleL: [r.footJ[0], r.footJ[1]],
+  };
+  for (const name of Object.keys(target)) {
+    const rigJ = name === 'pelvis' ? J.pelvis : name === 'waist' ? J.waist : name === 'spine' ? J.spine : name === 'chest' ? J.chest : name === 'neck' ? J.neck : name === 'head' ? J.head :
+      name === 'clavL' ? [J.clavL, J.clavR] : name === 'shoulderL' ? [J.shoulderL, J.shoulderR] : name === 'elbowL' ? [J.elbowL, J.elbowR] : name === 'wristL' ? [J.wristL, J.wristR] :
+      name === 'hipL' ? [J.hipL, J.hipR] : name === 'kneeL' ? [J.kneeL, J.kneeR] : [J.ankleL, J.ankleR];
+    const list = Array.isArray(rigJ) ? rigJ : [rigJ, rigJ];
+    for (let side = 0; side < 2; side++) {
+      const src = list[side];
+      const dst = target[name][side];
+      const rc = RIG_CUM[name][side];
+      const gc = GAME_CUM[name][side];
+      // C = selisih tetap antara frame akar rig (pelvis visual di 0) dan frame akar game
+      // (pivot pelvis game di y=UP, pinggul di UP+HIP_Y): tanpa ini semua mesh melorot 4.19 unit
+      const C0 = UP + S.HIP_Y + 0.05 * K;
+      const dx = rc[0] * K - gc[0], dy = rc[1] * K + C0 - gc[1], dz = rc[2] * K - gc[2];
+      const kids = src.children.filter((o) => (o as THREE.Mesh).isMesh) as THREE.Mesh[];
+      for (const mesh of kids) {
+        const px = mesh.position.x, py = mesh.position.y, pz = mesh.position.z; // salinan: position dimutasi di bawah
+        dst.add(mesh);
+        mesh.position.set(px * K + dx, py * K + dy, pz * K + dz);
+        mesh.scale.setScalar(K);
+        const cur = mesh.material as THREE.Material;
+        mesh.material = swap.get(cur) ?? cur;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        // sarung tinju utama (kotak gloveMat di y -0.065) jadi anchor `fists` game
+        if (name === 'wristL' && Math.abs(py + 0.065) < 1e-6 && Math.abs(pz - 0.003) < 1e-6) r.fists.push(mesh);
+      }
+    }
+  }
+
+  // ---------- stack FX mata (array yang dibaca robot.ts/Game.ts tetap terisi) ----------
+  const glowFx = () => new THREE.MeshBasicMaterial({ color: c.style.glow, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  for (let i = 0; i < 2; i++) {
+    const sg = i === 0 ? 1 : -1;
+    const optic = new THREE.Group();
+    optic.position.set(sg * S.EYE[0], S.EYE[1], S.EYE[2]);
+    H.add(optic);
+    r.eyeOptics.push(optic);
+    const pupil = new THREE.Group();
+    pupil.position.set(0, 0, 0.02 * K);
+    optic.add(pupil);
+    r.eyePupils.push(pupil);
+    const iris = new THREE.Mesh(new THREE.BoxGeometry(0.05 * K, 0.014 * K, 0.012 * K), glowFx());
+    (iris.material as THREE.MeshBasicMaterial).opacity = 0.9;
+    optic.add(iris);
+    r.eyeIris.push(iris);
+    const scanner = new THREE.Mesh(new THREE.BoxGeometry(0.012 * K, 0.012 * K, 0.012 * K), glowFx());
+    (scanner.material as THREE.MeshBasicMaterial).opacity = 0.55;
+    optic.add(scanner);
+    r.eyeScanners.push(scanner);
+    const flare = new THREE.Mesh(new THREE.PlaneGeometry(0.16 * K, 0.16 * K), glowFx());
+    optic.add(flare);
+    r.eyeFlares.push(flare);
+    const pulse = new THREE.Mesh(new THREE.RingGeometry(0.05 * K, 0.062 * K, 20), glowFx());
+    optic.add(pulse);
+    r.eyePulses.push(pulse);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.05 * K, 0.02 * K, 0.5 * K), glowFx());
+    beam.position.z = 0.3 * K;
+    optic.add(beam);
+    r.eyeBeams.push(beam);
+    const light = new THREE.PointLight(c.style.glow, 0, 3);
+    light.position.set(0, 0, 0.04 * K);
+    optic.add(light);
+    r.eyeLights.push(light);
+  }
+}
+
 export function applyArmorPalette(r: Robot, c: Ctx, o: Opt) {
   if (o.variant !== 'atom') return;
   const skin = c.style.armorSkin ?? 0;
@@ -390,7 +567,10 @@ export function buildRobot(r: Robot, c: Ctx, o: Opt) {
   applyArmorPalette(r, c, o);
   const b = new Batch();
   r.pelvis.position.y = UP; // longer legs lift everything above the hips
-  if (CHASSIS === 'simple') {
+  if (CHASSIS === 'realsteel') {
+    // BADAN = robot mode Real Steel itu sendiri (rig src/sim/rig.ts, proporsi & ukuran 100%)
+    buildRealSteelChassis(r, c);
+  } else if (CHASSIS === 'simple') {
     // DESAIN BARU: badan simple ala Real Steel (bentuk & ukuran di src/game/bodySpec.ts)
     buildSimpleChassis(r, b, c, o);
   } else {
@@ -403,7 +583,7 @@ export function buildRobot(r: Robot, c: Ctx, o: Opt) {
     buildArms(r, b, c, o);
   }
   b.flush();
-  addBodyKit(r, c, o);
+  if (CHASSIS !== 'realsteel') addBodyKit(r, c, o); // kit pauldron/fauld berukuran badan lama
 }
 
 /** strip a previously fitted body kit (every merged mesh tagged by its Batch) off the whole rig */
@@ -2276,6 +2456,7 @@ function clearMeshes(g: THREE.Object3D, groupsToo = false) {
 export function rebuildHelmetAndGloves(r: Robot, c: Ctx, o: Opt) {
   // 0. Repaint the shared body materials for the selected armor skin
   applyArmorPalette(r, c, o);
+  if (CHASSIS === 'realsteel') return; // helm/sarung/FX mata sudah datang dari rig mode Real Steel
 
   // 1. Clear and rebuild Helmet on r.head (eye optic groups are rebuilt too)
   clearMeshes(r.head, true);

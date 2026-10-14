@@ -35,7 +35,8 @@ export interface Rig {
   glowColor: THREE.Color;
 }
 
-export function createRig(c: Colors, labelPrefix: string): Rig {
+/** `debug = false` = tanpa marker bola & label CSS2D (dipakai game Steel Titans; mode sim tetap true). */
+export function createRig(c: Colors, labelPrefix: string, debug = true): Rig {
   const meshes: THREE.Mesh[] = [];
   const markers: THREE.Mesh[] = [];
   const labels: CSS2DObject[] = [];
@@ -64,6 +65,7 @@ export function createRig(c: Colors, labelPrefix: string): Rig {
   const sph = (r: number) => new THREE.SphereGeometry(r, 18, 12);
 
   const label = (obj: THREE.Object3D, text: string, offset: T3 = [0, 0, 0]) => {
+    if (!debug) return;
     const div = document.createElement('div');
     div.className = 'joint-label';
     div.textContent = text;
@@ -78,10 +80,12 @@ export function createRig(c: Colors, labelPrefix: string): Rig {
     g.name = name;
     g.position.set(...pos);
     parent.add(g);
-    const mk = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), markerMat);
-    mk.renderOrder = 999;
-    g.add(mk);
-    markers.push(mk);
+    if (debug) {
+      const mk = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), markerMat);
+      mk.renderOrder = 999;
+      g.add(mk);
+      markers.push(mk);
+    }
     return g;
   };
 

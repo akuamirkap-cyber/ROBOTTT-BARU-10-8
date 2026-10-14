@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Spring } from './spring';
 import { buildRobot, rebuildHelmetAndGloves, ATOM_OPT, BRUTE_OPT, type Ctx, type Opt } from './build';
 import { L1, L2, HIP_Y, UP } from './rig';
+import { CHASSIS, RS_SKEL } from './bodySpec';
 import { fallStages, riseStages } from './poses';
 import { markReflect } from './layers';
 import { getArmourNormalMap, getArmourRoughnessMap, getCarbonFiberTexture, getSteelNormalMap } from './textures';
@@ -104,8 +105,8 @@ export interface AnimState {
 }
 
 
-const ANKLE_H = 0.23; // ankle joint height above the floor when the foot is flat (sole is 0.21 below the ankle → 2 cm clearance)
-const STAND_Y = 2.88 + UP * 0.95 + 0.56; // tall, athletic standing hip height: knees softly bent on long boxer legs
+const ANKLE_H = CHASSIS === 'realsteel' ? RS_SKEL.SOLE * 0.94 + 0.033 : 0.23; // ankle joint height above the floor when the foot is flat (sole is 0.21 below the ankle → 2 cm clearance)
+const STAND_Y = CHASSIS === 'realsteel' ? RS_SKEL.STAND_Y : 2.88 + UP * 0.95 + 0.56; // tall, athletic standing hip height: knees softly bent on long boxer legs
 
 /**
  * Ankle height needed so the LOWEST point of the boot just touches the floor when the foot is pitched by p
@@ -113,11 +114,11 @@ const STAND_Y = 2.88 + UP * 0.95 + 0.56; // tall, athletic standing hip height: 
  * Boot geometry (ankle-local): sole bottom 0.21 below the ankle, toe tip 1.27 ahead, heel 0.55 behind.
  * The previous approximation under-lifted the foot, which pushed the toe through the floor.
  */
-const SOLE = 0.21;
-const TOE_Z = 1.24;
-const HEEL_Z = 0.62;
+const SOLE = CHASSIS === 'realsteel' ? RS_SKEL.SOLE : 0.21;
+const TOE_Z = CHASSIS === 'realsteel' ? RS_SKEL.TOE_Z : 1.24;
+const HEEL_Z = CHASSIS === 'realsteel' ? RS_SKEL.HEEL_Z : 0.62;
 const ankleLift = (p: number) => Math.max(0, Math.max(SOLE * Math.cos(p) + TOE_Z * Math.sin(p), SOLE * Math.cos(p) - HEEL_Z * Math.sin(p)) - SOLE);
-const RUN_HIP_LOW = 3.54; // hip height in mid-stance while running: knees flexed on longer legs
+const RUN_HIP_LOW = CHASSIS === 'realsteel' ? RS_SKEL.RUN_HIP_LOW : 3.54; // hip height in mid-stance while running: knees flexed on longer legs
 const RUN_HIP_BOB = 0.15; // how much higher the hips travel at touch-down / toe-off / flight (kept quiet — efficient)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const sm = (u: number) => u * u * (3 - 2 * u);
@@ -407,7 +408,25 @@ export class Robot {
 
   /** Points on the outermost surfaces of every body part (robot-local to the part). */
   private addProbes() {
-    const P = (o: THREE.Object3D, pts: number[][], foot = false) => pts.forEach(([x, y, z]) => this.addProbe(o, x, y, z, foot));
+    const P0 = (o: THREE.Object3D, pts: number[][], foot = false) => pts.forEach(([x, y, z]) => this.addProbe(o, x, y, z, foot));
+    // badan Real Steel lebih ramping dari badan lama: probe harus memeluk hull yang baru,
+    // kalau tidak hit-detection & ground-solve akan melayang di luar kulit
+    const fac = (j: THREE.Object3D): [number, number, number] | null => {
+      if (CHASSIS !== 'realsteel') return null;
+      if (j === this.chest) return [0.6, 0.75, 0.55];
+      if (j === this.pelvis) return [0.55, 0.8, 0.55];
+      if (j === this.head) return [1.05, 1.05, 1.05];
+      if (this.shoulders.includes(j as THREE.Group)) return [0.45, 0.6, 0.5];
+      if (this.elbows.includes(j as THREE.Group)) return [0.6, 0.6, 0.6];
+      if (this.fists.includes(j)) return [0.4, 0.4, 0.4];
+      if (this.hipJ.includes(j as THREE.Group)) return [0.5, 0.6, 0.6];
+      if (this.kneeJ.includes(j as THREE.Group)) return [0.6, 0.7, 0.55];
+      return null;
+    };
+    const P = (o: THREE.Object3D, pts: number[][], foot = false) => {
+      const k = fac(o);
+      P0(o, k ? pts.map((q) => [q[0] * k[0], q[1] * k[1], q[2] * k[2]]) : pts, foot);
+    };
     P(this.chest, [[0.9, 0.1, -1.0], [-0.9, 0.1, -1.0], [0.9, 1.5, -1.0], [-0.9, 1.5, -1.0], [0, 0.8, -1.05], [0.9, 1.2, 0.75], [-0.9, 1.2, 0.75], [0, 0.3, 0.6], [1.2, 1.4, 0], [-1.2, 1.4, 0]]);
     P(this.head, [[0, 0.72, -0.05], [0, -0.45, 0.35], [0.45, 0.1, 0], [-0.45, 0.1, 0], [0, 0.1, -0.5], [0, 0.1, 0.47]]);
     P(this.pelvis, [[1.09, 2.85, -0.52], [-1.09, 2.85, -0.52], [1.09, 2.85, 0.52], [-1.09, 2.85, 0.52], [0, 2.22, -0.42], [0, 2.22, 0.42], [0.66, 3.3, 0.44], [-0.66, 3.3, 0.44], [0.56, 2.9, -0.62], [-0.56, 2.9, -0.62]]);
